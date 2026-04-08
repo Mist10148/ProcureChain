@@ -12,6 +12,44 @@
 const int HOME_MIN_CHOICE = 0;
 const int HOME_MAX_CHOICE = 2;
 
+namespace {
+bool isRole(const Admin& admin, const std::string& roleName) {
+    return admin.role == roleName;
+}
+
+bool canUploadDocuments(const Admin& admin) {
+    return isRole(admin, "Procurement Officer") || isRole(admin, "Super Admin");
+}
+
+bool canViewPendingApprovals(const Admin& admin) {
+    return isRole(admin, "Budget Officer") ||
+           isRole(admin, "Municipal Administrator") ||
+           isRole(admin, "Super Admin");
+}
+
+bool canApproveOrReject(const Admin& admin) {
+    return isRole(admin, "Budget Officer") || isRole(admin, "Municipal Administrator");
+}
+
+bool canManualOverrideStatus(const Admin& admin) {
+    return isRole(admin, "Super Admin");
+}
+
+bool canManageBudgets(const Admin& admin) {
+    return isRole(admin, "Budget Officer") || isRole(admin, "Super Admin");
+}
+
+bool canValidateBlockchain(const Admin& admin) {
+    return isRole(admin, "Super Admin");
+}
+
+void denyAdminAction(const Admin& admin, const std::string& actionCode) {
+    std::cout << "\n[!] Access denied for your role (" << admin.role << ").\n";
+    logAuditAction("ACCESS_DENIED_" + actionCode, "N/A", admin.username);
+    waitForEnter();
+}
+} // namespace
+
 bool readMenuChoice(int& choice) {
     std::cin >> choice;
 
@@ -134,6 +172,10 @@ void runAdminDashboard(const Admin& admin) {
 
         switch (adminChoice) {
             case 1:
+                if (!canUploadDocuments(admin)) {
+                    denyAdminAction(admin, "UPLOAD");
+                    break;
+                }
                 uploadDocumentAsAdmin(admin);
                 break;
             case 2:
@@ -143,24 +185,48 @@ void runAdminDashboard(const Admin& admin) {
                 searchDocumentByIdForAdmin(admin);
                 break;
             case 4:
+                if (!canViewPendingApprovals(admin)) {
+                    denyAdminAction(admin, "VIEW_PENDING_APPROVALS");
+                    break;
+                }
                 viewPendingApprovalsForAdmin(admin);
                 break;
             case 5:
+                if (!canApproveOrReject(admin)) {
+                    denyAdminAction(admin, "APPROVE");
+                    break;
+                }
                 approveDocumentAsAdmin(admin);
                 break;
             case 6:
+                if (!canApproveOrReject(admin)) {
+                    denyAdminAction(admin, "REJECT");
+                    break;
+                }
                 rejectDocumentAsAdmin(admin);
                 break;
             case 7:
+                if (!canManualOverrideStatus(admin)) {
+                    denyAdminAction(admin, "STATUS_OVERRIDE");
+                    break;
+                }
                 updateDocumentStatusForAdmin(admin);
                 break;
             case 8:
+                if (!canManageBudgets(admin)) {
+                    denyAdminAction(admin, "BUDGET_MANAGE");
+                    break;
+                }
                 manageBudgetsForAdmin(admin);
                 break;
             case 9:
                 viewAuditTrail(admin.username);
                 break;
             case 10:
+                if (!canValidateBlockchain(admin)) {
+                    denyAdminAction(admin, "BLOCKCHAIN_VALIDATE");
+                    break;
+                }
                 validateBlockchainNodes(admin.username);
                 break;
             case 0:

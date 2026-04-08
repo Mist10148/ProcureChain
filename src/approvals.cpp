@@ -53,6 +53,10 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
     return primaryPath;
 }
 
+bool isRequiredApproverRole(const std::string& role) {
+    return role == "Budget Officer" || role == "Municipal Administrator";
+}
+
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
@@ -223,6 +227,11 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
 
         // Uploader should not approve their own upload.
         if (username == uploader) {
+            continue;
+        }
+
+        // Only designated approver roles are part of the consensus requirement.
+        if (!isRequiredApproverRole(role)) {
             continue;
         }
 
