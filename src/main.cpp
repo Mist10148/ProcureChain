@@ -1,5 +1,10 @@
 #include "../include/auth.h"
-#include "auth.cpp"
+#include "../include/audit.h"
+#include "../include/budget.h"
+#include "../include/blockchain.h"
+#include "../include/documents.h"
+#include "../include/approvals.h"
+#include "../include/verification.h"
 
 #include <iostream>
 #include <limits>
@@ -7,7 +12,30 @@
 const int HOME_MIN_CHOICE = 0;
 const int HOME_MAX_CHOICE = 2;
 
-// Renders the landing menu shown to all users.
+bool readMenuChoice(int& choice) {
+    std::cin >> choice;
+
+    if (std::cin.fail()) {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        return false;
+    }
+
+    return true;
+}
+
+bool readBoundedMenuChoice(int& choice, int minChoice, int maxChoice) {
+    if (!readMenuChoice(choice)) {
+        return false;
+    }
+
+    if (choice < minChoice || choice > maxChoice) {
+        return false;
+    }
+
+    return true;
+}
+
 void printHomePage() {
     std::cout << "\n==============================================================\n";
     std::cout << "          MUNICIPAL PROCUREMENT DOCUMENT TRACKING SYSTEM      \n";
@@ -21,33 +49,6 @@ void printHomePage() {
     std::cout << "  Enter your choice: ";
 }
 
-// Reads numeric menu input safely and resets stream on invalid input.
-bool readMenuChoice(int& choice) {
-    std::cin >> choice;
-
-    if (std::cin.fail()) {
-        std::cin.clear();
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        return false;
-    }
-
-    return true;
-}
-
-// Reads and validates bounded menu choices to reduce repeated range checks.
-bool readBoundedMenuChoice(int& choice, int minChoice, int maxChoice) {
-    if (!readMenuChoice(choice)) {
-        return false;
-    }
-
-    if (choice < minChoice || choice > maxChoice) {
-        return false;
-    }
-
-    return true;
-}
-
-// Renders the citizen-only menu shown after successful login.
 void printCitizenMenu(const User& citizen) {
     std::cout << "\n==============================================================\n";
     std::cout << "  CITIZEN DASHBOARD\n";
@@ -56,27 +57,32 @@ void printCitizenMenu(const User& citizen) {
     std::cout << "  [1] View Published Documents\n";
     std::cout << "  [2] Verify Document Integrity\n";
     std::cout << "  [3] View Procurement Budgets\n";
+    std::cout << "  [4] View Audit Trail\n";
     std::cout << "  [0] Logout\n";
     std::cout << "--------------------------------------------------------------\n";
     std::cout << "  Enter your choice: ";
 }
 
-// Renders the admin stub menu until full admin features are implemented.
 void printAdminMenu(const Admin& admin) {
     std::cout << "\n==============================================================\n";
-    std::cout << "  ADMIN DASHBOARD (STUB)\n";
+    std::cout << "  ADMIN DASHBOARD\n";
     std::cout << "==============================================================\n";
     std::cout << "  Logged in as: " << admin.fullName << " (" << admin.adminId << ")\n";
     std::cout << "  Role        : " << admin.role << "\n\n";
-    std::cout << "  [1] Upload Document (Coming Soon)\n";
-    std::cout << "  [2] Approval Workflow (Coming Soon)\n";
-    std::cout << "  [3] Manage Budgets (Coming Soon)\n";
+    std::cout << "  [1] Upload Document\n";
+    std::cout << "  [2] View All Documents\n";
+    std::cout << "  [3] Search Document by ID\n";
+    std::cout << "  [4] View Pending Approvals\n";
+    std::cout << "  [5] Approve Document\n";
+    std::cout << "  [6] Reject Document\n";
+    std::cout << "  [7] Update Document Status (Manual Override)\n";
+    std::cout << "  [8] View Audit Trail\n";
+    std::cout << "  [9] Validate Blockchain\n";
     std::cout << "  [0] Logout\n";
     std::cout << "--------------------------------------------------------------\n";
     std::cout << "  Enter your choice: ";
 }
 
-// Handles the citizen session loop until the user chooses to logout.
 void runCitizenDashboard(const User& citizen) {
     int citizenChoice = -1;
 
@@ -84,20 +90,23 @@ void runCitizenDashboard(const User& citizen) {
         clearScreen();
         printCitizenMenu(citizen);
 
-        if (!readBoundedMenuChoice(citizenChoice, 0, 3)) {
+        if (!readBoundedMenuChoice(citizenChoice, 0, 4)) {
             std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
             continue;
         }
 
         switch (citizenChoice) {
             case 1:
-                showPublishedDocuments();
+                showPublishedDocuments(citizen.username);
                 break;
             case 2:
-                verifyDocumentIntegrity();
+                verifyDocumentIntegrity(citizen.username);
                 break;
             case 3:
-                viewBudgetAllocations();
+                viewBudgetAllocations(citizen.username);
+                break;
+            case 4:
+                viewAuditTrail(citizen.username);
                 break;
             case 0:
                 logAuditAction("CITIZEN_LOGOUT", citizen.userId, citizen.username);
@@ -110,7 +119,6 @@ void runCitizenDashboard(const User& citizen) {
     } while (citizenChoice != 0);
 }
 
-// Handles the admin stub session loop until logout.
 void runAdminDashboard(const Admin& admin) {
     int adminChoice = -1;
 
@@ -118,16 +126,38 @@ void runAdminDashboard(const Admin& admin) {
         clearScreen();
         printAdminMenu(admin);
 
-        if (!readBoundedMenuChoice(adminChoice, 0, 3)) {
+        if (!readBoundedMenuChoice(adminChoice, 0, 9)) {
             std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
             continue;
         }
 
         switch (adminChoice) {
             case 1:
+                uploadDocumentAsAdmin(admin);
+                break;
             case 2:
+                viewAllDocumentsForAdmin(admin);
+                break;
             case 3:
-                std::cout << "\n[!] This admin feature is a planned module and is not implemented yet.\n";
+                searchDocumentByIdForAdmin(admin);
+                break;
+            case 4:
+                viewPendingApprovalsForAdmin(admin);
+                break;
+            case 5:
+                approveDocumentAsAdmin(admin);
+                break;
+            case 6:
+                rejectDocumentAsAdmin(admin);
+                break;
+            case 7:
+                updateDocumentStatusForAdmin(admin);
+                break;
+            case 8:
+                viewAuditTrail(admin.username);
+                break;
+            case 9:
+                validateBlockchainNodes(admin.username);
                 break;
             case 0:
                 logAuditAction("ADMIN_LOGOUT", admin.adminId, admin.username);
@@ -140,7 +170,6 @@ void runAdminDashboard(const Admin& admin) {
     } while (adminChoice != 0);
 }
 
-// Prompts for login account type and routes to the correct auth flow.
 void handleLoginFlow() {
     clearScreen();
     std::cout << "\n==============================================================\n";
@@ -175,23 +204,21 @@ void handleLoginFlow() {
 }
 
 int main() {
-    // Prepare data storage before any auth action is used.
     ensureUserDataFileExists();
+    ensureApprovalsDataFileExists();
+    ensureBlockchainNodeFilesExist();
 
     int choice = -1;
 
     do {
-        // Refreshes the screen before showing the home page.
         clearScreen();
         printHomePage();
 
-        // Prevents non-numeric input from breaking the menu loop.
         if (!readBoundedMenuChoice(choice, HOME_MIN_CHOICE, HOME_MAX_CHOICE)) {
             std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
             continue;
         }
 
-        // Routes the user to the selected auth action.
         switch (choice) {
             case 1:
                 handleLoginFlow();

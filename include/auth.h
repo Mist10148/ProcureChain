@@ -19,6 +19,7 @@ struct Admin {
 };
 
 void clearScreen();
+void waitForEnter();
 void ensureUserDataFileExists();
 int countExistingUsers();
 std::string generateNextUserId();
@@ -32,9 +33,5 @@ bool loginCitizen(User& loggedInUser);
 bool loginCitizen();
 bool loginAdmin(Admin& loggedInAdmin);
 bool loginAdmin();
-void waitForEnter();
-void showPublishedDocuments();
-void verifyDocumentIntegrity();
-void viewBudgetAllocations();
 
 #endif

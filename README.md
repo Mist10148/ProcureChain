@@ -8,14 +8,14 @@ This project is modularized, and `main.cpp` acts as the entry point that ties mo
 Run from the project `src` folder (PowerShell):
 
 ```bash
-g++ main.cpp -o main.exe
+g++ (Get-ChildItem -Name *.cpp) -Wall -Wextra -o main.exe
 .\main.exe
 ```
 
 Run from the project root folder (PowerShell):
 
 ```bash
-g++ src/main.cpp -o main.exe
+g++ src\main.cpp src\auth.cpp src\audit.cpp src\documents.cpp src\verification.cpp src\budget.cpp src\approvals.cpp src\blockchain.cpp -Wall -Wextra -o main.exe
 .\main.exe
 ```
 
@@ -24,12 +24,14 @@ g++ src/main.cpp -o main.exe
 After selecting Login in Home, choose one of these account types:
 
 - Citizen Login
-- Admin Login (stub dashboard)
+- Admin Login
 
 ## Notes About Current Features
 
-- Citizen flow supports signup, login, viewing published documents, verification, and budget viewing.
-- Admin flow currently opens a stub dashboard for menu/navigation testing while admin modules are still pending.
+- Citizen flow supports signup, login, viewing published documents, verification, budget viewing, and audit trail viewing.
+- Admin flow supports upload, document viewing/search, pending approval view, approve/reject actions, manual status update, audit trail view, and blockchain validation.
+- Approval workflow is active: uploads create approval requests, and document status updates based on approval outcomes.
+- Blockchain module supports node initialization, block append helpers, and 3-node validation/consistency checks.
 - Document verification uses a simple classroom hash and is not cryptographic.
 
 ## Quick Test Credentials
