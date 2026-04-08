@@ -182,27 +182,39 @@ void printAuthPageHeader(const std::string& title) {
 bool hasValidAccountInput(const std::string& fullName, const std::string& username, const std::string& password) {
     // Keep all account field checks centralized so signup paths enforce the same rules.
     if (fullName.empty() || username.empty()) {
-        std::cout << "[!] Full name and username are required.\n";
+        std::cout << ui::warning("[!] Full name and username are required.") << "\n";
         return false;
     }
 
     if (fullName.size() > MAX_FULLNAME_LENGTH) {
-        std::cout << "[!] Full name is too long (max " << MAX_FULLNAME_LENGTH << " characters).\n";
+        std::cout << ui::warning("[!] Full name is too long (max ")
+                  << MAX_FULLNAME_LENGTH
+                  << ui::warning(" characters).")
+                  << "\n";
         return false;
     }
 
     if (username.size() > MAX_USERNAME_LENGTH) {
-        std::cout << "[!] Username is too long (max " << MAX_USERNAME_LENGTH << " characters).\n";
+        std::cout << ui::warning("[!] Username is too long (max ")
+                  << MAX_USERNAME_LENGTH
+                  << ui::warning(" characters).")
+                  << "\n";
         return false;
     }
 
     if (password.size() < MIN_PASSWORD_LENGTH) {
-        std::cout << "[!] Password must be at least " << MIN_PASSWORD_LENGTH << " characters.\n";
+        std::cout << ui::warning("[!] Password must be at least ")
+                  << MIN_PASSWORD_LENGTH
+                  << ui::warning(" characters.")
+                  << "\n";
         return false;
     }
 
     if (password.size() > MAX_PASSWORD_LENGTH) {
-        std::cout << "[!] Password is too long (max " << MAX_PASSWORD_LENGTH << " characters).\n";
+        std::cout << ui::warning("[!] Password is too long (max ")
+                  << MAX_PASSWORD_LENGTH
+                  << ui::warning(" characters).")
+                  << "\n";
         return false;
     }
 
@@ -393,7 +405,7 @@ bool signUpCitizen() {
     std::getline(std::cin, newUser.username);
 
     if (isUsernameTaken(newUser.username)) {
-        std::cout << "[!] Username is already taken.\n";
+        std::cout << ui::warning("[!] Username is already taken.") << "\n";
         return false;
     }
 
@@ -408,7 +420,7 @@ bool signUpCitizen() {
 
     std::ofstream file;
     if (!openAppendFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Failed to save user account.\n";
+        std::cout << ui::error("[!] Failed to save user account.") << "\n";
         return false;
     }
 
@@ -419,7 +431,7 @@ bool signUpCitizen() {
     file.flush();
 
     logAuditAction("SIGNUP_CITIZEN", newUser.userId, newUser.username);
-    std::cout << "[+] Account created successfully. Your User ID is " << newUser.userId << ".\n";
+    std::cout << ui::success("[+] Account created successfully. Your User ID is ") << newUser.userId << ".\n";
     return true;
 }
 
@@ -435,7 +447,7 @@ bool signUpAdmin() {
     std::getline(std::cin, newAdmin.username);
 
     if (isUsernameTaken(newAdmin.username)) {
-        std::cout << "[!] Username is already taken.\n";
+        std::cout << ui::warning("[!] Username is already taken.") << "\n";
         return false;
     }
 
@@ -446,25 +458,26 @@ bool signUpAdmin() {
         return false;
     }
 
-    std::cout << "\nSelect Admin Role:\n";
-    std::cout << "  [1] Procurement Officer\n";
-    std::cout << "  [2] Budget Officer\n";
-    std::cout << "  [3] Municipal Administrator\n";
-    std::cout << "  [4] Super Admin\n";
-    std::cout << "Enter role choice: ";
+    std::cout << "\n" << ui::bold("Select Admin Role") << "\n";
+    std::cout << "  " << ui::info("[1]") << " Procurement Officer\n";
+    std::cout << "  " << ui::info("[2]") << " Budget Officer\n";
+    std::cout << "  " << ui::info("[3]") << " Municipal Administrator\n";
+    std::cout << "  " << ui::info("[4]") << " Super Admin\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+    std::cout << "  Enter role choice: ";
 
     int roleChoice = 0;
     std::cin >> roleChoice;
     if (std::cin.fail()) {
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        std::cout << "[!] Invalid role input.\n";
+        std::cout << ui::warning("[!] Invalid role input.") << "\n";
         return false;
     }
 
     newAdmin.role = getAdminRoleByChoice(roleChoice);
     if (newAdmin.role.empty()) {
-        std::cout << "[!] Invalid role option selected.\n";
+        std::cout << ui::warning("[!] Invalid role option selected.") << "\n";
         return false;
     }
 
@@ -472,7 +485,7 @@ bool signUpAdmin() {
 
     std::ofstream file;
     if (!openAppendFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Failed to save admin account.\n";
+        std::cout << ui::error("[!] Failed to save admin account.") << "\n";
         return false;
     }
 
@@ -484,8 +497,8 @@ bool signUpAdmin() {
     file.flush();
 
     logAuditAction("SIGNUP_ADMIN", newAdmin.adminId, newAdmin.username);
-    std::cout << "[+] Admin account created successfully. Your Admin ID is " << newAdmin.adminId << ".\n";
-    std::cout << "[+] Assigned Role: " << newAdmin.role << "\n";
+    std::cout << ui::success("[+] Admin account created successfully. Your Admin ID is ") << newAdmin.adminId << ".\n";
+    std::cout << ui::success("[+] Assigned Role: ") << newAdmin.role << "\n";
     return true;
 }
 
@@ -536,14 +549,14 @@ bool loginCitizen(User& loggedInUser) {
     std::getline(std::cin, password);
 
     if (username.empty() || password.empty()) {
-        std::cout << "[!] Username and password are required.\n";
+        std::cout << ui::warning("[!] Username and password are required.") << "\n";
         logAuditAction("LOGIN_FAILED", "N/A", username.empty() ? "anonymous" : username);
         return false;
     }
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open user account records.\n";
+        std::cout << ui::error("[!] Unable to open user account records.") << "\n";
         return false;
     }
 
@@ -572,13 +585,13 @@ bool loginCitizen(User& loggedInUser) {
             loggedInUser.username = currentUsername;
             loggedInUser.password = currentPassword;
             logAuditAction("LOGIN_SUCCESS", userId, currentUsername);
-            std::cout << "[+] Welcome, " << fullName << " (" << userId << ").\n";
+            std::cout << ui::success("[+] Welcome, ") << fullName << " (" << userId << ").\n";
             return true;
         }
     }
 
     logAuditAction("LOGIN_FAILED", "N/A", username);
-    std::cout << "[!] Invalid username or password.\n";
+    std::cout << ui::warning("[!] Invalid username or password.") << "\n";
     return false;
 }
 
@@ -600,14 +613,14 @@ bool loginAdmin(Admin& loggedInAdmin) {
     std::getline(std::cin, password);
 
     if (username.empty() || password.empty()) {
-        std::cout << "[!] Username and password are required.\n";
+        std::cout << ui::warning("[!] Username and password are required.") << "\n";
         logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username.empty() ? "anonymous" : username);
         return false;
     }
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open admin account records.\n";
+        std::cout << ui::error("[!] Unable to open admin account records.") << "\n";
         logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username);
         return false;
     }
@@ -640,13 +653,13 @@ bool loginAdmin(Admin& loggedInAdmin) {
             loggedInAdmin.password = currentPassword;
             loggedInAdmin.role = role;
             logAuditAction("ADMIN_LOGIN_SUCCESS", adminId, currentUsername);
-            std::cout << "[+] Welcome, " << fullName << " (" << adminId << ") - " << role << ".\n";
+            std::cout << ui::success("[+] Welcome, ") << fullName << " (" << adminId << ") - " << role << ".\n";
             return true;
         }
     }
 
     logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username);
-    std::cout << "[!] Invalid admin username or password.\n";
+    std::cout << ui::warning("[!] Invalid admin username or password.") << "\n";
     return false;
 }
 

@@ -2,6 +2,7 @@
 
 #include "../include/audit.h"
 #include "../include/auth.h"
+#include "../include/ui.h"
 #include "../include/verification.h"
 
 #include <fstream>
@@ -276,9 +277,7 @@ void appendBlockchainAction(const std::string& action, const std::string& docId,
 
 void validateBlockchainNodes(const std::string& actor) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  BLOCKCHAIN VALIDATION (SIMULATED)\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("BLOCKCHAIN VALIDATION (SIMULATED)");
 
     ensureBlockchainNodeFilesExist();
 
@@ -293,16 +292,21 @@ void validateBlockchainNodes(const std::string& actor) {
     bool sameContent = !node1Data.empty() && node1Data == node2Data && node2Data == node3Data;
     bool allValid = node1Valid && node2Valid && node3Valid && sameContent;
 
-    std::cout << "Node 1 chain valid: " << (node1Valid ? "YES" : "NO") << '\n';
-    std::cout << "Node 2 chain valid: " << (node2Valid ? "YES" : "NO") << '\n';
-    std::cout << "Node 3 chain valid: " << (node3Valid ? "YES" : "NO") << '\n';
-    std::cout << "Node content match : " << (sameContent ? "YES" : "NO") << '\n';
+    const std::vector<std::string> headers = {"Validation Check", "Result"};
+    const std::vector<int> widths = {30, 10};
+
+    ui::printTableHeader(headers, widths);
+    ui::printTableRow({"Node 1 chain integrity", node1Valid ? "PASS" : "FAIL"}, widths);
+    ui::printTableRow({"Node 2 chain integrity", node2Valid ? "PASS" : "FAIL"}, widths);
+    ui::printTableRow({"Node 3 chain integrity", node3Valid ? "PASS" : "FAIL"}, widths);
+    ui::printTableRow({"Node content consistency", sameContent ? "PASS" : "FAIL"}, widths);
+    ui::printTableFooter(widths);
 
     if (allValid) {
-        std::cout << "\n[+] Blockchain validation passed.\n";
+        std::cout << "\n" << ui::success("[+] Blockchain validation passed.") << "\n";
         logAuditAction("BLOCKCHAIN_VALIDATE_OK", "MULTI", actor);
     } else {
-        std::cout << "\n[!] Blockchain validation failed (inconsistency or tamper detected).\n";
+        std::cout << "\n" << ui::error("[!] Blockchain validation failed (inconsistency or tamper detected).") << "\n";
         logAuditAction("BLOCKCHAIN_VALIDATE_FAIL", "MULTI", actor);
     }
 
