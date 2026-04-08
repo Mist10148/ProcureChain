@@ -59,6 +59,7 @@ bool loadBudgetRows(std::vector<BudgetRow>& rows) {
     std::string line;
     std::getline(file, line); // Skip header.
 
+    // Parse line-by-line and skip malformed entries so one bad row does not break the menu.
     while (std::getline(file, line)) {
         if (line.empty()) {
             continue;
@@ -90,6 +91,7 @@ bool saveBudgetRows(const std::vector<BudgetRow>& rows) {
         return false;
     }
 
+    // The file is rewritten from memory to keep one consistent canonical format.
     writer << "category|amount\n";
     for (size_t i = 0; i < rows.size(); ++i) {
         writer << rows[i].category << '|' << std::fixed << std::setprecision(2) << rows[i].amount << '\n';
@@ -157,6 +159,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
     int choice = -1;
 
     do {
+        // This submenu intentionally loops so admins can perform multiple budget edits per session.
         clearScreen();
         std::cout << "\n==============================================================\n";
         std::cout << "  ADMIN BUDGET MANAGEMENT\n";

@@ -13,6 +13,7 @@ const int HOME_MIN_CHOICE = 0;
 const int HOME_MAX_CHOICE = 2;
 
 namespace {
+// Role checks are centralized here so dashboard routing stays readable.
 bool isRole(const Admin& admin, const std::string& roleName) {
     return admin.role == roleName;
 }
@@ -51,6 +52,7 @@ void denyAdminAction(const Admin& admin, const std::string& actionCode) {
 } // namespace
 
 bool readMenuChoice(int& choice) {
+    // Keep input recovery in one place to prevent duplicated fail-state handling.
     std::cin >> choice;
 
     if (std::cin.fail()) {
@@ -126,6 +128,7 @@ void runCitizenDashboard(const User& citizen) {
     int citizenChoice = -1;
 
     do {
+        // Re-render the dashboard every loop so each action returns to a clean menu state.
         clearScreen();
         printCitizenMenu(citizen);
 
@@ -162,6 +165,7 @@ void runAdminDashboard(const Admin& admin) {
     int adminChoice = -1;
 
     do {
+        // Access gates are enforced at action time to protect every entry path consistently.
         clearScreen();
         printAdminMenu(admin);
 
@@ -274,6 +278,7 @@ void handleLoginFlow() {
 }
 
 int main() {
+    // Startup ensures all required files and seed data exist before any user interaction.
     ensureUserDataFileExists();
     ensureApprovalsDataFileExists();
     ensureBlockchainNodeFilesExist();

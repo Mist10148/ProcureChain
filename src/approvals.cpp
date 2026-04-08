@@ -16,6 +16,8 @@ const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
+const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
+const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     file.open(primaryPath);
@@ -57,6 +59,132 @@ bool isRequiredApproverRole(const std::string& role) {
     return role == "Budget Officer" || role == "Municipal Administrator";
 }
 
+std::string findAdminUsernameByRole(const std::string& targetRole) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        return "";
+    }
+
+    std::string line;
+    std::getline(file, line); // Skip header.
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream parser(line);
+        std::string adminId;
+        std::string fullName;
+        std::string username;
+        std::string password;
+        std::string role;
+
+        std::getline(parser, adminId, '|');
+        std::getline(parser, fullName, '|');
+        std::getline(parser, username, '|');
+        std::getline(parser, password, '|');
+        std::getline(parser, role, '|');
+
+        if (role == targetRole && !username.empty()) {
+            return username;
+        }
+    }
+
+    return "";
+}
+
+std::string findPendingDocumentIdForSeeding() {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        return "";
+    }
+
+    std::string line;
+    std::getline(file, line); // Skip header.
+
+    // Prefer an actual pending document so seeded approvals point to a real record.
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream parser(line);
+        std::string docId;
+        std::string title;
+        std::string category;
+        std::string department;
+        std::string dateUploaded;
+        std::string uploader;
+        std::string status;
+        std::string hashValue;
+
+        std::getline(parser, docId, '|');
+        std::getline(parser, title, '|');
+        std::getline(parser, category, '|');
+        std::getline(parser, department, '|');
+        std::getline(parser, dateUploaded, '|');
+        std::getline(parser, uploader, '|');
+        std::getline(parser, status, '|');
+        std::getline(parser, hashValue, '|');
+
+        if (status == "pending_approval" || status == "pending") {
+            return docId;
+        }
+    }
+
+    return "";
+}
+
+void seedApprovalsIfEmpty() {
+    std::ifstream reader;
+    if (!openInputFileWithFallback(reader, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    std::string line;
+    std::getline(reader, line); // Skip header.
+    while (std::getline(reader, line)) {
+        if (!line.empty()) {
+            return;
+        }
+    }
+
+    // Seed only once when approvals data has no rows at all.
+    std::string docId = findPendingDocumentIdForSeeding();
+    if (docId.empty()) {
+        docId = "CA003";
+    }
+
+    std::string budgetOfficer = findAdminUsernameByRole("Budget Officer");
+    std::string municipalAdmin = findAdminUsernameByRole("Municipal Administrator");
+
+    if (budgetOfficer.empty() && municipalAdmin.empty()) {
+        return;
+    }
+
+    std::ofstream writer;
+    if (!openAppendFileWithFallback(writer, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    if (!budgetOfficer.empty()) {
+        writer << docId << '|'
+               << budgetOfficer << '|'
+               << "Budget Officer" << '|'
+               << "pending" << '\n';
+    }
+
+    if (!municipalAdmin.empty()) {
+        writer << docId << '|'
+               << municipalAdmin << '|'
+               << "Municipal Administrator" << '|'
+               << "pending" << '\n';
+    }
+
+    writer.flush();
+}
+
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
@@ -90,6 +218,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     std::string header;
     std::getline(file, header);
 
+    // Load all rows, update only the current approver's pending record for the target doc.
     std::vector<Approval> rows;
     std::string line;
     bool updated = false;
@@ -140,6 +269,9 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     writer.flush();
 
     // Determine document status after this decision.
+    // rejected  -> any approver rejects
+    // published -> all required approvers have non-pending status and none rejected
+    // pending   -> at least one required approver is still pending
     bool hasAny = false;
     bool hasPending = false;
     bool hasRejected = false;
@@ -182,19 +314,19 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
 
 void ensureApprovalsDataFileExists() {
     std::ifstream checkFile;
-    if (openInputFileWithFallback(checkFile, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
-        return;
+    if (!openInputFileWithFallback(checkFile, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+        std::ofstream createFile(APPROVALS_FILE_PATH_PRIMARY);
+        if (!createFile.is_open()) {
+            createFile.clear();
+            createFile.open(APPROVALS_FILE_PATH_FALLBACK);
+        }
+
+        if (createFile.is_open()) {
+            createFile << "docID|approverUsername|role|status\n";
+        }
     }
 
-    std::ofstream createFile(APPROVALS_FILE_PATH_PRIMARY);
-    if (!createFile.is_open()) {
-        createFile.clear();
-        createFile.open(APPROVALS_FILE_PATH_FALLBACK);
-    }
-
-    if (createFile.is_open()) {
-        createFile << "docID|approverUsername|role|status\n";
-    }
+    seedApprovalsIfEmpty();
 }
 
 void createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader) {

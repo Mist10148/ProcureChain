@@ -8,15 +8,15 @@ This project is modularized, and `main.cpp` acts as the entry point that ties mo
 Run from the project `src` folder (PowerShell):
 
 ```bash
-g++ (Get-ChildItem -Name *.cpp) -Wall -Wextra -o main.exe
-.\main.exe
+g++ (Get-ChildItem -Name *.cpp) -Wall -Wextra -o main
+.\main
 ```
 
 Run from the project root folder (PowerShell):
 
 ```bash
-g++ src\main.cpp src\auth.cpp src\audit.cpp src\documents.cpp src\verification.cpp src\budget.cpp src\approvals.cpp src\blockchain.cpp -Wall -Wextra -o main.exe
-.\main.exe
+g++ src\main.cpp src\auth.cpp src\audit.cpp src\documents.cpp src\verification.cpp src\budget.cpp src\approvals.cpp src\blockchain.cpp -Wall -Wextra -o main
+.\main
 ```
 
 ## Current Login Flow
@@ -36,7 +36,13 @@ After selecting Login in Home, choose one of these account types:
 
 ## Quick Test Credentials
 
-Use the seeded admin account:
+Use these seeded admin accounts:
 
-- Username: `admin_test`
-- Password: `admin1234`
+- Super Admin: `admin_test` / `admin1234`
+- Procurement Officer: `proc_admin` / `proc1234`
+- Budget Officer: `budget_admin` / `budget1234`
+- Municipal Administrator: `mun_admin` / `mun1234`
+
+Sample seeded citizen from test run:
+
+- Citizen: `citizen_matrix1` / `pass1234`

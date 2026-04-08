@@ -1,6 +1,7 @@
 category|amount
-Office Supplies|50000
-Infrastructure Procurement|200000
-Health Supplies|100000
-Educational Materials|75000
-Miscellaneous Procurement|30000
+Office Supplies|50000.00
+Infrastructure Procurement|200000.00
+Health Supplies|100000.00
+Educational Materials|75000.00
+Miscellaneous Procurement|30000.00
+Matrix Testing Budget|2345.00

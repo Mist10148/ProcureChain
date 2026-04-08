@@ -10,6 +10,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <vector>
 
 namespace {
 const std::string USERS_FILE_PATH_PRIMARY = "data/users.txt";
@@ -27,6 +28,13 @@ const size_t MAX_FULLNAME_LENGTH = 60;
 const size_t MAX_USERNAME_LENGTH = 30;
 const size_t MAX_PASSWORD_LENGTH = 50;
 const size_t MIN_PASSWORD_LENGTH = 4;
+
+struct SeedAdminAccount {
+    std::string fullName;
+    std::string username;
+    std::string password;
+    std::string role;
+};
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     file.open(primaryPath);
@@ -51,6 +59,7 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
 }
 
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
+    // If the file already exists (primary or fallback), keep existing data untouched.
     std::ifstream checkFile;
     if (openInputFileWithFallback(checkFile, primaryPath, fallbackPath)) {
         return true;
@@ -72,6 +81,94 @@ bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fal
     return false;
 }
 
+bool containsUsername(const std::vector<std::string>& usernames, const std::string& username) {
+    for (size_t i = 0; i < usernames.size(); ++i) {
+        if (usernames[i] == username) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void ensureSeedAdminAccounts() {
+    std::ifstream reader;
+    if (!openInputFileWithFallback(reader, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    std::vector<std::string> existingUsernames;
+    std::string line;
+    std::getline(reader, line); // Skip header.
+
+    while (std::getline(reader, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream parser(line);
+        std::string adminId;
+        std::string fullName;
+        std::string username;
+        std::string password;
+        std::string role;
+
+        std::getline(parser, adminId, '|');
+        std::getline(parser, fullName, '|');
+        std::getline(parser, username, '|');
+        std::getline(parser, password, '|');
+        std::getline(parser, role, '|');
+
+        if (!username.empty()) {
+            existingUsernames.push_back(username);
+        }
+    }
+
+    // Default classroom/demo accounts are appended only when missing by username.
+    const SeedAdminAccount seeds[] = {
+        {"System Admin Test", "admin_test", "admin1234", "Super Admin"},
+        {"Procurement Officer Demo", "proc_admin", "proc1234", "Procurement Officer"},
+        {"Budget Officer Demo", "budget_admin", "budget1234", "Budget Officer"},
+        {"Municipal Admin Demo", "mun_admin", "mun1234", "Municipal Administrator"}
+    };
+
+    bool hasMissingSeed = false;
+    for (size_t i = 0; i < (sizeof(seeds) / sizeof(seeds[0])); ++i) {
+        if (!containsUsername(existingUsernames, seeds[i].username)) {
+            hasMissingSeed = true;
+            break;
+        }
+    }
+
+    if (!hasMissingSeed) {
+        return;
+    }
+
+    int nextNumber = static_cast<int>(existingUsernames.size()) + 1;
+
+    std::ofstream writer;
+    if (!openAppendFileWithFallback(writer, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    for (size_t i = 0; i < (sizeof(seeds) / sizeof(seeds[0])); ++i) {
+        if (containsUsername(existingUsernames, seeds[i].username)) {
+            continue;
+        }
+
+        std::ostringstream idBuilder;
+        idBuilder << 'A' << std::setw(3) << std::setfill('0') << nextNumber;
+        nextNumber++;
+
+        writer << idBuilder.str() << '|'
+               << seeds[i].fullName << '|'
+               << seeds[i].username << '|'
+               << seeds[i].password << '|'
+               << seeds[i].role << '\n';
+    }
+    writer.flush();
+}
+
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
@@ -84,6 +181,7 @@ void printAuthPageHeader(const std::string& title) {
 }
 
 bool hasValidAccountInput(const std::string& fullName, const std::string& username, const std::string& password) {
+    // Keep all account field checks centralized so signup paths enforce the same rules.
     if (fullName.empty() || username.empty()) {
         std::cout << "[!] Full name and username are required.\n";
         return false;
@@ -139,12 +237,14 @@ void waitForEnter() {
 }
 
 void ensureUserDataFileExists() {
+    // Initialize required files first, then seed baseline records for a usable first run.
     ensureFileWithHeader(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK, "userID|fullName|username|password");
     ensureFileWithHeader(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK, "adminID|fullName|username|password|role");
     ensureFileWithHeader(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK, "docID|title|category|department|dateUploaded|uploader|status|hashValue");
     ensureFileWithHeader(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK, "category|amount");
     ensureFileWithHeader(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK, "timestamp|action|targetID|actor");
 
+    ensureSeedAdminAccounts();
     ensureApprovalsDataFileExists();
     ensureSampleDocumentsPresent();
 

@@ -1,0 +1,9 @@
+docID|approverUsername|role|status
+CA003|budget_admin|Budget Officer|pending
+CA003|mun_admin|Municipal Administrator|pending
+D004|budget_admin|Budget Officer|approved
+D004|mun_admin|Municipal Administrator|approved
+D005|budget_admin|Budget Officer|approved
+D005|mun_admin|Municipal Administrator|pending
+D006|budget_admin|Budget Officer|rejected
+D006|mun_admin|Municipal Administrator|pending

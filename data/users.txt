@@ -1,1 +1,2 @@
 userID|fullName|username|password
+U001|Citizen Matrix One|citizen_matrix1|pass1234
