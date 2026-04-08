@@ -7,8 +7,57 @@
 #include <sstream>
 #include <cstdlib>
 
-const std::string USERS_FILE_PATH = "data/users.txt";
-const std::string ADMINS_FILE_PATH = "data/admins.txt";
+const std::string USERS_FILE_PATH_PRIMARY = "data/users.txt";
+const std::string USERS_FILE_PATH_FALLBACK = "../data/users.txt";
+const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
+const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
+
+// Opens a file for reading using primary path first, then fallback path.
+bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    file.open(primaryPath);
+    if (file.is_open()) {
+        return true;
+    }
+
+    file.clear();
+    file.open(fallbackPath);
+    return file.is_open();
+}
+
+// Opens a file for appending using primary path first, then fallback path.
+bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    file.open(primaryPath, std::ios::app);
+    if (file.is_open()) {
+        return true;
+    }
+
+    file.clear();
+    file.open(fallbackPath, std::ios::app);
+    return file.is_open();
+}
+
+// Creates a storage file with header if neither primary nor fallback path exists yet.
+bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
+    std::ifstream checkFile;
+    if (openInputFileWithFallback(checkFile, primaryPath, fallbackPath)) {
+        return true;
+    }
+
+    std::ofstream createFile(primaryPath);
+    if (createFile.is_open()) {
+        createFile << headerLine << '\n';
+        return true;
+    }
+
+    createFile.clear();
+    createFile.open(fallbackPath);
+    if (createFile.is_open()) {
+        createFile << headerLine << '\n';
+        return true;
+    }
+
+    return false;
+}
 
 // Clears terminal output to keep each menu/page visually focused.
 void clearScreen() {
@@ -30,24 +79,24 @@ void clearInputBuffer() {
 
 // Ensures the user storage file exists and starts with a known header.
 void ensureUserDataFileExists() {
-    std::ifstream checkFile(USERS_FILE_PATH);
-    if (!checkFile.good()) {
-        std::ofstream createFile(USERS_FILE_PATH);
-        createFile << "userID|fullName|username|password\n";
-    }
+    // Prepares user/admin storage even when app is launched from src or root folder.
+    ensureFileWithHeader(
+        USERS_FILE_PATH_PRIMARY,
+        USERS_FILE_PATH_FALLBACK,
+        "userID|fullName|username|password"
+    );
 
-    // Initializes admin storage used by admin signup and role assignment.
-    std::ifstream adminCheckFile(ADMINS_FILE_PATH);
-    if (!adminCheckFile.good()) {
-        std::ofstream createAdminFile(ADMINS_FILE_PATH);
-        createAdminFile << "adminID|fullName|username|password|role\n";
-    }
+    ensureFileWithHeader(
+        ADMINS_FILE_PATH_PRIMARY,
+        ADMINS_FILE_PATH_FALLBACK,
+        "adminID|fullName|username|password|role"
+    );
 }
 
 // Counts current user records (excluding the header row).
 int countExistingUsers() {
-    std::ifstream file(USERS_FILE_PATH);
-    if (!file.is_open()) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
         return 0;
     }
 
@@ -76,8 +125,8 @@ std::string generateNextUserId() {
 
 // Counts current admin records (excluding the header row).
 int countExistingAdmins() {
-    std::ifstream file(ADMINS_FILE_PATH);
-    if (!file.is_open()) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
         return 0;
     }
 
@@ -106,8 +155,8 @@ std::string generateNextAdminId() {
 
 // Checks if a username already exists in users.txt.
 bool isUsernameTaken(const std::string& username) {
-    std::ifstream file(USERS_FILE_PATH);
-    if (!file.is_open()) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
         return false;
     }
 
@@ -136,8 +185,8 @@ bool isUsernameTaken(const std::string& username) {
         }
     }
 
-    std::ifstream adminFile(ADMINS_FILE_PATH);
-    if (!adminFile.is_open()) {
+    std::ifstream adminFile;
+    if (!openInputFileWithFallback(adminFile, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
         return false;
     }
 
@@ -202,8 +251,8 @@ bool signUpCitizen() {
     // Assign ID only after validation passes.
     newUser.userId = generateNextUserId();
 
-    std::ofstream file(USERS_FILE_PATH, std::ios::app);
-    if (!file.is_open()) {
+    std::ofstream file;
+    if (!openAppendFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
         std::cout << "[!] Failed to save user account.\n";
         return false;
     }
@@ -290,8 +339,8 @@ bool signUpAdmin() {
     // Assign ID only after all validations pass.
     newAdmin.adminId = generateNextAdminId();
 
-    std::ofstream file(ADMINS_FILE_PATH, std::ios::app);
-    if (!file.is_open()) {
+    std::ofstream file;
+    if (!openAppendFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
         std::cout << "[!] Failed to save admin account.\n";
         return false;
     }
@@ -347,7 +396,7 @@ void signUpAccount() {
     }
 }
 
-bool loginCitizen() {
+bool loginCitizen(User& loggedInUser) {
     clearInputBuffer();
 
     std::string username;
@@ -359,8 +408,8 @@ bool loginCitizen() {
     std::cout << "Password: ";
     std::getline(std::cin, password);
 
-    std::ifstream file(USERS_FILE_PATH);
-    if (!file.is_open()) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
         std::cout << "[!] Unable to open user account records.\n";
         return false;
     }
@@ -386,6 +435,11 @@ bool loginCitizen() {
         std::getline(parser, currentPassword, '|');
 
         if (currentUsername == username && currentPassword == password) {
+            // Stores the logged-in citizen for dashboard/session use.
+            loggedInUser.userId = userId;
+            loggedInUser.fullName = fullName;
+            loggedInUser.username = currentUsername;
+            loggedInUser.password = currentPassword;
             std::cout << "[+] Welcome, " << fullName << " (" << userId << ").\n";
             return true;
         }
@@ -393,4 +447,10 @@ bool loginCitizen() {
 
     std::cout << "[!] Invalid username or password.\n";
     return false;
+}
+
+// Backward-compatible wrapper for flows that do not need session user data.
+bool loginCitizen() {
+    User tempUser;
+    return loginCitizen(tempUser);
 }

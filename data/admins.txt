@@ -1,0 +1,1 @@
+adminID|fullName|username|password|role

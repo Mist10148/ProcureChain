@@ -28,6 +28,7 @@ bool isUsernameTaken(const std::string& username);
 bool signUpCitizen();
 bool signUpAdmin();
 void signUpAccount();
+bool loginCitizen(User& loggedInUser);
 bool loginCitizen();
 
 #endif
