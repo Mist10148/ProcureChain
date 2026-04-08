@@ -8,6 +8,16 @@
 
 const std::string USERS_FILE_PATH = "data/users.txt";
 
+void printAuthPageHeader(const std::string& title) {
+    std::cout << "\n==============================================================\n";
+    std::cout << "  " << title << "\n";
+    std::cout << "==============================================================\n";
+}
+
+void clearInputBuffer() {
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
+
 void ensureUserDataFileExists() {
     std::ifstream checkFile(USERS_FILE_PATH);
     if (checkFile.good()) {
@@ -80,10 +90,10 @@ bool isUsernameTaken(const std::string& username) {
 }
 
 bool signUpCitizen() {
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    clearInputBuffer();
 
     User newUser;
-    std::cout << "\n=== Citizen Sign Up ===\n";
+    printAuthPageHeader("CITIZEN SIGN UP");
     std::cout << "Full Name: ";
     std::getline(std::cin, newUser.fullName);
 
@@ -121,17 +131,20 @@ bool signUpCitizen() {
          << newUser.username << '|'
          << newUser.password << '\n';
 
+    // Flush user data immediately so signup is persisted before returning.
+    file.flush();
+
     std::cout << "[+] Account created successfully. Your User ID is " << newUser.userId << ".\n";
     return true;
 }
 
 bool loginCitizen() {
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    clearInputBuffer();
 
     std::string username;
     std::string password;
 
-    std::cout << "\n=== Citizen Login ===\n";
+    printAuthPageHeader("CITIZEN LOGIN");
     std::cout << "Username: ";
     std::getline(std::cin, username);
     std::cout << "Password: ";

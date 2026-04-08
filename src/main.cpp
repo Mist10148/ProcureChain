@@ -1,6 +1,7 @@
 #include "../include/auth.h"
 
 #include <iostream>
+#include <limits>
 
 void printHomePage() {
     std::cout << "\n==============================================================\n";
@@ -15,6 +16,18 @@ void printHomePage() {
     std::cout << "  Enter your choice: ";
 }
 
+bool readMenuChoice(int& choice) {
+    std::cin >> choice;
+
+    if (std::cin.fail()) {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        return false;
+    }
+
+    return true;
+}
+
 int main() {
     ensureUserDataFileExists();
 
@@ -22,7 +35,10 @@ int main() {
 
     do {
         printHomePage();
-        std::cin >> choice;
+        if (!readMenuChoice(choice)) {
+            std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+            continue;
+        }
 
         switch (choice) {
             case 1:
