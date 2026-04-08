@@ -1,4 +1,5 @@
 #include "../include/auth.h"
+#include "auth.cpp"
 
 #include <iostream>
 #include <limits>
