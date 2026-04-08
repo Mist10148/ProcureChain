@@ -3,7 +3,9 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/blockchain.h"
+#include "../include/ui.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -100,57 +102,83 @@ bool saveBudgetRows(const std::vector<BudgetRow>& rows) {
 
     return true;
 }
+
+void printBudgetTable(const std::vector<BudgetRow>& rows) {
+    const std::vector<std::string> headers = {"Category", "Amount (PHP)", "Share"};
+    const std::vector<int> widths = {28, 14, 8};
+
+    double total = 0.0;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        total += rows[i].amount;
+    }
+
+    ui::printTableHeader(headers, widths);
+    for (size_t i = 0; i < rows.size(); ++i) {
+        std::ostringstream amountOut;
+        amountOut << std::fixed << std::setprecision(2) << rows[i].amount;
+
+        std::ostringstream shareOut;
+        double share = total > 0.0 ? (rows[i].amount / total) * 100.0 : 0.0;
+        shareOut << std::fixed << std::setprecision(1) << share << "%";
+
+        ui::printTableRow({rows[i].category, amountOut.str(), shareOut.str()}, widths);
+    }
+    ui::printTableFooter(widths);
+}
+
+void printBudgetChart(const std::vector<BudgetRow>& rows) {
+    if (rows.empty()) {
+        return;
+    }
+
+    double maxAmount = 0.0;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].amount > maxAmount) {
+            maxAmount = rows[i].amount;
+        }
+    }
+
+    std::cout << "\n" << ui::bold("Budget Allocation Chart") << "\n";
+    for (size_t i = 0; i < rows.size(); ++i) {
+        ui::printBar(rows[i].category, rows[i].amount, maxAmount, 24);
+    }
+}
 } // namespace
 
 void viewBudgetAllocations(const std::string& actor) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  PROCUREMENT BUDGET ALLOCATIONS\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("PROCUREMENT BUDGET ALLOCATIONS");
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open budgets file.\n";
+    std::vector<BudgetRow> rows;
+    if (!loadBudgetRows(rows)) {
+        std::cout << ui::error("[!] Unable to open budgets file.") << "\n";
         logAuditAction("VIEW_BUDGETS_FAILED", "N/A", actor);
         waitForEnter();
         return;
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    bool hasBudgetRows = false;
-    double totalBudget = 0.0;
-
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        std::string category;
-        std::string amount;
-        std::getline(parser, category, '|');
-        std::getline(parser, amount, '|');
-
-        hasBudgetRows = true;
-        double parsedAmount = 0.0;
-        std::stringstream amountParser(amount);
-        amountParser >> parsedAmount;
-        totalBudget += parsedAmount;
-
-        std::cout << "Category: " << category << '\n';
-        std::cout << "Amount  : PHP " << std::fixed << std::setprecision(2) << parsedAmount << "\n";
-        std::cout << "--------------------------------------------------------------\n";
-    }
-
-    if (!hasBudgetRows) {
-        std::cout << "\n[!] No budget entries available.\n";
+    if (rows.empty()) {
+        std::cout << "\n" << ui::warning("[!] No budget entries available.") << "\n";
         logAuditAction("VIEW_BUDGETS_EMPTY", "N/A", actor);
-    } else {
-        std::cout << "Total   : PHP " << std::fixed << std::setprecision(2) << totalBudget << "\n";
-        logAuditAction("VIEW_BUDGETS", "MULTI", actor);
+        waitForEnter();
+        return;
     }
+
+    double totalBudget = 0.0;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        totalBudget += rows[i].amount;
+    }
+
+    std::sort(rows.begin(), rows.end(), [](const BudgetRow& a, const BudgetRow& b) {
+        return a.amount > b.amount;
+    });
+
+    printBudgetTable(rows);
+    printBudgetChart(rows);
+
+    std::cout << "\n" << ui::success("Total Budget: PHP ")
+              << std::fixed << std::setprecision(2) << totalBudget << "\n";
+    logAuditAction("VIEW_BUDGETS", "MULTI", actor);
 
     waitForEnter();
 }
@@ -161,21 +189,19 @@ void manageBudgetsForAdmin(const Admin& admin) {
     do {
         // This submenu intentionally loops so admins can perform multiple budget edits per session.
         clearScreen();
-        std::cout << "\n==============================================================\n";
-        std::cout << "  ADMIN BUDGET MANAGEMENT\n";
-        std::cout << "==============================================================\n";
-        std::cout << "  [1] View Budget Summary\n";
-        std::cout << "  [2] Add Budget Category\n";
-        std::cout << "  [3] Update Budget Amount\n";
-        std::cout << "  [0] Back to Admin Dashboard\n";
-        std::cout << "--------------------------------------------------------------\n";
+        ui::printSectionTitle("ADMIN BUDGET MANAGEMENT");
+        std::cout << "  " << ui::info("[1]") << " View Budget Summary\n";
+        std::cout << "  " << ui::info("[2]") << " Add Budget Category\n";
+        std::cout << "  " << ui::info("[3]") << " Update Budget Amount\n";
+        std::cout << "  " << ui::info("[0]") << " Back to Admin Dashboard\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
         std::cout << "  Enter your choice: ";
 
         std::cin >> choice;
         if (std::cin.fail()) {
             std::cin.clear();
             std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+            std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
             waitForEnter();
             continue;
         }
@@ -187,9 +213,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
 
         if (choice == 2) {
             clearScreen();
-            std::cout << "\n==============================================================\n";
-            std::cout << "  ADD BUDGET CATEGORY\n";
-            std::cout << "==============================================================\n";
+            ui::printSectionTitle("ADD BUDGET CATEGORY");
 
             clearInputBuffer();
 
@@ -198,7 +222,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             std::getline(std::cin, category);
 
             if (category.empty()) {
-                std::cout << "[!] Category name is required.\n";
+                std::cout << ui::warning("[!] Category name is required.") << "\n";
                 logAuditAction("BUDGET_ADD_FAILED", "N/A", admin.username);
                 waitForEnter();
                 continue;
@@ -210,7 +234,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             if (std::cin.fail() || amount < 0.0) {
                 std::cin.clear();
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cout << "[!] Invalid budget amount.\n";
+                std::cout << ui::warning("[!] Invalid budget amount.") << "\n";
                 logAuditAction("BUDGET_ADD_FAILED", category, admin.username);
                 waitForEnter();
                 continue;
@@ -218,7 +242,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
 
             std::vector<BudgetRow> rows;
             if (!loadBudgetRows(rows)) {
-                std::cout << "[!] Unable to open budgets file.\n";
+                std::cout << ui::error("[!] Unable to open budgets file.") << "\n";
                 logAuditAction("BUDGET_ADD_FAILED", category, admin.username);
                 waitForEnter();
                 continue;
@@ -233,7 +257,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             }
 
             if (exists) {
-                std::cout << "[!] Category already exists. Use update instead.\n";
+                std::cout << ui::warning("[!] Category already exists. Use update instead.") << "\n";
                 logAuditAction("BUDGET_ADD_DUPLICATE", category, admin.username);
                 waitForEnter();
                 continue;
@@ -245,7 +269,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             rows.push_back(newRow);
 
             if (!saveBudgetRows(rows)) {
-                std::cout << "[!] Failed to save budget changes.\n";
+                std::cout << ui::error("[!] Failed to save budget changes.") << "\n";
                 logAuditAction("BUDGET_ADD_FAILED", category, admin.username);
                 waitForEnter();
                 continue;
@@ -253,16 +277,14 @@ void manageBudgetsForAdmin(const Admin& admin) {
 
             appendBlockchainAction("BUDGET_ADD", category, admin.username);
             logAuditAction("BUDGET_ADD", category, admin.username);
-            std::cout << "[+] Budget category added successfully.\n";
+            std::cout << ui::success("[+] Budget category added successfully.") << "\n";
             waitForEnter();
             continue;
         }
 
         if (choice == 3) {
             clearScreen();
-            std::cout << "\n==============================================================\n";
-            std::cout << "  UPDATE BUDGET AMOUNT\n";
-            std::cout << "==============================================================\n";
+            ui::printSectionTitle("UPDATE BUDGET AMOUNT");
 
             clearInputBuffer();
 
@@ -271,7 +293,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             std::getline(std::cin, category);
 
             if (category.empty()) {
-                std::cout << "[!] Category name is required.\n";
+                std::cout << ui::warning("[!] Category name is required.") << "\n";
                 logAuditAction("BUDGET_UPDATE_FAILED", "N/A", admin.username);
                 waitForEnter();
                 continue;
@@ -279,7 +301,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
 
             std::vector<BudgetRow> rows;
             if (!loadBudgetRows(rows)) {
-                std::cout << "[!] Unable to open budgets file.\n";
+                std::cout << ui::error("[!] Unable to open budgets file.") << "\n";
                 logAuditAction("BUDGET_UPDATE_FAILED", category, admin.username);
                 waitForEnter();
                 continue;
@@ -296,7 +318,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             }
 
             if (!found) {
-                std::cout << "[!] Category not found.\n";
+                std::cout << ui::warning("[!] Category not found.") << "\n";
                 logAuditAction("BUDGET_UPDATE_NOT_FOUND", category, admin.username);
                 waitForEnter();
                 continue;
@@ -308,7 +330,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             if (std::cin.fail() || newAmount < 0.0) {
                 std::cin.clear();
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cout << "[!] Invalid budget amount.\n";
+                std::cout << ui::warning("[!] Invalid budget amount.") << "\n";
                 logAuditAction("BUDGET_UPDATE_FAILED", category, admin.username);
                 waitForEnter();
                 continue;
@@ -317,7 +339,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             rows[rowIndex].amount = newAmount;
 
             if (!saveBudgetRows(rows)) {
-                std::cout << "[!] Failed to save budget changes.\n";
+                std::cout << ui::error("[!] Failed to save budget changes.") << "\n";
                 logAuditAction("BUDGET_UPDATE_FAILED", category, admin.username);
                 waitForEnter();
                 continue;
@@ -325,7 +347,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
 
             appendBlockchainAction("BUDGET_UPDATE", category, admin.username);
             logAuditAction("BUDGET_UPDATE", category, admin.username);
-            std::cout << "[+] Budget amount updated successfully.\n";
+            std::cout << ui::success("[+] Budget amount updated successfully.") << "\n";
             waitForEnter();
             continue;
         }
@@ -334,7 +356,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             break;
         }
 
-        std::cout << "\n[!] Invalid menu choice.\n";
+        std::cout << "\n" << ui::warning("[!] Invalid menu choice.") << "\n";
         waitForEnter();
 
     } while (choice != 0);

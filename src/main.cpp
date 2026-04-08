@@ -4,6 +4,7 @@
 #include "../include/blockchain.h"
 #include "../include/documents.h"
 #include "../include/approvals.h"
+#include "../include/ui.h"
 #include "../include/verification.h"
 
 #include <iostream>
@@ -45,7 +46,7 @@ bool canValidateBlockchain(const Admin& admin) {
 }
 
 void denyAdminAction(const Admin& admin, const std::string& actionCode) {
-    std::cout << "\n[!] Access denied for your role (" << admin.role << ").\n";
+    std::cout << "\n" << ui::error("[!] Access denied for your role") << " (" << admin.role << ").\n";
     logAuditAction("ACCESS_DENIED_" + actionCode, "N/A", admin.username);
     waitForEnter();
 }
@@ -77,50 +78,44 @@ bool readBoundedMenuChoice(int& choice, int minChoice, int maxChoice) {
 }
 
 void printHomePage() {
-    std::cout << "\n==============================================================\n";
-    std::cout << "          MUNICIPAL PROCUREMENT DOCUMENT TRACKING SYSTEM      \n";
-    std::cout << "==============================================================\n";
-    std::cout << "  Secure Access Portal\n";
+    ui::printSectionTitle("MUNICIPAL PROCUREMENT DOCUMENT TRACKING SYSTEM");
+    std::cout << "  " << ui::muted("Secure Access Portal") << "\n";
     std::cout << "  Please choose an option below:\n\n";
-    std::cout << "  [1] Login\n";
-    std::cout << "  [2] Sign Up\n";
-    std::cout << "  [0] Exit\n";
-    std::cout << "--------------------------------------------------------------\n";
+    std::cout << "  " << ui::info("[1]") << " Login\n";
+    std::cout << "  " << ui::info("[2]") << " Sign Up\n";
+    std::cout << "  " << ui::info("[0]") << " Exit\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
 }
 
 void printCitizenMenu(const User& citizen) {
-    std::cout << "\n==============================================================\n";
-    std::cout << "  CITIZEN DASHBOARD\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("CITIZEN DASHBOARD");
     std::cout << "  Logged in as: " << citizen.fullName << " (" << citizen.userId << ")\n\n";
-    std::cout << "  [1] View Published Documents\n";
-    std::cout << "  [2] Verify Document Integrity\n";
-    std::cout << "  [3] View Procurement Budgets\n";
-    std::cout << "  [4] View Audit Trail\n";
-    std::cout << "  [0] Logout\n";
-    std::cout << "--------------------------------------------------------------\n";
+    std::cout << "  " << ui::info("[1]") << " View Published Documents\n";
+    std::cout << "  " << ui::info("[2]") << " Verify Document Integrity\n";
+    std::cout << "  " << ui::info("[3]") << " View Procurement Budgets\n";
+    std::cout << "  " << ui::info("[4]") << " View Audit Trail\n";
+    std::cout << "  " << ui::info("[0]") << " Logout\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
 }
 
 void printAdminMenu(const Admin& admin) {
-    std::cout << "\n==============================================================\n";
-    std::cout << "  ADMIN DASHBOARD\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("ADMIN DASHBOARD");
     std::cout << "  Logged in as: " << admin.fullName << " (" << admin.adminId << ")\n";
-    std::cout << "  Role        : " << admin.role << "\n\n";
-    std::cout << "  [1] Upload Document\n";
-    std::cout << "  [2] View All Documents\n";
-    std::cout << "  [3] Search Document by ID\n";
-    std::cout << "  [4] View Pending Approvals\n";
-    std::cout << "  [5] Approve Document\n";
-    std::cout << "  [6] Reject Document\n";
-    std::cout << "  [7] Update Document Status (Manual Override)\n";
-    std::cout << "  [8] Manage Budgets\n";
-    std::cout << "  [9] View Audit Trail\n";
-    std::cout << "  [10] Validate Blockchain\n";
-    std::cout << "  [0] Logout\n";
-    std::cout << "--------------------------------------------------------------\n";
+    std::cout << "  Role        : " << ui::success(admin.role) << "\n\n";
+    std::cout << "  " << ui::info("[1]") << " Upload Document\n";
+    std::cout << "  " << ui::info("[2]") << " View All Documents\n";
+    std::cout << "  " << ui::info("[3]") << " Search Document by ID\n";
+    std::cout << "  " << ui::info("[4]") << " View Pending Approvals\n";
+    std::cout << "  " << ui::info("[5]") << " Approve Document\n";
+    std::cout << "  " << ui::info("[6]") << " Reject Document\n";
+    std::cout << "  " << ui::info("[7]") << " Update Document Status (Manual Override)\n";
+    std::cout << "  " << ui::info("[8]") << " Manage Budgets\n";
+    std::cout << "  " << ui::info("[9]") << " View Audit Trail\n";
+    std::cout << "  " << ui::info("[10]") << " Validate Blockchain\n";
+    std::cout << "  " << ui::info("[0]") << " Logout\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
 }
 
@@ -133,7 +128,7 @@ void runCitizenDashboard(const User& citizen) {
         printCitizenMenu(citizen);
 
         if (!readBoundedMenuChoice(citizenChoice, 0, 4)) {
-            std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+            std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
 
@@ -152,7 +147,7 @@ void runCitizenDashboard(const User& citizen) {
                 break;
             case 0:
                 logAuditAction("CITIZEN_LOGOUT", citizen.userId, citizen.username);
-                std::cout << "\n[+] You have been logged out successfully.\n";
+                std::cout << "\n" << ui::success("[+] You have been logged out successfully.") << "\n";
                 break;
             default:
                 break;
@@ -170,7 +165,7 @@ void runAdminDashboard(const Admin& admin) {
         printAdminMenu(admin);
 
         if (!readBoundedMenuChoice(adminChoice, 0, 10)) {
-            std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+            std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
 
@@ -235,7 +230,7 @@ void runAdminDashboard(const Admin& admin) {
                 break;
             case 0:
                 logAuditAction("ADMIN_LOGOUT", admin.adminId, admin.username);
-                std::cout << "\n[+] You have been logged out successfully.\n";
+                std::cout << "\n" << ui::success("[+] You have been logged out successfully.") << "\n";
                 break;
             default:
                 break;
@@ -246,18 +241,16 @@ void runAdminDashboard(const Admin& admin) {
 
 void handleLoginFlow() {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  LOGIN TYPE\n";
-    std::cout << "==============================================================\n";
-    std::cout << "  [1] Citizen Login\n";
-    std::cout << "  [2] Admin Login\n";
-    std::cout << "  [0] Back to Home\n";
-    std::cout << "--------------------------------------------------------------\n";
+    ui::printSectionTitle("LOGIN TYPE");
+    std::cout << "  " << ui::info("[1]") << " Citizen Login\n";
+    std::cout << "  " << ui::info("[2]") << " Admin Login\n";
+    std::cout << "  " << ui::info("[0]") << " Back to Home\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
 
     int loginType = -1;
     if (!readBoundedMenuChoice(loginType, 0, 2)) {
-        std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+        std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
         return;
     }
 
@@ -278,6 +271,8 @@ void handleLoginFlow() {
 }
 
 int main() {
+    ui::initializeUi();
+
     // Startup ensures all required files and seed data exist before any user interaction.
     ensureUserDataFileExists();
     ensureApprovalsDataFileExists();
@@ -290,7 +285,7 @@ int main() {
         printHomePage();
 
         if (!readBoundedMenuChoice(choice, HOME_MIN_CHOICE, HOME_MAX_CHOICE)) {
-            std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+            std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
 
@@ -302,7 +297,7 @@ int main() {
                 signUpAccount();
                 break;
             case 0:
-                std::cout << "\nThank you for using ProcureChain.\n";
+                std::cout << "\n" << ui::success("Thank you for using ProcureChain.") << "\n";
                 break;
             default:
                 break;

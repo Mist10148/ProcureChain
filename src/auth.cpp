@@ -3,6 +3,7 @@
 #include "../include/approvals.h"
 #include "../include/audit.h"
 #include "../include/documents.h"
+#include "../include/ui.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -175,9 +176,7 @@ void clearInputBuffer() {
 
 void printAuthPageHeader(const std::string& title) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  " << title << "\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle(title);
 }
 
 bool hasValidAccountInput(const std::string& fullName, const std::string& username, const std::string& password) {
@@ -492,13 +491,11 @@ bool signUpAdmin() {
 
 void signUpAccount() {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  ACCOUNT SIGN UP TYPE\n";
-    std::cout << "==============================================================\n";
-    std::cout << "  [1] Citizen Account\n";
-    std::cout << "  [2] Admin Account\n";
-    std::cout << "  [0] Back to Home\n";
-    std::cout << "--------------------------------------------------------------\n";
+    ui::printSectionTitle("ACCOUNT SIGN UP TYPE");
+    std::cout << "  " << ui::info("[1]") << " Citizen Account\n";
+    std::cout << "  " << ui::info("[2]") << " Admin Account\n";
+    std::cout << "  " << ui::info("[0]") << " Back to Home\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
 
     int accountTypeChoice = -1;
@@ -507,7 +504,7 @@ void signUpAccount() {
     if (std::cin.fail()) {
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+        std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
         return;
     }
 
@@ -521,7 +518,7 @@ void signUpAccount() {
         case 0:
             break;
         default:
-            std::cout << "\n[!] Invalid choice. Please select a valid menu option.\n";
+            std::cout << "\n" << ui::warning("[!] Invalid choice. Please select a valid menu option.") << "\n";
             break;
     }
 }

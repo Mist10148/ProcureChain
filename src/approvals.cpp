@@ -4,6 +4,7 @@
 #include "../include/auth.h"
 #include "../include/blockchain.h"
 #include "../include/documents.h"
+#include "../include/ui.h"
 
 #include <fstream>
 #include <iostream>
@@ -191,9 +192,7 @@ void clearInputBuffer() {
 
 void applyApprovalDecision(const Admin& admin, bool approve) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  " << (approve ? "APPROVE DOCUMENT" : "REJECT DOCUMENT") << "\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle(approve ? "APPROVE DOCUMENT" : "REJECT DOCUMENT");
 
     clearInputBuffer();
     std::string targetDocId;
@@ -201,7 +200,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << "[!] Document ID is required.\n";
+        std::cout << ui::warning("[!] Document ID is required.") << "\n";
         logAuditAction("APPROVAL_INPUT_ERROR", "N/A", admin.username);
         waitForEnter();
         return;
@@ -209,7 +208,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open approvals file.\n";
+        std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
         logAuditAction("APPROVAL_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -244,7 +243,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     }
 
     if (!updated) {
-        std::cout << "[!] No pending approval record found for this document and account.\n";
+        std::cout << ui::warning("[!] No pending approval record found for this document and account.") << "\n";
         logAuditAction("APPROVAL_NOT_FOUND", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -253,7 +252,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     std::string targetPath = resolveDataPath(APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK);
     std::ofstream writer(targetPath);
     if (!writer.is_open()) {
-        std::cout << "[!] Unable to update approvals file.\n";
+        std::cout << ui::error("[!] Unable to update approvals file.") << "\n";
         logAuditAction("APPROVAL_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -301,11 +300,11 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     if (approve) {
         appendBlockchainAction("APPROVE", targetDocId, admin.username);
         logAuditAction("APPROVE_DOC", targetDocId, admin.username);
-        std::cout << "[+] Document approved successfully.\n";
+        std::cout << ui::success("[+] Document approved successfully.") << "\n";
     } else {
         appendBlockchainAction("REJECT", targetDocId, admin.username);
         logAuditAction("REJECT_DOC", targetDocId, admin.username);
-        std::cout << "[+] Document rejected successfully.\n";
+        std::cout << ui::success("[+] Document rejected successfully.") << "\n";
     }
 
     waitForEnter();
@@ -397,13 +396,11 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
 
 void viewPendingApprovalsForAdmin(const Admin& admin) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  PENDING APPROVALS\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("PENDING APPROVALS");
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open approvals file.\n";
+        std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
         logAuditAction("VIEW_PENDING_APPROVALS_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
@@ -413,6 +410,7 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
     std::getline(file, line); // Skip header.
 
     bool hasRows = false;
+    std::vector<Approval> pendingRows;
     while (std::getline(file, line)) {
         if (line.empty()) {
             continue;
@@ -430,16 +428,23 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
         }
 
         hasRows = true;
-        std::cout << "Document ID : " << row.docId << '\n';
-        std::cout << "Role        : " << row.role << '\n';
-        std::cout << "Status      : " << row.status << '\n';
-        std::cout << "--------------------------------------------------------------\n";
+        pendingRows.push_back(row);
     }
 
     if (!hasRows) {
-        std::cout << "[!] No pending approvals for your account.\n";
+        std::cout << ui::warning("[!] No pending approvals for your account.") << "\n";
         logAuditAction("VIEW_PENDING_APPROVALS_EMPTY", "N/A", admin.username);
     } else {
+        const std::vector<std::string> headers = {"Document ID", "Role", "Status"};
+        const std::vector<int> widths = {12, 24, 12};
+        ui::printTableHeader(headers, widths);
+        for (size_t i = 0; i < pendingRows.size(); ++i) {
+            ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].status}, widths);
+        }
+        ui::printTableFooter(widths);
+
+        std::cout << "\n" << ui::bold("Pending Load Chart") << "\n";
+        ui::printBar("Pending approvals", static_cast<double>(pendingRows.size()), static_cast<double>(pendingRows.size()), 24);
         logAuditAction("VIEW_PENDING_APPROVALS", "MULTI", admin.username);
     }
 

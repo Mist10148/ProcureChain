@@ -2,6 +2,7 @@
 
 #include "../include/audit.h"
 #include "../include/auth.h"
+#include "../include/ui.h"
 
 #include <fstream>
 #include <iomanip>
@@ -43,9 +44,7 @@ std::string computeSimpleHash(const std::string& text) {
 
 void verifyDocumentIntegrity(const std::string& actor) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  DOCUMENT INTEGRITY VERIFICATION\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("DOCUMENT INTEGRITY VERIFICATION");
 
     clearInputBuffer();
     std::string targetDocId;
@@ -53,7 +52,7 @@ void verifyDocumentIntegrity(const std::string& actor) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << "[!] Document ID is required.\n";
+        std::cout << ui::warning("[!] Document ID is required.") << "\n";
         logAuditAction("VERIFY_DOC_INPUT_ERROR", "N/A", actor);
         waitForEnter();
         return;
@@ -61,7 +60,7 @@ void verifyDocumentIntegrity(const std::string& actor) {
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open documents file.\n";
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
         logAuditAction("VERIFY_DOC_FAILED", targetDocId, actor);
         waitForEnter();
         return;
@@ -106,23 +105,27 @@ void verifyDocumentIntegrity(const std::string& actor) {
                              dateUploaded + "|" + uploader + "|" + status;
         std::string computedHash = computeSimpleHash(source);
 
-        std::cout << "\nDocument ID  : " << docId << '\n';
-        std::cout << "Stored Hash  : " << hashValue << '\n';
-        std::cout << "Computed Hash: " << computedHash << '\n';
-        std::cout << "Note         : Simple classroom hash (not cryptographic).\n";
+        const std::vector<std::string> headers = {"Field", "Value"};
+        const std::vector<int> widths = {16, 42};
+        ui::printTableHeader(headers, widths);
+        ui::printTableRow({"Document ID", docId}, widths);
+        ui::printTableRow({"Stored Hash", hashValue}, widths);
+        ui::printTableRow({"Computed Hash", computedHash}, widths);
+        ui::printTableRow({"Note", "Simple classroom hash (not cryptographic)"}, widths);
+        ui::printTableFooter(widths);
 
         if (hashValue == computedHash) {
-            std::cout << "[+] Verification Result: VALID\n";
+            std::cout << ui::success("[+] Verification Result: VALID") << "\n";
             logAuditAction("VERIFY_DOC_VALID", docId, actor);
         } else {
-            std::cout << "[!] Verification Result: POTENTIALLY TAMPERED\n";
+            std::cout << ui::error("[!] Verification Result: POTENTIALLY TAMPERED") << "\n";
             logAuditAction("VERIFY_DOC_TAMPERED", docId, actor);
         }
         break;
     }
 
     if (!found) {
-        std::cout << "\n[!] Document ID not found.\n";
+        std::cout << "\n" << ui::warning("[!] Document ID not found.") << "\n";
         logAuditAction("VERIFY_DOC_NOT_FOUND", targetDocId, actor);
     }
 

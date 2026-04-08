@@ -4,6 +4,7 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/blockchain.h"
+#include "../include/ui.h"
 #include "../include/verification.h"
 
 #include <cctype>
@@ -12,6 +13,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <vector>
 #include <algorithm>
@@ -67,6 +69,67 @@ std::string toLowerCopy(std::string value) {
 
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
+
+void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValue) {
+    std::vector<int> widths;
+    std::vector<std::string> headers;
+
+    if (includeHashValue) {
+        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash"};
+        widths = {6, 20, 16, 16, 10, 12, 16, 10};
+    } else {
+        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status"};
+        widths = {6, 24, 16, 16, 10, 12, 16};
+    }
+
+    ui::printTableHeader(headers, widths);
+    for (size_t i = 0; i < docs.size(); ++i) {
+        if (includeHashValue) {
+            ui::printTableRow({docs[i].docId,
+                               docs[i].title,
+                               docs[i].category,
+                               docs[i].department,
+                               docs[i].dateUploaded,
+                               docs[i].uploader,
+                               docs[i].status,
+                               docs[i].hashValue},
+                              widths);
+        } else {
+            ui::printTableRow({docs[i].docId,
+                               docs[i].title,
+                               docs[i].category,
+                               docs[i].department,
+                               docs[i].dateUploaded,
+                               docs[i].uploader,
+                               docs[i].status},
+                              widths);
+        }
+    }
+    ui::printTableFooter(widths);
+}
+
+void printStatusChart(const std::vector<Document>& docs) {
+    std::map<std::string, double> counts;
+    for (size_t i = 0; i < docs.size(); ++i) {
+        counts[toLowerCopy(docs[i].status)] += 1.0;
+    }
+
+    if (counts.empty()) {
+        return;
+    }
+
+    std::cout << "\n" << ui::bold("Status Distribution") << "\n";
+    double maxCount = 0.0;
+    for (std::map<std::string, double>::const_iterator it = counts.begin(); it != counts.end(); ++it) {
+        if (it->second > maxCount) {
+            maxCount = it->second;
+        }
+    }
+
+    for (std::map<std::string, double>::const_iterator it = counts.begin(); it != counts.end(); ++it) {
+        ui::printBar(it->first, it->second, maxCount, 24);
+    }
 }
 } // namespace
 
@@ -150,13 +213,11 @@ void ensureSampleDocumentsPresent() {
 
 void showPublishedDocuments(const std::string& actor) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  PUBLISHED PROCUREMENT DOCUMENTS\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("PUBLISHED PROCUREMENT DOCUMENTS");
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open documents file.\n";
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
         logAuditAction("VIEW_PUBLISHED_DOCS_FAILED", "N/A", actor);
         waitForEnter();
         return;
@@ -192,19 +253,11 @@ void showPublishedDocuments(const std::string& actor) {
     });
 
     if (publishedDocs.empty()) {
-        std::cout << "\n[!] No published documents available yet.\n";
+        std::cout << "\n" << ui::warning("[!] No published documents available yet.") << "\n";
         logAuditAction("VIEW_PUBLISHED_DOCS_EMPTY", "N/A", actor);
     } else {
-        for (size_t i = 0; i < publishedDocs.size(); ++i) {
-            std::cout << "\nDocument ID : " << publishedDocs[i].docId << '\n';
-            std::cout << "Title       : " << publishedDocs[i].title << '\n';
-            std::cout << "Category    : " << publishedDocs[i].category << '\n';
-            std::cout << "Department  : " << publishedDocs[i].department << '\n';
-            std::cout << "Uploaded On : " << publishedDocs[i].dateUploaded << '\n';
-            std::cout << "Uploader    : " << publishedDocs[i].uploader << '\n';
-            std::cout << "Status      : " << publishedDocs[i].status << '\n';
-            std::cout << "--------------------------------------------------------------\n";
-        }
+        printDocumentsTable(publishedDocs, false);
+        printStatusChart(publishedDocs);
         logAuditAction("VIEW_PUBLISHED_DOCS", "MULTI", actor);
     }
 
@@ -213,9 +266,7 @@ void showPublishedDocuments(const std::string& actor) {
 
 void uploadDocumentAsAdmin(const Admin& admin) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  ADMIN DOCUMENT UPLOAD\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("ADMIN DOCUMENT UPLOAD");
 
     clearInputBuffer();
 
@@ -231,7 +282,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::getline(std::cin, department);
 
     if (title.empty() || category.empty() || department.empty()) {
-        std::cout << "[!] Title, category, and department are required.\n";
+        std::cout << ui::warning("[!] Title, category, and department are required.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
@@ -248,7 +299,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 
     std::ofstream file;
     if (!openAppendFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to save document record.\n";
+        std::cout << ui::error("[!] Unable to save document record.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", docId, admin.username);
         waitForEnter();
         return;
@@ -262,19 +313,17 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     appendBlockchainAction("UPLOAD", docId, admin.username);
 
     logAuditAction("UPLOAD_DOC", docId, admin.username);
-    std::cout << "[+] Document uploaded successfully with ID " << docId << ".\n";
+    std::cout << ui::success("[+] Document uploaded successfully with ID ") << docId << ".\n";
     waitForEnter();
 }
 
 void viewAllDocumentsForAdmin(const Admin& admin) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  ALL DOCUMENT RECORDS\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("ALL DOCUMENT RECORDS");
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open documents file.\n";
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
         logAuditAction("VIEW_ALL_DOCS_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
@@ -284,6 +333,7 @@ void viewAllDocumentsForAdmin(const Admin& admin) {
     std::getline(file, line); // Skip header.
 
     bool hasRows = false;
+    std::vector<Document> allDocs;
     while (std::getline(file, line)) {
         if (line.empty()) {
             continue;
@@ -301,20 +351,15 @@ void viewAllDocumentsForAdmin(const Admin& admin) {
         std::getline(parser, doc.status, '|');
         std::getline(parser, doc.hashValue, '|');
 
-        std::cout << "\nDocument ID : " << doc.docId << '\n';
-        std::cout << "Title       : " << doc.title << '\n';
-        std::cout << "Category    : " << doc.category << '\n';
-        std::cout << "Department  : " << doc.department << '\n';
-        std::cout << "Uploaded On : " << doc.dateUploaded << '\n';
-        std::cout << "Uploader    : " << doc.uploader << '\n';
-        std::cout << "Status      : " << doc.status << '\n';
-        std::cout << "--------------------------------------------------------------\n";
+        allDocs.push_back(doc);
     }
 
     if (!hasRows) {
-        std::cout << "\n[!] No documents available.\n";
+        std::cout << "\n" << ui::warning("[!] No documents available.") << "\n";
         logAuditAction("VIEW_ALL_DOCS_EMPTY", "N/A", admin.username);
     } else {
+        printDocumentsTable(allDocs, false);
+        printStatusChart(allDocs);
         logAuditAction("VIEW_ALL_DOCS", "MULTI", admin.username);
     }
 
@@ -323,9 +368,7 @@ void viewAllDocumentsForAdmin(const Admin& admin) {
 
 void searchDocumentByIdForAdmin(const Admin& admin) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  SEARCH DOCUMENT BY ID\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("SEARCH DOCUMENT BY ID");
 
     clearInputBuffer();
     std::string targetDocId;
@@ -333,7 +376,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << "[!] Document ID is required.\n";
+        std::cout << ui::warning("[!] Document ID is required.") << "\n";
         logAuditAction("SEARCH_DOC_INPUT_ERROR", "N/A", admin.username);
         waitForEnter();
         return;
@@ -341,7 +384,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        std::cout << "[!] Unable to open documents file.\n";
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
         logAuditAction("SEARCH_DOC_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -372,19 +415,12 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
         }
 
         found = true;
-        std::cout << "\nDocument ID : " << doc.docId << '\n';
-        std::cout << "Title       : " << doc.title << '\n';
-        std::cout << "Category    : " << doc.category << '\n';
-        std::cout << "Department  : " << doc.department << '\n';
-        std::cout << "Uploaded On : " << doc.dateUploaded << '\n';
-        std::cout << "Uploader    : " << doc.uploader << '\n';
-        std::cout << "Status      : " << doc.status << '\n';
-        std::cout << "Hash Value  : " << doc.hashValue << '\n';
+        printDocumentsTable(std::vector<Document>(1, doc), true);
         break;
     }
 
     if (!found) {
-        std::cout << "\n[!] Document ID not found.\n";
+        std::cout << "\n" << ui::warning("[!] Document ID not found.") << "\n";
         logAuditAction("SEARCH_DOC_NOT_FOUND", targetDocId, admin.username);
     } else {
         logAuditAction("SEARCH_DOC", targetDocId, admin.username);
@@ -456,9 +492,7 @@ bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::str
 
 void updateDocumentStatusForAdmin(const Admin& admin) {
     clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  UPDATE DOCUMENT STATUS\n";
-    std::cout << "==============================================================\n";
+    ui::printSectionTitle("UPDATE DOCUMENT STATUS");
 
     clearInputBuffer();
     std::string targetDocId;
@@ -466,7 +500,7 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << "[!] Document ID is required.\n";
+        std::cout << ui::warning("[!] Document ID is required.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", "N/A", admin.username);
         waitForEnter();
         return;
@@ -483,7 +517,7 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     if (std::cin.fail()) {
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        std::cout << "[!] Invalid status input.\n";
+        std::cout << ui::warning("[!] Invalid status input.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -497,14 +531,14 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     } else if (statusChoice == 3) {
         newStatus = "rejected";
     } else {
-        std::cout << "[!] Invalid status option.\n";
+        std::cout << ui::warning("[!] Invalid status option.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", targetDocId, admin.username);
         waitForEnter();
         return;
     }
 
     if (!updateDocumentStatusBySystem(targetDocId, newStatus)) {
-        std::cout << "\n[!] Document ID not found or update failed.\n";
+        std::cout << "\n" << ui::error("[!] Document ID not found or update failed.") << "\n";
         logAuditAction("UPDATE_STATUS_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -512,6 +546,6 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
 
     appendBlockchainAction("STATUS_UPDATE_" + newStatus, targetDocId, admin.username);
     logAuditAction("UPDATE_STATUS", targetDocId, admin.username);
-    std::cout << "[+] Document status updated successfully.\n";
+    std::cout << ui::success("[+] Document status updated successfully.") << "\n";
     waitForEnter();
 }
