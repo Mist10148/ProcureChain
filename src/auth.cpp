@@ -5,11 +5,19 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <cstdlib>
 
 const std::string USERS_FILE_PATH = "data/users.txt";
+const std::string ADMINS_FILE_PATH = "data/admins.txt";
+
+// Clears terminal output to keep each menu/page visually focused.
+void clearScreen() {
+    std::system("cls");
+}
 
 // Draws a consistent section header for auth pages.
 void printAuthPageHeader(const std::string& title) {
+    clearScreen();
     std::cout << "\n==============================================================\n";
     std::cout << "  " << title << "\n";
     std::cout << "==============================================================\n";
@@ -23,12 +31,17 @@ void clearInputBuffer() {
 // Ensures the user storage file exists and starts with a known header.
 void ensureUserDataFileExists() {
     std::ifstream checkFile(USERS_FILE_PATH);
-    if (checkFile.good()) {
-        return;
+    if (!checkFile.good()) {
+        std::ofstream createFile(USERS_FILE_PATH);
+        createFile << "userID|fullName|username|password\n";
     }
 
-    std::ofstream createFile(USERS_FILE_PATH);
-    createFile << "userID|fullName|username|password\n";
+    // Initializes admin storage used by admin signup and role assignment.
+    std::ifstream adminCheckFile(ADMINS_FILE_PATH);
+    if (!adminCheckFile.good()) {
+        std::ofstream createAdminFile(ADMINS_FILE_PATH);
+        createAdminFile << "adminID|fullName|username|password|role\n";
+    }
 }
 
 // Counts current user records (excluding the header row).
@@ -61,6 +74,36 @@ std::string generateNextUserId() {
     return idBuilder.str();
 }
 
+// Counts current admin records (excluding the header row).
+int countExistingAdmins() {
+    std::ifstream file(ADMINS_FILE_PATH);
+    if (!file.is_open()) {
+        return 0;
+    }
+
+    std::string line;
+    int count = 0;
+
+    std::getline(file, line); // Skip header.
+
+    while (std::getline(file, line)) {
+        if (!line.empty()) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+// Generates sequential IDs like A001, A002, ...
+std::string generateNextAdminId() {
+    int nextNumber = countExistingAdmins() + 1;
+
+    std::ostringstream idBuilder;
+    idBuilder << 'A' << std::setw(3) << std::setfill('0') << nextNumber;
+    return idBuilder.str();
+}
+
 // Checks if a username already exists in users.txt.
 bool isUsernameTaken(const std::string& username) {
     std::ifstream file(USERS_FILE_PATH);
@@ -87,6 +130,37 @@ bool isUsernameTaken(const std::string& username) {
         std::getline(parser, fullName, '|');
         std::getline(parser, currentUsername, '|');
         std::getline(parser, password, '|');
+
+        if (currentUsername == username) {
+            return true;
+        }
+    }
+
+    std::ifstream adminFile(ADMINS_FILE_PATH);
+    if (!adminFile.is_open()) {
+        return false;
+    }
+
+    std::getline(adminFile, line); // Skip header.
+
+    while (std::getline(adminFile, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        // Parse: adminID|fullName|username|password|role
+        std::stringstream parser(line);
+        std::string adminId;
+        std::string fullName;
+        std::string currentUsername;
+        std::string password;
+        std::string role;
+
+        std::getline(parser, adminId, '|');
+        std::getline(parser, fullName, '|');
+        std::getline(parser, currentUsername, '|');
+        std::getline(parser, password, '|');
+        std::getline(parser, role, '|');
 
         if (currentUsername == username) {
             return true;
@@ -144,6 +218,133 @@ bool signUpCitizen() {
 
     std::cout << "[+] Account created successfully. Your User ID is " << newUser.userId << ".\n";
     return true;
+}
+
+// Maps numeric role selection to a stored admin role label.
+std::string getAdminRoleByChoice(int choice) {
+    switch (choice) {
+        case 1:
+            return "Procurement Officer";
+        case 2:
+            return "Budget Officer";
+        case 3:
+            return "Municipal Administrator";
+        case 4:
+            return "Super Admin";
+        default:
+            return "";
+    }
+}
+
+bool signUpAdmin() {
+    clearInputBuffer();
+
+    Admin newAdmin;
+    printAuthPageHeader("ADMIN SIGN UP");
+    std::cout << "Full Name: ";
+    std::getline(std::cin, newAdmin.fullName);
+
+    std::cout << "Username : ";
+    std::getline(std::cin, newAdmin.username);
+
+    if (newAdmin.fullName.empty() || newAdmin.username.empty()) {
+        std::cout << "[!] Full name and username are required.\n";
+        return false;
+    }
+
+    if (isUsernameTaken(newAdmin.username)) {
+        std::cout << "[!] Username is already taken.\n";
+        return false;
+    }
+
+    std::cout << "Password : ";
+    std::getline(std::cin, newAdmin.password);
+
+    if (newAdmin.password.empty()) {
+        std::cout << "[!] Password is required.\n";
+        return false;
+    }
+
+    std::cout << "\nSelect Admin Role:\n";
+    std::cout << "  [1] Procurement Officer\n";
+    std::cout << "  [2] Budget Officer\n";
+    std::cout << "  [3] Municipal Administrator\n";
+    std::cout << "  [4] Super Admin\n";
+    std::cout << "Enter role choice: ";
+
+    int roleChoice = 0;
+    std::cin >> roleChoice;
+    if (std::cin.fail()) {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        std::cout << "[!] Invalid role input.\n";
+        return false;
+    }
+
+    newAdmin.role = getAdminRoleByChoice(roleChoice);
+    if (newAdmin.role.empty()) {
+        std::cout << "[!] Invalid role option selected.\n";
+        return false;
+    }
+
+    // Assign ID only after all validations pass.
+    newAdmin.adminId = generateNextAdminId();
+
+    std::ofstream file(ADMINS_FILE_PATH, std::ios::app);
+    if (!file.is_open()) {
+        std::cout << "[!] Failed to save admin account.\n";
+        return false;
+    }
+
+    file << newAdmin.adminId << '|'
+         << newAdmin.fullName << '|'
+         << newAdmin.username << '|'
+         << newAdmin.password << '|'
+         << newAdmin.role << '\n';
+
+    // Flush admin data immediately so signup is persisted before returning.
+    file.flush();
+
+    std::cout << "[+] Admin account created successfully. Your Admin ID is " << newAdmin.adminId << ".\n";
+    std::cout << "[+] Assigned Role: " << newAdmin.role << "\n";
+    return true;
+}
+
+void signUpAccount() {
+    clearScreen();
+    std::cout << "\n==============================================================\n";
+    std::cout << "  ACCOUNT SIGN UP TYPE\n";
+    std::cout << "==============================================================\n";
+    std::cout << "  [1] Citizen Account\n";
+    std::cout << "  [2] Admin Account\n";
+    std::cout << "  [0] Back to Home\n";
+    std::cout << "--------------------------------------------------------------\n";
+    std::cout << "  Enter your choice: ";
+
+    int accountTypeChoice = -1;
+    std::cin >> accountTypeChoice;
+
+    if (std::cin.fail()) {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
+        return;
+    }
+
+    // Routes signup to the selected account type page.
+    switch (accountTypeChoice) {
+        case 1:
+            signUpCitizen();
+            break;
+        case 2:
+            signUpAdmin();
+            break;
+        case 0:
+            break;
+        default:
+            std::cout << "\n[!] Invalid choice. Please select a valid menu option.\n";
+            break;
+    }
 }
 
 bool loginCitizen() {

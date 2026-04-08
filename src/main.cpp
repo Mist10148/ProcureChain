@@ -38,6 +38,8 @@ int main() {
     int choice = -1;
 
     do {
+        // Refreshes the screen before showing the home page.
+        clearScreen();
         printHomePage();
 
         // Prevents non-numeric input from breaking the menu loop.
@@ -52,7 +54,7 @@ int main() {
                 loginCitizen();
                 break;
             case 2:
-                signUpCitizen();
+                signUpAccount();
                 break;
             case 0:
                 std::cout << "\nThank you for using ProcureChain.\n";

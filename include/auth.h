@@ -10,11 +10,24 @@ struct User {
     std::string password;
 };
 
+struct Admin {
+    std::string adminId;
+    std::string fullName;
+    std::string username;
+    std::string password;
+    std::string role;
+};
+
+void clearScreen();
 void ensureUserDataFileExists();
 int countExistingUsers();
 std::string generateNextUserId();
+int countExistingAdmins();
+std::string generateNextAdminId();
 bool isUsernameTaken(const std::string& username);
 bool signUpCitizen();
+bool signUpAdmin();
+void signUpAccount();
 bool loginCitizen();
 
 #endif
