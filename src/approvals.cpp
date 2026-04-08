@@ -2,6 +2,7 @@
 
 #include "../include/audit.h"
 #include "../include/auth.h"
+#include "../include/blockchain.h"
 #include "../include/documents.h"
 
 #include <fstream>
@@ -162,9 +163,11 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     updateDocumentStatusBySystem(targetDocId, nextDocStatus);
 
     if (approve) {
+        appendBlockchainAction("APPROVE", targetDocId, admin.username);
         logAuditAction("APPROVE_DOC", targetDocId, admin.username);
         std::cout << "[+] Document approved successfully.\n";
     } else {
+        appendBlockchainAction("REJECT", targetDocId, admin.username);
         logAuditAction("REJECT_DOC", targetDocId, admin.username);
         std::cout << "[+] Document rejected successfully.\n";
     }

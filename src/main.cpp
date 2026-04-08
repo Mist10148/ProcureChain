@@ -76,8 +76,9 @@ void printAdminMenu(const Admin& admin) {
     std::cout << "  [5] Approve Document\n";
     std::cout << "  [6] Reject Document\n";
     std::cout << "  [7] Update Document Status (Manual Override)\n";
-    std::cout << "  [8] View Audit Trail\n";
-    std::cout << "  [9] Validate Blockchain\n";
+    std::cout << "  [8] Manage Budgets\n";
+    std::cout << "  [9] View Audit Trail\n";
+    std::cout << "  [10] Validate Blockchain\n";
     std::cout << "  [0] Logout\n";
     std::cout << "--------------------------------------------------------------\n";
     std::cout << "  Enter your choice: ";
@@ -126,7 +127,7 @@ void runAdminDashboard(const Admin& admin) {
         clearScreen();
         printAdminMenu(admin);
 
-        if (!readBoundedMenuChoice(adminChoice, 0, 9)) {
+        if (!readBoundedMenuChoice(adminChoice, 0, 10)) {
             std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
             continue;
         }
@@ -154,9 +155,12 @@ void runAdminDashboard(const Admin& admin) {
                 updateDocumentStatusForAdmin(admin);
                 break;
             case 8:
-                viewAuditTrail(admin.username);
+                manageBudgetsForAdmin(admin);
                 break;
             case 9:
+                viewAuditTrail(admin.username);
+                break;
+            case 10:
                 validateBlockchainNodes(admin.username);
                 break;
             case 0:

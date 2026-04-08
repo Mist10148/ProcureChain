@@ -3,6 +3,7 @@
 #include "../include/approvals.h"
 #include "../include/audit.h"
 #include "../include/auth.h"
+#include "../include/blockchain.h"
 #include "../include/verification.h"
 
 #include <cctype>
@@ -258,6 +259,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 
     // Approval requests are generated immediately after upload for consensus workflow.
     createApprovalRequestsForDocument(docId, admin.username);
+    appendBlockchainAction("UPLOAD", docId, admin.username);
 
     logAuditAction("UPLOAD_DOC", docId, admin.username);
     std::cout << "[+] Document uploaded successfully with ID " << docId << ".\n";
@@ -508,6 +510,7 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
         return;
     }
 
+    appendBlockchainAction("STATUS_UPDATE_" + newStatus, targetDocId, admin.username);
     logAuditAction("UPDATE_STATUS", targetDocId, admin.username);
     std::cout << "[+] Document status updated successfully.\n";
     waitForEnter();
