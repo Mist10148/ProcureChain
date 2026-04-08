@@ -3,6 +3,7 @@
 #include <iostream>
 #include <limits>
 
+// Renders the landing menu shown to all users.
 void printHomePage() {
     std::cout << "\n==============================================================\n";
     std::cout << "          MUNICIPAL PROCUREMENT DOCUMENT TRACKING SYSTEM      \n";
@@ -16,6 +17,7 @@ void printHomePage() {
     std::cout << "  Enter your choice: ";
 }
 
+// Reads numeric menu input safely and resets stream on invalid input.
 bool readMenuChoice(int& choice) {
     std::cin >> choice;
 
@@ -29,17 +31,21 @@ bool readMenuChoice(int& choice) {
 }
 
 int main() {
+    // Prepare data storage before any auth action is used.
     ensureUserDataFileExists();
 
     int choice = -1;
 
     do {
         printHomePage();
+
+        // Prevents non-numeric input from breaking the menu loop.
         if (!readMenuChoice(choice)) {
             std::cout << "\n[!] Invalid input. Please enter a number from the menu.\n";
             continue;
         }
 
+        // Routes the user to the selected auth action.
         switch (choice) {
             case 1:
                 loginCitizen();

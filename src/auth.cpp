@@ -8,16 +8,19 @@
 
 const std::string USERS_FILE_PATH = "data/users.txt";
 
+// Draws a consistent section header for auth pages.
 void printAuthPageHeader(const std::string& title) {
     std::cout << "\n==============================================================\n";
     std::cout << "  " << title << "\n";
     std::cout << "==============================================================\n";
 }
 
+// Clears leftover newline/input before getline-based prompts.
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
 
+// Ensures the user storage file exists and starts with a known header.
 void ensureUserDataFileExists() {
     std::ifstream checkFile(USERS_FILE_PATH);
     if (checkFile.good()) {
@@ -28,6 +31,7 @@ void ensureUserDataFileExists() {
     createFile << "userID|fullName|username|password\n";
 }
 
+// Counts current user records (excluding the header row).
 int countExistingUsers() {
     std::ifstream file(USERS_FILE_PATH);
     if (!file.is_open()) {
@@ -48,6 +52,7 @@ int countExistingUsers() {
     return count;
 }
 
+// Generates sequential IDs like U001, U002, ...
 std::string generateNextUserId() {
     int nextNumber = countExistingUsers() + 1;
 
@@ -56,6 +61,7 @@ std::string generateNextUserId() {
     return idBuilder.str();
 }
 
+// Checks if a username already exists in users.txt.
 bool isUsernameTaken(const std::string& username) {
     std::ifstream file(USERS_FILE_PATH);
     if (!file.is_open()) {
@@ -70,6 +76,7 @@ bool isUsernameTaken(const std::string& username) {
             continue;
         }
 
+        // Parse: userID|fullName|username|password
         std::stringstream parser(line);
         std::string userId;
         std::string fullName;
@@ -118,6 +125,7 @@ bool signUpCitizen() {
         return false;
     }
 
+    // Assign ID only after validation passes.
     newUser.userId = generateNextUserId();
 
     std::ofstream file(USERS_FILE_PATH, std::ios::app);
@@ -164,6 +172,7 @@ bool loginCitizen() {
             continue;
         }
 
+        // Parse and compare credentials line-by-line.
         std::stringstream parser(line);
         std::string userId;
         std::string fullName;
