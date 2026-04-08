@@ -1,0 +1,4 @@
+docID|title|category|department|dateUploaded|uploader|status|hashValue
+PR001|Office Supplies Purchase|Purchase Request|Procurement Office|2026-04-09|proc_admin|published|1B9814D1
+PO002|Road Repair Contract|Purchase Order|Engineering Department|2026-04-09|proc_admin|published|D609BB2A
+CA003|Clinic Equipment Acquisition|Contract|Health Office|2026-04-09|proc_admin|pending|1F506938

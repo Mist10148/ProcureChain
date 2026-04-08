@@ -45,18 +45,6 @@ void printCitizenMenu(const User& citizen) {
     std::cout << "  Enter your choice: ";
 }
 
-// Temporary placeholders so citizen navigation works while modules are built next.
-void printCitizenFeaturePlaceholder(const std::string& featureName) {
-    clearScreen();
-    std::cout << "\n==============================================================\n";
-    std::cout << "  " << featureName << "\n";
-    std::cout << "==============================================================\n";
-    std::cout << "  This feature is queued for the next implementation step.\n";
-    std::cout << "  Press Enter to return to the citizen dashboard...";
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    std::cin.get();
-}
-
 // Handles the citizen session loop until the user chooses to logout.
 void runCitizenDashboard(const User& citizen) {
     int citizenChoice = -1;
@@ -72,13 +60,13 @@ void runCitizenDashboard(const User& citizen) {
 
         switch (citizenChoice) {
             case 1:
-                printCitizenFeaturePlaceholder("VIEW PUBLISHED DOCUMENTS");
+                showPublishedDocuments();
                 break;
             case 2:
-                printCitizenFeaturePlaceholder("VERIFY DOCUMENT INTEGRITY");
+                verifyDocumentIntegrity();
                 break;
             case 3:
-                printCitizenFeaturePlaceholder("VIEW PROCUREMENT BUDGETS");
+                viewBudgetAllocations();
                 break;
             case 0:
                 std::cout << "\n[+] You have been logged out successfully.\n";

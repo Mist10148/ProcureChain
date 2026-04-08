@@ -1,0 +1,6 @@
+category|amount
+Office Supplies|50000
+Infrastructure Procurement|200000
+Health Supplies|100000
+Educational Materials|75000
+Miscellaneous Procurement|30000

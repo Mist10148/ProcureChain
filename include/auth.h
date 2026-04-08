@@ -30,5 +30,9 @@ bool signUpAdmin();
 void signUpAccount();
 bool loginCitizen(User& loggedInUser);
 bool loginCitizen();
+void waitForEnter();
+void showPublishedDocuments();
+void verifyDocumentIntegrity();
+void viewBudgetAllocations();
 
 #endif

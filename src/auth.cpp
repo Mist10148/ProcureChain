@@ -6,11 +6,23 @@
 #include <limits>
 #include <sstream>
 #include <cstdlib>
+#include <ctime>
 
 const std::string USERS_FILE_PATH_PRIMARY = "data/users.txt";
 const std::string USERS_FILE_PATH_FALLBACK = "../data/users.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
+const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
+const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
+const std::string BUDGETS_FILE_PATH_PRIMARY = "data/budgets.txt";
+const std::string BUDGETS_FILE_PATH_FALLBACK = "../data/budgets.txt";
+const std::string AUDIT_FILE_PATH_PRIMARY = "data/audit_log.txt";
+const std::string AUDIT_FILE_PATH_FALLBACK = "../data/audit_log.txt";
+
+std::string CURRENT_CITIZEN_USERNAME = "anonymous";
+
+std::string computeSimpleHash(const std::string& text);
+void ensureSampleDocumentsPresent();
 
 // Opens a file for reading using primary path first, then fallback path.
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
@@ -59,6 +71,28 @@ bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fal
     return false;
 }
 
+// Returns current local timestamp in a readable audit-log format.
+std::string getCurrentTimestamp() {
+    std::time_t now = std::time(NULL);
+    std::tm localTime;
+    localtime_s(&localTime, &now);
+
+    char buffer[20];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &localTime);
+    return std::string(buffer);
+}
+
+// Appends a single audit log entry for traceability.
+void logAuditAction(const std::string& action, const std::string& targetId, const std::string& actor) {
+    std::ofstream file;
+    if (!openAppendFileWithFallback(file, AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    file << getCurrentTimestamp() << '|' << action << '|' << targetId << '|' << actor << '\n';
+    file.flush();
+}
+
 // Clears terminal output to keep each menu/page visually focused.
 void clearScreen() {
     std::system("cls");
@@ -91,6 +125,39 @@ void ensureUserDataFileExists() {
         ADMINS_FILE_PATH_FALLBACK,
         "adminID|fullName|username|password|role"
     );
+
+    ensureFileWithHeader(
+        DOCUMENTS_FILE_PATH_PRIMARY,
+        DOCUMENTS_FILE_PATH_FALLBACK,
+        "docID|title|category|department|dateUploaded|uploader|status|hashValue"
+    );
+
+    ensureFileWithHeader(
+        AUDIT_FILE_PATH_PRIMARY,
+        AUDIT_FILE_PATH_FALLBACK,
+        "timestamp|action|targetID|actor"
+    );
+
+    ensureSampleDocumentsPresent();
+
+    // Initializes budget storage with default categories if no file exists yet.
+    std::ifstream budgetCheck;
+    if (!openInputFileWithFallback(budgetCheck, BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK)) {
+        std::ofstream createBudgetFile(BUDGETS_FILE_PATH_PRIMARY);
+        if (!createBudgetFile.is_open()) {
+            createBudgetFile.clear();
+            createBudgetFile.open(BUDGETS_FILE_PATH_FALLBACK);
+        }
+
+        if (createBudgetFile.is_open()) {
+            createBudgetFile << "category|amount\n";
+            createBudgetFile << "Office Supplies|50000\n";
+            createBudgetFile << "Infrastructure Procurement|200000\n";
+            createBudgetFile << "Health Supplies|100000\n";
+            createBudgetFile << "Educational Materials|75000\n";
+            createBudgetFile << "Miscellaneous Procurement|30000\n";
+        }
+    }
 }
 
 // Counts current user records (excluding the header row).
@@ -265,6 +332,8 @@ bool signUpCitizen() {
     // Flush user data immediately so signup is persisted before returning.
     file.flush();
 
+    logAuditAction("SIGNUP_CITIZEN", newUser.userId, newUser.username);
+
     std::cout << "[+] Account created successfully. Your User ID is " << newUser.userId << ".\n";
     return true;
 }
@@ -354,6 +423,8 @@ bool signUpAdmin() {
     // Flush admin data immediately so signup is persisted before returning.
     file.flush();
 
+    logAuditAction("SIGNUP_ADMIN", newAdmin.adminId, newAdmin.username);
+
     std::cout << "[+] Admin account created successfully. Your Admin ID is " << newAdmin.adminId << ".\n";
     std::cout << "[+] Assigned Role: " << newAdmin.role << "\n";
     return true;
@@ -440,11 +511,14 @@ bool loginCitizen(User& loggedInUser) {
             loggedInUser.fullName = fullName;
             loggedInUser.username = currentUsername;
             loggedInUser.password = currentPassword;
+            CURRENT_CITIZEN_USERNAME = currentUsername;
+            logAuditAction("LOGIN_SUCCESS", userId, currentUsername);
             std::cout << "[+] Welcome, " << fullName << " (" << userId << ").\n";
             return true;
         }
     }
 
+    logAuditAction("LOGIN_FAILED", "N/A", username);
     std::cout << "[!] Invalid username or password.\n";
     return false;
 }
@@ -453,4 +527,271 @@ bool loginCitizen(User& loggedInUser) {
 bool loginCitizen() {
     User tempUser;
     return loginCitizen(tempUser);
+}
+
+// Pauses the screen so users can read output before returning to a menu.
+void waitForEnter() {
+    std::cout << "\nPress Enter to continue...";
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    std::cin.get();
+}
+
+// Converts letters to lowercase for simple case-insensitive checks.
+std::string toLowerCopy(std::string value) {
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (value[i] >= 'A' && value[i] <= 'Z') {
+            value[i] = static_cast<char>(value[i] + ('a' - 'A'));
+        }
+    }
+    return value;
+}
+
+// Produces a deterministic beginner-level hash for record verification.
+std::string computeSimpleHash(const std::string& text) {
+    unsigned long long hash = 0;
+    for (size_t i = 0; i < text.size(); ++i) {
+        hash = (hash * 131ULL + static_cast<unsigned long long>(text[i])) % 0xFFFFFFFFULL;
+    }
+
+    std::ostringstream out;
+    out << std::uppercase << std::hex << hash;
+    return out.str();
+}
+
+// Adds starter documents when file only contains a header for easier citizen testing.
+void ensureSampleDocumentsPresent() {
+    std::ifstream reader;
+    if (!openInputFileWithFallback(reader, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    std::string line;
+    int nonEmptyLines = 0;
+    while (std::getline(reader, line)) {
+        if (!line.empty()) {
+            nonEmptyLines++;
+        }
+    }
+
+    if (nonEmptyLines > 1) {
+        return;
+    }
+
+    // Close the reader before opening the same file in append mode.
+    reader.close();
+
+    std::ofstream writer;
+    if (!openAppendFileWithFallback(writer, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    std::string row1Source = "PR001|Office Supplies Purchase|Purchase Request|Procurement Office|2026-04-09|proc_admin|published";
+    std::string row2Source = "PO002|Road Repair Contract|Purchase Order|Engineering Department|2026-04-09|proc_admin|published";
+    std::string row3Source = "CA003|Clinic Equipment Acquisition|Contract|Health Office|2026-04-09|proc_admin|pending";
+
+    writer << row1Source << '|' << computeSimpleHash(row1Source) << '\n';
+    writer << row2Source << '|' << computeSimpleHash(row2Source) << '\n';
+    writer << row3Source << '|' << computeSimpleHash(row3Source) << '\n';
+    writer.flush();
+}
+
+void showPublishedDocuments() {
+    clearScreen();
+    std::cout << "\n==============================================================\n";
+    std::cout << "  PUBLISHED PROCUREMENT DOCUMENTS\n";
+    std::cout << "==============================================================\n";
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        std::cout << "[!] Unable to open documents file.\n";
+        logAuditAction("VIEW_PUBLISHED_DOCS_FAILED", "N/A", CURRENT_CITIZEN_USERNAME);
+        waitForEnter();
+        return;
+    }
+
+    std::string line;
+    std::getline(file, line); // Skip header.
+
+    bool hasPublishedDocuments = false;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        // Parse: docID|title|category|department|dateUploaded|uploader|status|hashValue
+        std::stringstream parser(line);
+        std::string docId;
+        std::string title;
+        std::string category;
+        std::string department;
+        std::string dateUploaded;
+        std::string uploader;
+        std::string status;
+        std::string hashValue;
+
+        std::getline(parser, docId, '|');
+        std::getline(parser, title, '|');
+        std::getline(parser, category, '|');
+        std::getline(parser, department, '|');
+        std::getline(parser, dateUploaded, '|');
+        std::getline(parser, uploader, '|');
+        std::getline(parser, status, '|');
+        std::getline(parser, hashValue, '|');
+
+        if (toLowerCopy(status) != "published") {
+            continue;
+        }
+
+        hasPublishedDocuments = true;
+        std::cout << "\nDocument ID : " << docId << '\n';
+        std::cout << "Title       : " << title << '\n';
+        std::cout << "Category    : " << category << '\n';
+        std::cout << "Department  : " << department << '\n';
+        std::cout << "Uploaded On : " << dateUploaded << '\n';
+        std::cout << "Uploader    : " << uploader << '\n';
+        std::cout << "Status      : " << status << '\n';
+        std::cout << "--------------------------------------------------------------\n";
+    }
+
+    if (!hasPublishedDocuments) {
+        std::cout << "\n[!] No published documents available yet.\n";
+        logAuditAction("VIEW_PUBLISHED_DOCS_EMPTY", "N/A", CURRENT_CITIZEN_USERNAME);
+    } else {
+        logAuditAction("VIEW_PUBLISHED_DOCS", "MULTI", CURRENT_CITIZEN_USERNAME);
+    }
+
+    waitForEnter();
+}
+
+void verifyDocumentIntegrity() {
+    clearScreen();
+    std::cout << "\n==============================================================\n";
+    std::cout << "  DOCUMENT INTEGRITY VERIFICATION\n";
+    std::cout << "==============================================================\n";
+
+    clearInputBuffer();
+    std::string targetDocId;
+    std::cout << "Enter Document ID to verify: ";
+    std::getline(std::cin, targetDocId);
+
+    if (targetDocId.empty()) {
+        std::cout << "[!] Document ID is required.\n";
+        logAuditAction("VERIFY_DOC_INPUT_ERROR", "N/A", CURRENT_CITIZEN_USERNAME);
+        waitForEnter();
+        return;
+    }
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        std::cout << "[!] Unable to open documents file.\n";
+        logAuditAction("VERIFY_DOC_FAILED", targetDocId, CURRENT_CITIZEN_USERNAME);
+        waitForEnter();
+        return;
+    }
+
+    std::string line;
+    std::getline(file, line); // Skip header.
+
+    bool found = false;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream parser(line);
+        std::string docId;
+        std::string title;
+        std::string category;
+        std::string department;
+        std::string dateUploaded;
+        std::string uploader;
+        std::string status;
+        std::string hashValue;
+
+        std::getline(parser, docId, '|');
+        std::getline(parser, title, '|');
+        std::getline(parser, category, '|');
+        std::getline(parser, department, '|');
+        std::getline(parser, dateUploaded, '|');
+        std::getline(parser, uploader, '|');
+        std::getline(parser, status, '|');
+        std::getline(parser, hashValue, '|');
+
+        if (docId != targetDocId) {
+            continue;
+        }
+
+        found = true;
+
+        // Rebuilds the same source string used for this simplified integrity check.
+        std::string source = docId + "|" + title + "|" + category + "|" + department + "|" +
+                             dateUploaded + "|" + uploader + "|" + status;
+        std::string computedHash = computeSimpleHash(source);
+
+        std::cout << "\nDocument ID  : " << docId << '\n';
+        std::cout << "Stored Hash  : " << hashValue << '\n';
+        std::cout << "Computed Hash: " << computedHash << '\n';
+
+        if (hashValue == computedHash) {
+            std::cout << "[+] Verification Result: VALID\n";
+            logAuditAction("VERIFY_DOC_VALID", docId, CURRENT_CITIZEN_USERNAME);
+        } else {
+            std::cout << "[!] Verification Result: POTENTIALLY TAMPERED\n";
+            logAuditAction("VERIFY_DOC_TAMPERED", docId, CURRENT_CITIZEN_USERNAME);
+        }
+        break;
+    }
+
+    if (!found) {
+        std::cout << "\n[!] Document ID not found.\n";
+        logAuditAction("VERIFY_DOC_NOT_FOUND", targetDocId, CURRENT_CITIZEN_USERNAME);
+    }
+
+    waitForEnter();
+}
+
+void viewBudgetAllocations() {
+    clearScreen();
+    std::cout << "\n==============================================================\n";
+    std::cout << "  PROCUREMENT BUDGET ALLOCATIONS\n";
+    std::cout << "==============================================================\n";
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK)) {
+        std::cout << "[!] Unable to open budgets file.\n";
+        logAuditAction("VIEW_BUDGETS_FAILED", "N/A", CURRENT_CITIZEN_USERNAME);
+        waitForEnter();
+        return;
+    }
+
+    std::string line;
+    std::getline(file, line); // Skip header.
+
+    bool hasBudgetRows = false;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        // Parse: category|amount
+        std::stringstream parser(line);
+        std::string category;
+        std::string amount;
+        std::getline(parser, category, '|');
+        std::getline(parser, amount, '|');
+
+        hasBudgetRows = true;
+        std::cout << "Category: " << category << '\n';
+        std::cout << "Amount  : " << amount << "\n";
+        std::cout << "--------------------------------------------------------------\n";
+    }
+
+    if (!hasBudgetRows) {
+        std::cout << "\n[!] No budget entries available.\n";
+        logAuditAction("VIEW_BUDGETS_EMPTY", "N/A", CURRENT_CITIZEN_USERNAME);
+    } else {
+        logAuditAction("VIEW_BUDGETS", "MULTI", CURRENT_CITIZEN_USERNAME);
+    }
+
+    waitForEnter();
 }
