@@ -30,6 +30,8 @@ bool signUpAdmin();
 void signUpAccount();
 bool loginCitizen(User& loggedInUser);
 bool loginCitizen();
+bool loginAdmin(Admin& loggedInAdmin);
+bool loginAdmin();
 void waitForEnter();
 void showPublishedDocuments();
 void verifyDocumentIntegrity();

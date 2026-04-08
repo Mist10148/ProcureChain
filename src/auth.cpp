@@ -5,6 +5,8 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <vector>
+#include <algorithm>
 #include <cstdlib>
 #include <ctime>
 
@@ -20,6 +22,11 @@ const std::string AUDIT_FILE_PATH_PRIMARY = "data/audit_log.txt";
 const std::string AUDIT_FILE_PATH_FALLBACK = "../data/audit_log.txt";
 
 std::string CURRENT_CITIZEN_USERNAME = "anonymous";
+
+const size_t MAX_FULLNAME_LENGTH = 60;
+const size_t MAX_USERNAME_LENGTH = 30;
+const size_t MAX_PASSWORD_LENGTH = 50;
+const size_t MIN_PASSWORD_LENGTH = 4;
 
 std::string computeSimpleHash(const std::string& text);
 void ensureSampleDocumentsPresent();
@@ -109,6 +116,36 @@ void printAuthPageHeader(const std::string& title) {
 // Clears leftover newline/input before getline-based prompts.
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
+
+// Applies shared signup constraints for both citizen and admin accounts.
+bool hasValidAccountInput(const std::string& fullName, const std::string& username, const std::string& password) {
+    if (fullName.empty() || username.empty()) {
+        std::cout << "[!] Full name and username are required.\n";
+        return false;
+    }
+
+    if (fullName.size() > MAX_FULLNAME_LENGTH) {
+        std::cout << "[!] Full name is too long (max " << MAX_FULLNAME_LENGTH << " characters).\n";
+        return false;
+    }
+
+    if (username.size() > MAX_USERNAME_LENGTH) {
+        std::cout << "[!] Username is too long (max " << MAX_USERNAME_LENGTH << " characters).\n";
+        return false;
+    }
+
+    if (password.size() < MIN_PASSWORD_LENGTH) {
+        std::cout << "[!] Password must be at least " << MIN_PASSWORD_LENGTH << " characters.\n";
+        return false;
+    }
+
+    if (password.size() > MAX_PASSWORD_LENGTH) {
+        std::cout << "[!] Password is too long (max " << MAX_PASSWORD_LENGTH << " characters).\n";
+        return false;
+    }
+
+    return true;
 }
 
 // Ensures the user storage file exists and starts with a known header.
@@ -297,11 +334,6 @@ bool signUpCitizen() {
     std::cout << "Username : ";
     std::getline(std::cin, newUser.username);
 
-    if (newUser.fullName.empty() || newUser.username.empty()) {
-        std::cout << "[!] Full name and username are required.\n";
-        return false;
-    }
-
     if (isUsernameTaken(newUser.username)) {
         std::cout << "[!] Username is already taken.\n";
         return false;
@@ -310,8 +342,7 @@ bool signUpCitizen() {
     std::cout << "Password : ";
     std::getline(std::cin, newUser.password);
 
-    if (newUser.password.empty()) {
-        std::cout << "[!] Password is required.\n";
+    if (!hasValidAccountInput(newUser.fullName, newUser.username, newUser.password)) {
         return false;
     }
 
@@ -365,11 +396,6 @@ bool signUpAdmin() {
     std::cout << "Username : ";
     std::getline(std::cin, newAdmin.username);
 
-    if (newAdmin.fullName.empty() || newAdmin.username.empty()) {
-        std::cout << "[!] Full name and username are required.\n";
-        return false;
-    }
-
     if (isUsernameTaken(newAdmin.username)) {
         std::cout << "[!] Username is already taken.\n";
         return false;
@@ -378,8 +404,7 @@ bool signUpAdmin() {
     std::cout << "Password : ";
     std::getline(std::cin, newAdmin.password);
 
-    if (newAdmin.password.empty()) {
-        std::cout << "[!] Password is required.\n";
+    if (!hasValidAccountInput(newAdmin.fullName, newAdmin.username, newAdmin.password)) {
         return false;
     }
 
@@ -479,6 +504,12 @@ bool loginCitizen(User& loggedInUser) {
     std::cout << "Password: ";
     std::getline(std::cin, password);
 
+    if (username.empty() || password.empty()) {
+        std::cout << "[!] Username and password are required.\n";
+        logAuditAction("LOGIN_FAILED", "N/A", username.empty() ? "anonymous" : username);
+        return false;
+    }
+
     std::ifstream file;
     if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
         std::cout << "[!] Unable to open user account records.\n";
@@ -529,6 +560,76 @@ bool loginCitizen() {
     return loginCitizen(tempUser);
 }
 
+bool loginAdmin(Admin& loggedInAdmin) {
+    clearInputBuffer();
+
+    std::string username;
+    std::string password;
+
+    printAuthPageHeader("ADMIN LOGIN");
+    std::cout << "Username: ";
+    std::getline(std::cin, username);
+    std::cout << "Password: ";
+    std::getline(std::cin, password);
+
+    if (username.empty() || password.empty()) {
+        std::cout << "[!] Username and password are required.\n";
+        logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username.empty() ? "anonymous" : username);
+        return false;
+    }
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        std::cout << "[!] Unable to open admin account records.\n";
+        logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username);
+        return false;
+    }
+
+    std::string line;
+    std::getline(file, line); // Skip header.
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        // Parse: adminID|fullName|username|password|role
+        std::stringstream parser(line);
+        std::string adminId;
+        std::string fullName;
+        std::string currentUsername;
+        std::string currentPassword;
+        std::string role;
+
+        std::getline(parser, adminId, '|');
+        std::getline(parser, fullName, '|');
+        std::getline(parser, currentUsername, '|');
+        std::getline(parser, currentPassword, '|');
+        std::getline(parser, role, '|');
+
+        if (currentUsername == username && currentPassword == password) {
+            loggedInAdmin.adminId = adminId;
+            loggedInAdmin.fullName = fullName;
+            loggedInAdmin.username = currentUsername;
+            loggedInAdmin.password = currentPassword;
+            loggedInAdmin.role = role;
+            logAuditAction("ADMIN_LOGIN_SUCCESS", adminId, currentUsername);
+            std::cout << "[+] Welcome, " << fullName << " (" << adminId << ") - " << role << ".\n";
+            return true;
+        }
+    }
+
+    logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username);
+    std::cout << "[!] Invalid admin username or password.\n";
+    return false;
+}
+
+// Backward-compatible wrapper for admin login when caller does not require session struct.
+bool loginAdmin() {
+    Admin tempAdmin;
+    return loginAdmin(tempAdmin);
+}
+
 // Pauses the screen so users can read output before returning to a menu.
 void waitForEnter() {
     std::cout << "\nPress Enter to continue...";
@@ -548,6 +649,7 @@ std::string toLowerCopy(std::string value) {
 
 // Produces a deterministic beginner-level hash for record verification.
 std::string computeSimpleHash(const std::string& text) {
+    // This is intentionally non-cryptographic and used only for classroom simulation.
     unsigned long long hash = 0;
     for (size_t i = 0; i < text.size(); ++i) {
         hash = (hash * 131ULL + static_cast<unsigned long long>(text[i])) % 0xFFFFFFFFULL;
@@ -612,7 +714,17 @@ void showPublishedDocuments() {
     std::string line;
     std::getline(file, line); // Skip header.
 
-    bool hasPublishedDocuments = false;
+    struct PublishedDocument {
+        std::string docId;
+        std::string title;
+        std::string category;
+        std::string department;
+        std::string dateUploaded;
+        std::string uploader;
+        std::string status;
+    };
+
+    std::vector<PublishedDocument> publishedDocs;
     while (std::getline(file, line)) {
         if (line.empty()) {
             continue;
@@ -642,21 +754,35 @@ void showPublishedDocuments() {
             continue;
         }
 
-        hasPublishedDocuments = true;
-        std::cout << "\nDocument ID : " << docId << '\n';
-        std::cout << "Title       : " << title << '\n';
-        std::cout << "Category    : " << category << '\n';
-        std::cout << "Department  : " << department << '\n';
-        std::cout << "Uploaded On : " << dateUploaded << '\n';
-        std::cout << "Uploader    : " << uploader << '\n';
-        std::cout << "Status      : " << status << '\n';
-        std::cout << "--------------------------------------------------------------\n";
+        PublishedDocument doc;
+        doc.docId = docId;
+        doc.title = title;
+        doc.category = category;
+        doc.department = department;
+        doc.dateUploaded = dateUploaded;
+        doc.uploader = uploader;
+        doc.status = status;
+        publishedDocs.push_back(doc);
     }
 
-    if (!hasPublishedDocuments) {
+    std::sort(publishedDocs.begin(), publishedDocs.end(), [](const PublishedDocument& a, const PublishedDocument& b) {
+        return a.docId < b.docId;
+    });
+
+    if (publishedDocs.empty()) {
         std::cout << "\n[!] No published documents available yet.\n";
         logAuditAction("VIEW_PUBLISHED_DOCS_EMPTY", "N/A", CURRENT_CITIZEN_USERNAME);
     } else {
+        for (size_t i = 0; i < publishedDocs.size(); ++i) {
+            std::cout << "\nDocument ID : " << publishedDocs[i].docId << '\n';
+            std::cout << "Title       : " << publishedDocs[i].title << '\n';
+            std::cout << "Category    : " << publishedDocs[i].category << '\n';
+            std::cout << "Department  : " << publishedDocs[i].department << '\n';
+            std::cout << "Uploaded On : " << publishedDocs[i].dateUploaded << '\n';
+            std::cout << "Uploader    : " << publishedDocs[i].uploader << '\n';
+            std::cout << "Status      : " << publishedDocs[i].status << '\n';
+            std::cout << "--------------------------------------------------------------\n";
+        }
         logAuditAction("VIEW_PUBLISHED_DOCS", "MULTI", CURRENT_CITIZEN_USERNAME);
     }
 
@@ -731,6 +857,7 @@ void verifyDocumentIntegrity() {
         std::cout << "\nDocument ID  : " << docId << '\n';
         std::cout << "Stored Hash  : " << hashValue << '\n';
         std::cout << "Computed Hash: " << computedHash << '\n';
+        std::cout << "Note         : Simple classroom hash (not cryptographic).\n";
 
         if (hashValue == computedHash) {
             std::cout << "[+] Verification Result: VALID\n";
@@ -768,6 +895,7 @@ void viewBudgetAllocations() {
     std::getline(file, line); // Skip header.
 
     bool hasBudgetRows = false;
+    double totalBudget = 0.0;
     while (std::getline(file, line)) {
         if (line.empty()) {
             continue;
@@ -781,8 +909,13 @@ void viewBudgetAllocations() {
         std::getline(parser, amount, '|');
 
         hasBudgetRows = true;
+        double parsedAmount = 0.0;
+        std::stringstream amountParser(amount);
+        amountParser >> parsedAmount;
+        totalBudget += parsedAmount;
+
         std::cout << "Category: " << category << '\n';
-        std::cout << "Amount  : " << amount << "\n";
+        std::cout << "Amount  : PHP " << std::fixed << std::setprecision(2) << parsedAmount << "\n";
         std::cout << "--------------------------------------------------------------\n";
     }
 
@@ -790,6 +923,7 @@ void viewBudgetAllocations() {
         std::cout << "\n[!] No budget entries available.\n";
         logAuditAction("VIEW_BUDGETS_EMPTY", "N/A", CURRENT_CITIZEN_USERNAME);
     } else {
+        std::cout << "Total   : PHP " << std::fixed << std::setprecision(2) << totalBudget << "\n";
         logAuditAction("VIEW_BUDGETS", "MULTI", CURRENT_CITIZEN_USERNAME);
     }
 

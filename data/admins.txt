@@ -1,1 +1,2 @@
 adminID|fullName|username|password|role
+A001|System Admin Test|admin_test|admin1234|Super Admin
