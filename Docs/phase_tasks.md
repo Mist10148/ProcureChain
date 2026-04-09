@@ -156,6 +156,8 @@ Notes:
 
 - filters can be combined in one query
 - date range checks enforce valid bounds
+- filter screen now shows available-value suggestions before prompt input
+- recent/available document previews are shown before search/filter actions
 
 #### 6.2 Approval Analytics Dashboard
 
@@ -218,6 +220,16 @@ Implemented architecture:
 - top-level admin command center
 - grouped workspaces (documents, approvals, budget, audit/integrity, account admin)
 - overview dashboard as entry to analytics hub and integrity snapshot
+- role-visible workspace/action menus (unauthorized options are hidden)
+
+#### 6.8 Search Guidance and Input Ergonomics
+
+Implemented behavior:
+
+- document search supports exact ID, ID prefix, and title/category keyword matching
+- search screens show recent or available records before input
+- approval decision screen lists pending document IDs for the current approver
+- audit filtered export shows available action/actor/target/date suggestions before input
 
 #### 6.6 Audit-to-Blockchain Linkage
 
@@ -293,10 +305,10 @@ Still to execute before final defense:
 
 ## Current Priority Queue
 
-1. finalize documentation consistency across README + Docs files
-2. run full role-by-role final regression walkthrough
-3. produce demo artifacts (CSV export and validation screenshots/log snippets)
-4. polish menu prompts/messages for defense presentation
+1. run full role-by-role final regression walkthrough
+2. produce demo artifacts (CSV export and validation screenshots/log snippets)
+3. polish menu prompts/messages for defense presentation
+4. prepare concise commit history for final submission branch
 
 ## Summary of Implementation Position
 

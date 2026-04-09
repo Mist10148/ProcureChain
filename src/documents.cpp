@@ -228,6 +228,136 @@ std::string statusDisplayLabel(const std::string& normalizedStatus) {
     return normalizedStatus;
 }
 
+std::vector<Document> buildRecentDocuments(const std::vector<Document>& docs, std::size_t limit) {
+    std::vector<Document> recent = docs;
+    std::sort(recent.begin(), recent.end(), [](const Document& a, const Document& b) {
+        if (a.dateUploaded != b.dateUploaded) {
+            return a.dateUploaded > b.dateUploaded;
+        }
+        return a.docId > b.docId;
+    });
+
+    if (recent.size() > limit) {
+        recent.resize(limit);
+    }
+
+    return recent;
+}
+
+std::string joinTopKeys(const std::map<std::string, int>& values, std::size_t maxItems) {
+    std::string output;
+    std::size_t count = 0;
+
+    for (std::map<std::string, int>::const_iterator it = values.begin(); it != values.end(); ++it) {
+        if (it->first.empty()) {
+            continue;
+        }
+
+        if (!output.empty()) {
+            output += ", ";
+        }
+
+        output += it->first;
+        count++;
+
+        if (count >= maxItems) {
+            break;
+        }
+    }
+
+    return output.empty() ? "(none)" : output;
+}
+
+void printRecentDocumentHints(const std::vector<Document>& docs, std::size_t limit) {
+    const std::vector<Document> recent = buildRecentDocuments(docs, limit);
+    if (recent.empty()) {
+        return;
+    }
+
+    std::cout << "\n" << ui::bold("Recent/Available Documents") << "\n";
+    const std::vector<std::string> headers = {"ID", "Date", "Status", "Title"};
+    const std::vector<int> widths = {8, 10, 16, 26};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < recent.size(); ++i) {
+        ui::printTableRow({recent[i].docId, recent[i].dateUploaded, recent[i].status, recent[i].title}, widths);
+    }
+
+    ui::printTableFooter(widths);
+}
+
+void printFilterSuggestions(const std::vector<Document>& docs) {
+    std::map<std::string, int> statuses;
+    std::map<std::string, int> categories;
+    std::map<std::string, int> departments;
+    std::map<std::string, int> uploaders;
+    std::map<std::string, int> dates;
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        statuses[docs[i].status] += 1;
+        categories[docs[i].category] += 1;
+        departments[docs[i].department] += 1;
+        uploaders[docs[i].uploader] += 1;
+        dates[docs[i].dateUploaded] += 1;
+    }
+
+    std::cout << "\n" << ui::bold("Filter Suggestions") << "\n";
+    std::cout << "  Status values    : " << joinTopKeys(statuses, 8) << "\n";
+    std::cout << "  Category values  : " << joinTopKeys(categories, 8) << "\n";
+    std::cout << "  Department values: " << joinTopKeys(departments, 8) << "\n";
+    std::cout << "  Uploader values  : " << joinTopKeys(uploaders, 8) << "\n";
+
+    std::vector<Document> recent = buildRecentDocuments(docs, 6);
+    std::map<std::string, int> recentDates;
+    for (std::size_t i = 0; i < recent.size(); ++i) {
+        recentDates[recent[i].dateUploaded] += 1;
+    }
+    std::cout << "  Recent dates     : " << joinTopKeys(recentDates, 6) << "\n";
+    std::cout << "  " << ui::muted("Tip: leave any field blank to ignore it.") << "\n";
+}
+
+bool findExactDocumentById(const std::vector<Document>& docs, const std::string& targetDocId, Document& foundDoc) {
+    const std::string normalizedTarget = toLowerCopy(targetDocId);
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (toLowerCopy(docs[i].docId) == normalizedTarget) {
+            foundDoc = docs[i];
+            return true;
+        }
+    }
+
+    return false;
+}
+
+std::vector<Document> findDocumentSuggestions(const std::vector<Document>& docs, const std::string& token) {
+    std::vector<Document> suggestions;
+    const std::string normalizedToken = toLowerCopy(token);
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        const std::string id = toLowerCopy(docs[i].docId);
+        const std::string title = toLowerCopy(docs[i].title);
+        const std::string category = toLowerCopy(docs[i].category);
+
+        const bool idStartsWith = id.find(normalizedToken) == 0;
+        const bool idContains = id.find(normalizedToken) != std::string::npos;
+        const bool titleContains = title.find(normalizedToken) != std::string::npos;
+        const bool categoryContains = category.find(normalizedToken) != std::string::npos;
+
+        if (idStartsWith || idContains || titleContains || categoryContains) {
+            suggestions.push_back(docs[i]);
+        }
+    }
+
+    std::sort(suggestions.begin(), suggestions.end(), [](const Document& a, const Document& b) {
+        if (a.dateUploaded != b.dateUploaded) {
+            return a.dateUploaded > b.dateUploaded;
+        }
+        return a.docId < b.docId;
+    });
+
+    return suggestions;
+}
+
 void printConsensusLegend() {
     std::cout << "  Consensus Legend: "
               << ui::consensusStatus("approved") << " | "
@@ -561,39 +691,78 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
     clearScreen();
     ui::printSectionTitle("SEARCH DOCUMENT BY ID");
 
-    clearInputBuffer();
-    std::string targetDocId;
-    std::cout << "Enter Document ID: ";
-    std::getline(std::cin, targetDocId);
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
+        logAuditAction("SEARCH_DOC_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
 
-    if (targetDocId.empty()) {
-        std::cout << ui::error("[!] Document ID is required.") << "\n";
+    if (docs.empty()) {
+        std::cout << "\n" << ui::warning("[!] No documents are available for search.") << "\n";
+        logAuditAction("SEARCH_DOC_EMPTY", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    printRecentDocumentHints(docs, 8);
+    std::cout << "\n" << ui::bold("Search Suggestions") << "\n";
+    std::cout << "  - Exact ID (example: D006)\n";
+    std::cout << "  - ID prefix (example: D00)\n";
+    std::cout << "  - Title keyword (example: Contract)\n";
+
+    clearInputBuffer();
+    std::string query;
+    std::cout << "Enter search value: ";
+    std::getline(std::cin, query);
+
+    if (query.empty()) {
+        std::cout << ui::error("[!] Search value is required.") << "\n";
         logAuditAction("SEARCH_DOC_INPUT_ERROR", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
-    std::vector<Document> docs;
-    if (!loadDocuments(docs)) {
-        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
-        logAuditAction("SEARCH_DOC_FAILED", targetDocId, admin.username);
+    Document exact;
+    if (findExactDocumentById(docs, query, exact)) {
+        printDocumentsTable(std::vector<Document>(1, exact), true);
+        logAuditAction("SEARCH_DOC", exact.docId, admin.username);
         waitForEnter();
         return;
     }
 
-    for (size_t i = 0; i < docs.size(); ++i) {
-        if (docs[i].docId != targetDocId) {
-            continue;
-        }
-
-        printDocumentsTable(std::vector<Document>(1, docs[i]), true);
-        logAuditAction("SEARCH_DOC", targetDocId, admin.username);
+    std::vector<Document> suggestions = findDocumentSuggestions(docs, query);
+    if (suggestions.empty()) {
+        std::cout << "\n" << ui::warning("[!] No matching documents found.") << "\n";
+        logAuditAction("SEARCH_DOC_NOT_FOUND", query, admin.username);
         waitForEnter();
         return;
     }
 
-    std::cout << "\n" << ui::warning("[!] Document ID not found.") << "\n";
-    logAuditAction("SEARCH_DOC_NOT_FOUND", targetDocId, admin.username);
+    std::cout << "\n" << ui::info("[i] No exact ID match. Showing related results:") << "\n";
+    printDocumentsTable(suggestions, false);
+
+    std::string selectedDocId;
+    std::cout << "\nEnter exact Document ID from results (blank to cancel): ";
+    std::getline(std::cin, selectedDocId);
+
+    if (selectedDocId.empty()) {
+        logAuditAction("SEARCH_DOC_SUGGESTIONS_VIEW", query, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    Document selected;
+    if (findExactDocumentById(suggestions, selectedDocId, selected)) {
+        printDocumentsTable(std::vector<Document>(1, selected), true);
+        logAuditAction("SEARCH_DOC", selected.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << "\n" << ui::warning("[!] Selected Document ID is not in the suggestions list.") << "\n";
+    logAuditAction("SEARCH_DOC_NOT_FOUND", selectedDocId, admin.username);
     waitForEnter();
 }
 
@@ -615,6 +784,9 @@ void filterDocumentsForAdmin(const Admin& admin) {
         waitForEnter();
         return;
     }
+
+    printRecentDocumentHints(docs, 6);
+    printFilterSuggestions(docs);
 
     clearInputBuffer();
     DocumentFilter filter;

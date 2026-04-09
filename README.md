@@ -5,6 +5,7 @@ ProcureChain is a C++ command-line municipal procurement tracking system.
 It is designed for classroom-level procedural programming and focuses on:
 
 - Role-based access for citizens and administrators
+- Role-visible menus that only show actions available to the logged-in role
 - Procurement document lifecycle tracking
 - Multi-role approval workflow
 - Budget viewing and management
@@ -13,6 +14,7 @@ It is designed for classroom-level procedural programming and focuses on:
 - Governance reporting and account lifecycle administration
 - Admin Command Center with grouped workspaces and analytics hub
 - Compact and full analytics layout modes with optional paged detail tables
+- Guided search/filter prompts with available-value suggestions and recent record previews
 
 The system stores records in text files under the data folder and keeps the implementation modular through separate source files per feature.
 
@@ -42,8 +44,11 @@ High-level process:
   - reset password with generated temporary password
 - Published document viewing for citizens
 - Admin document upload, search, full listing, and status update
+- Search assistance with recent document previews, ID/prefix/title matching, and guided selection
 - Advanced document filters by status/date/category/department/uploader
+- Filter suggestion hints (status/category/department/uploader/date) shown before input
 - Approval routing for Budget Officer and Municipal Administrator
+- Approval decision screen shows the current approver's pending document list before input
 - Approval analytics dashboard
   - rejection rate
   - average decision time
@@ -63,6 +68,7 @@ High-level process:
   - export all
   - export filtered
   - validated date range and safe filename checks
+  - filter-value suggestions shown before filtered export input
 - Simulated blockchain append and validation across 5 node files
 - Audit-to-blockchain linking for blockchain-backed actions
 
@@ -176,7 +182,7 @@ You can also create new citizen and admin accounts from the Sign Up menu.
   - account lifecycle management
 - Logout
 
-Role gates are enforced per action.
+Role gates are enforced per action, and menu options are displayed dynamically so users only see what they are allowed to run.
 
 ## Governance Reporting Highlights
 
@@ -243,6 +249,7 @@ Project planning and implementation docs are in:
 - Docs/context.md
 - Docs/phase_tasks.md
 - Docs/checklist.md
+- Docs/roles.md
 
 ## Important Limitation
 

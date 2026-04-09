@@ -4,17 +4,26 @@
 #include "../include/auth.h"
 #include "../include/ui.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <vector>
 
 namespace {
 // Verification reads stored document rows and recomputes the same hash source
 // fields used during serialization to detect content drift.
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
+
+struct VerificationHint {
+    std::string docId;
+    std::string dateUploaded;
+    std::string status;
+    std::string title;
+};
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     // Constant-time path fallback for documents file reads.
@@ -30,6 +39,74 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
+
+bool loadVerificationHints(std::vector<VerificationHint>& hints) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    hints.clear();
+    std::string line;
+    std::getline(file, line); // Skip header.
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream parser(line);
+        VerificationHint hint;
+        std::getline(parser, hint.docId, '|');
+        std::getline(parser, hint.title, '|');
+
+        std::string category;
+        std::string department;
+        std::getline(parser, category, '|');
+        std::getline(parser, department, '|');
+
+        std::getline(parser, hint.dateUploaded, '|');
+
+        std::string uploader;
+        std::getline(parser, uploader, '|');
+        std::getline(parser, hint.status, '|');
+
+        if (!hint.docId.empty()) {
+            hints.push_back(hint);
+        }
+    }
+
+    return true;
+}
+
+void printVerificationHints(const std::vector<VerificationHint>& hints, std::size_t maxRows) {
+    if (hints.empty()) {
+        return;
+    }
+
+    std::vector<VerificationHint> recent = hints;
+    std::sort(recent.begin(), recent.end(), [](const VerificationHint& a, const VerificationHint& b) {
+        if (a.dateUploaded != b.dateUploaded) {
+            return a.dateUploaded > b.dateUploaded;
+        }
+        return a.docId > b.docId;
+    });
+
+    if (recent.size() > maxRows) {
+        recent.resize(maxRows);
+    }
+
+    std::cout << "\n" << ui::bold("Recent/Available Documents") << "\n";
+    const std::vector<std::string> headers = {"Document ID", "Date", "Status", "Title"};
+    const std::vector<int> widths = {12, 10, 16, 24};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < recent.size(); ++i) {
+        ui::printTableRow({recent[i].docId, recent[i].dateUploaded, recent[i].status, recent[i].title}, widths);
+    }
+
+    ui::printTableFooter(widths);
 }
 } // namespace
 
@@ -52,6 +129,12 @@ void verifyDocumentIntegrity(const std::string& actor) {
     // Worst-case complexity is O(n) over document rows.
     clearScreen();
     ui::printSectionTitle("DOCUMENT INTEGRITY VERIFICATION (ADMIN)");
+
+    std::vector<VerificationHint> hints;
+    if (loadVerificationHints(hints)) {
+        printVerificationHints(hints, 8);
+        std::cout << "  " << ui::muted("Tip: use one of the listed Document IDs for quick verification.") << "\n";
+    }
 
     clearInputBuffer();
     std::string targetDocId;

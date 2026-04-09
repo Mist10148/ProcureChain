@@ -59,6 +59,8 @@ Evidence notes:
 - [x] Upload document record with required metadata.
 - [x] View all documents (admin).
 - [x] Search document by ID.
+- [x] Search screen shows recent/available document hints before input.
+- [x] Search supports guided matching (exact ID, ID prefix, title/category keyword).
 - [x] View published documents (citizen only view).
 - [x] Manual status update path is available (role-gated).
 
@@ -77,6 +79,7 @@ Evidence notes:
 - [x] Filter by department text.
 - [x] Filter by uploader text.
 - [x] Combined criteria query works.
+- [x] Filter screen shows suggested status/category/department/uploader/date values.
 
 ---
 
@@ -147,6 +150,7 @@ Evidence notes:
 - [x] Export filtered audit rows to CSV.
 - [x] Filters for export include date/action/actor/target matching.
 - [x] Export input rejects invalid date ranges and unsafe filenames.
+- [x] Filtered export screen shows available filter suggestions before input.
 
 ### 6.3 Traceability Enhancements
 
@@ -181,6 +185,7 @@ Evidence notes:
 - [x] Budget Officer and Municipal Administrator can handle approvals.
 - [x] Super Admin-only actions are restricted correctly.
 - [x] Citizens cannot access admin operations.
+- [x] Admin menus show only role-available actions/workspaces in normal flows.
 
 ---
 
@@ -200,6 +205,7 @@ Evidence notes:
 - [x] Phase tasks document tracks real implementation progress.
 - [x] Checklist document aligned with current code behavior.
 - [x] Docs folder contains all planning/coordination files.
+- [x] Roles SOP document exists and matches implementation (Docs/roles.md).
 
 ---
 

@@ -33,6 +33,9 @@ Latest analytics and UX updates:
 - optional paged detail table flow inside analytics reports
 - adaptive chart and bar sizing based on selected layout mode
 - hardened audit export input checks for date range and filename safety
+- role-visible admin menus now hide unauthorized actions/workspaces
+- search/filter screens now show recent/available suggestions before input
+- document search supports exact ID, ID prefix, and keyword-guided matching
 
 ## Development Constraints
 
@@ -358,6 +361,14 @@ Can:
 - Account Administration Workspace
     - account lifecycle management
 - Logout
+
+Note: menus are role-visible. Users only see actions available to their role.
+
+## Roles SOP Reference
+
+Detailed role-by-role SOP is documented in:
+
+- Docs/roles.md
 
 ## Important Boundaries
 

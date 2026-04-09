@@ -243,6 +243,63 @@ std::string chooseExportPath(const std::string& fileName) {
     return "";
 }
 
+std::string joinTopKeys(const std::map<std::string, int>& values, std::size_t maxItems) {
+    std::string out;
+    std::size_t shown = 0;
+
+    for (std::map<std::string, int>::const_iterator it = values.begin(); it != values.end(); ++it) {
+        if (it->first.empty()) {
+            continue;
+        }
+
+        if (!out.empty()) {
+            out += ", ";
+        }
+
+        out += it->first;
+        shown++;
+
+        if (shown >= maxItems) {
+            break;
+        }
+    }
+
+    return out.empty() ? "(none)" : out;
+}
+
+void printAuditFilterSuggestions(const std::vector<AuditEntry>& entries) {
+    std::map<std::string, int> actionCounts;
+    std::map<std::string, int> actorCounts;
+    std::map<std::string, int> targetCounts;
+    std::string oldestDate;
+    std::string newestDate;
+
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        actionCounts[entries[i].action] += 1;
+        actorCounts[entries[i].actor] += 1;
+        targetCounts[entries[i].target] += 1;
+
+        const std::string day = entries[i].timestamp.size() >= 10 ? entries[i].timestamp.substr(0, 10) : "";
+        if (!day.empty()) {
+            if (oldestDate.empty() || day < oldestDate) {
+                oldestDate = day;
+            }
+            if (newestDate.empty() || day > newestDate) {
+                newestDate = day;
+            }
+        }
+    }
+
+    std::cout << "\n" << ui::bold("Filter Suggestions") << "\n";
+    std::cout << "  Actions : " << joinTopKeys(actionCounts, 8) << "\n";
+    std::cout << "  Actors  : " << joinTopKeys(actorCounts, 8) << "\n";
+    std::cout << "  Targets : " << joinTopKeys(targetCounts, 8) << "\n";
+    if (!oldestDate.empty() && !newestDate.empty()) {
+        std::cout << "  Date span: " << oldestDate << " to " << newestDate << "\n";
+    }
+    std::cout << "  " << ui::muted("Tip: leave filters blank to keep more rows.") << "\n";
+}
+
 void writeCsvRows(const std::string& outputPath, const std::vector<AuditEntry>& rows) {
     // Linear write pipeline: O(n) where n is exported row count.
     std::ofstream out(outputPath);
@@ -337,6 +394,8 @@ void exportAuditTrailCsv(const std::string& actor) {
     std::vector<AuditEntry> filtered = entries;
     if (choice == 2) {
         clearInputBuffer();
+
+        printAuditFilterSuggestions(filtered);
 
         std::string fromDate;
         std::string toDate;

@@ -258,7 +258,7 @@ void printKpiTiles(const std::vector<std::pair<std::string, std::string>>& tiles
 
         for (std::size_t i = start; i < end; ++i) {
             std::string label = truncate(tiles[i].first, static_cast<std::size_t>(tileWidth - 2));
-            std::cout << "| " << std::left << std::setw(tileWidth - 2) << muted(label) << "|";
+            std::cout << "| " << std::left << std::setw(tileWidth - 2) << label << "|";
             if (i + 1 < end) {
                 std::cout << "  ";
             }
@@ -267,7 +267,7 @@ void printKpiTiles(const std::vector<std::pair<std::string, std::string>>& tiles
 
         for (std::size_t i = start; i < end; ++i) {
             std::string value = truncate(tiles[i].second, static_cast<std::size_t>(tileWidth - 2));
-            std::cout << "| " << std::left << std::setw(tileWidth - 2) << bold(value) << "|";
+            std::cout << "| " << std::left << std::setw(tileWidth - 2) << value << "|";
             if (i + 1 < end) {
                 std::cout << "  ";
             }

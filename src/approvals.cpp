@@ -249,6 +249,33 @@ void printConsensusLegend() {
               << ui::consensusStatus("pending") << "\n";
 }
 
+bool printPendingDecisionHints(const std::vector<Approval>& rows, const std::string& approverUsername) {
+    std::vector<Approval> pendingRows;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].approverUsername == approverUsername && rows[i].status == "pending") {
+            pendingRows.push_back(rows[i]);
+        }
+    }
+
+    if (pendingRows.empty()) {
+        std::cout << "\n" << ui::warning("[!] You have no pending approvals right now.") << "\n";
+        return false;
+    }
+
+    std::cout << "\n" << ui::bold("Available Pending Decisions") << "\n";
+    const std::vector<std::string> headers = {"Document ID", "Role", "Created"};
+    const std::vector<int> widths = {12, 24, 19};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < pendingRows.size(); ++i) {
+        ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].createdAt}, widths);
+    }
+
+    ui::printTableFooter(widths);
+    std::cout << "  " << ui::muted("Tip: enter one of the listed Document IDs.") << "\n";
+    return true;
+}
+
 bool parseTimestamp(const std::string& text, std::time_t& outTime) {
     // Parses timestamps in the fixed "YYYY-MM-DD HH:MM:SS" format.
     if (text.empty()) {
@@ -276,6 +303,20 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     ui::printSectionTitle(approve ? "APPROVE DOCUMENT" : "REJECT DOCUMENT");
     printConsensusLegend();
 
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
+        std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
+        logAuditAction("APPROVAL_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!printPendingDecisionHints(rows, admin.username)) {
+        logAuditAction("APPROVAL_NOT_FOUND", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
     clearInputBuffer();
     std::string targetDocId;
     std::cout << "Enter Document ID: ";
@@ -284,14 +325,6 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     if (targetDocId.empty()) {
         std::cout << ui::error("[!] Document ID is required.") << "\n";
         logAuditAction("APPROVAL_INPUT_ERROR", "N/A", admin.username);
-        waitForEnter();
-        return;
-    }
-
-    std::vector<Approval> rows;
-    if (!loadApprovals(rows)) {
-        std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
-        logAuditAction("APPROVAL_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
     }

@@ -18,6 +18,7 @@ Implemented in code right now:
 - admin document management (upload/view/search/update status)
 - admin command center with grouped workspaces and overview dashboard
 - advanced document filters (status, date/date range, category, department, uploader)
+- guided search/filter suggestions with recent available records shown before input
 - approvals module (request creation + pending view + approve/reject with document status transitions)
 - analytics hub with approval, budget, audit, integrity, and executive views
 - compact/full layout mode toggle for analytics rendering
@@ -37,6 +38,7 @@ Implemented in code right now:
   - reset password with generated temporary password
 - modular folder-aligned source/header split is in place
 - admin sub-role permission enforcement is active in dashboard actions
+- admin menus are role-visible (users only see actions/workspaces available to their role)
 
 Still pending against full desired scope:
 
@@ -156,6 +158,7 @@ Acceptance Criteria:
 - Citizens can create accounts in users.txt
 - Admins can create and use admin accounts in admins.txt
 - System routes users to role-correct menu
+- Role-visible menus hide inaccessible admin actions in normal navigation flows
 
 ### Feature 2: User Account Lifecycle Administration
 
@@ -204,6 +207,7 @@ Acceptance Criteria:
 - Range validation rejects fromDate greater than toDate
 - Empty result set displays clear no-match message
 - Filter actions are logged in audit trail
+- Filter/search screens show recent available values/suggestions before input
 
 ### Feature 5: Unanimous Consensus Approval Protocol
 
@@ -339,6 +343,10 @@ Acceptance Criteria:
   - lifecycle controls
 - Logout
 
+Note:
+
+- workspace and action menus are role-visible; unauthorized choices are hidden.
+
 ## 9. Data Storage Design
 
 ### admins.txt
@@ -428,3 +436,4 @@ ProcureChain is a beginner-friendly C++ CLI municipal procurement document track
 - budget visibility and variance
 - audit logs and exports
 - a simulated blockchain using 3 text-based ledger files
+- a simulated blockchain using 5 text-based ledger files

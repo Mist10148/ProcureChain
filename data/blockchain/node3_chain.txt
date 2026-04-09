@@ -12,3 +12,5 @@ index|timestamp|action|documentID|actor|previousHash|currentHash
 11|2026-04-09 02:44:16|UPLOAD|D006|proc_admin|2B2031CC|B646DEA0
 12|2026-04-09 02:50:46|APPROVE|D005|budget_admin|B646DEA0|C8070624
 13|2026-04-09 02:55:54|REJECT|D006|budget_admin|C8070624|F2DDBC07
+14|2026-04-09 17:47:18|BUDGET_UPDATE|Infrastructure Procurement|budget_admin|F2DDBC07|A5ED6AAF
+15|2026-04-09 17:47:50|BUDGET_ADD|personal gain|budget_admin|A5ED6AAF|FD0B440B
