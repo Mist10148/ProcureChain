@@ -56,8 +56,10 @@ Evidence notes:
 
 ### 3.1 Core Document Actions
 
-- [x] Upload document record with title/category/description and source file import path.
-- [x] Upload import accepts only pdf/docx/csv/txt.
+- [x] Upload document record with title/category/description.
+- [x] Document category supports guided choices plus Other/custom input.
+- [x] Source file upload is optional (metadata-only upload allowed).
+- [x] Optional upload import accepts only pdf/docx/csv/txt.
 - [x] Upload success output shows SHA-256 hash.
 - [x] View all documents (admin).
 - [x] Search document by ID.
@@ -75,6 +77,7 @@ Evidence notes:
 - [x] description field stored in document rows.
 - [x] file metadata stored (fileName, fileType, filePath, fileSizeBytes).
 - [x] SHA-256 hash value stored and used for verification workflow.
+- [x] Budget input is handled in Budget Workspace, not in document upload prompts.
 
 ### 3.3 Advanced Document Filtering
 
@@ -130,6 +133,7 @@ Evidence notes:
 ### 5.1 Budget CRUD-like Controls
 
 - [x] Submit budget entry with fiscal year/category/allocated amount/description.
+- [x] Budget category supports guided choices plus Other/custom input.
 - [x] Budget approval rows are created for required approver roles.
 - [x] Budget Officer can approve/reject assigned budget entries.
 - [x] Municipal Administrator can approve/reject assigned budget entries.

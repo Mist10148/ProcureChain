@@ -1,8 +1,10 @@
 category|amount
-Office Supplies|50000.00
-Infrastructure Procurement|3000000.00
-Health Supplies|100000.00
-Educational Materials|75000.00
-Miscellaneous Procurement|30000.00
-Matrix Testing Budget|2345.00
-personal gain|100000000.00
+Infrastructure Procurement|5000000.00
+Health Supplies|1800000.00
+Educational Materials|1200000.00
+Office Operations|600000.00
+Disaster Response|900000.00
+IT and Digital Services|850000.00
+Community Programs|700000.00
+Environmental Services|500000.00
+Procurement Compliance and Training|120000.00

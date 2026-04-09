@@ -119,12 +119,13 @@ Procurement Officer is the document preparation and submission role.
 ### Standard Procedure
 
 1. Login as Procurement Officer.
-2. Upload document with title, category, description, and source file path.
-3. Confirm successful import and SHA-256 hash output after upload.
-4. Confirm approval requests were generated automatically.
-5. Use search/filter tools to monitor document progress.
-6. Review audit trail if needed.
-7. Logout.
+2. Upload document with title, category, and description.
+3. Pick category from guided options (or use Other for custom value).
+4. Provide file path only when available (optional upload) and confirm SHA-256 output.
+5. Confirm approval requests were generated automatically.
+6. Use search/filter tools to monitor document progress.
+7. Review audit trail if needed.
+8. Logout.
 
 ## Budget Officer SOP
 
@@ -158,8 +159,9 @@ Budget Officer is an approver and budget-domain operator.
 2. Open Approvals Workspace and review pending decisions shown on screen.
 3. Approve/reject documents based on review outcome.
 4. Use Budget Workspace to submit and process budget entries.
-5. Check approval analytics for governance performance.
-6. Logout.
+5. Pick budget category from guided options (or use Other for custom value).
+6. Check approval analytics for governance performance.
+7. Logout.
 
 ## Municipal Administrator SOP
 

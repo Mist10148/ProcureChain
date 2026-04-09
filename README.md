@@ -26,16 +26,17 @@ ProcureChain helps a municipality track procurement documents from upload to pub
 
 High-level process:
 
-1. A procurement admin uploads a document with title, category, description, and source file path.
-2. Approval requests are created for required approver roles.
-3. Approvers approve or reject.
-4. Document is published only when unanimous required approvals are completed.
-5. Citizens can view published documents.
-6. Citizens can search a published document and verify its SHA-256 hash against blockchain records.
-7. Every important action is written to a hash-linked audit log.
-8. Key events are appended to five blockchain node files and can be validated for consistency.
-8. Governance dashboards provide approval, budget, audit, integrity, and executive analytics.
-9. Admin navigation is grouped into overview plus role-gated workspaces.
+1. A procurement admin uploads a document with title, category, description, and an optional source file path.
+2. Category is selected from guided choices, with Other for custom input.
+3. Approval requests are created for required approver roles.
+4. Approvers approve or reject.
+5. Document is published only when unanimous required approvals are completed.
+6. Citizens can view published documents.
+7. Citizens can search a published document and verify its SHA-256 hash against blockchain records.
+8. Every important action is written to a hash-linked audit log.
+9. Key events are appended to five blockchain node files and can be validated for consistency.
+10. Governance dashboards provide approval, budget, audit, integrity, and executive analytics.
+11. Admin navigation is grouped into overview plus role-gated workspaces.
 
 ## Main Features
 
@@ -49,7 +50,10 @@ High-level process:
 - Citizen published document search by document ID
 - Citizen published document hash verification (stored hash, recomputed hash, blockchain presence)
 - Admin document upload, search, full listing, and status update
-- Document upload includes mandatory title, category, description, and source file path
+- Document upload requires title, category, and description
+- Source file upload/import is optional (pdf/docx/csv/txt); metadata-only upload is supported
+- Category input uses guided choices with an Other option for custom categories
+- Document input no longer collects budget allocation fields
 - Allowed import extensions: pdf, docx, csv, txt
 - Uploaded document file is copied to data/documents and SHA-256 hash is displayed after success
 - Search assistance with recent document previews, ID/prefix/title matching, and guided selection
@@ -71,6 +75,7 @@ High-level process:
   - compact/full layout toggle
   - optional paged detail tables
 - Budget submission and consensus approvals
+- Budget and documents are handled in separate workspaces, but both use unanimous consensus publication logic
 - Budget entry fields: fiscal year, category, allocated amount, description
 - Budget publish gate: budget becomes publicly visible only after unanimous approvals
 - Published budget summary and budget variance reporting
@@ -115,6 +120,7 @@ Open PowerShell in the project folder and run:
 - On startup, the system ensures required files and headers exist.
 - Existing legacy rows are loaded with backward-compatible parsing.
 - Writes persist the current expanded schema.
+- When seed files are empty, realistic mock records are generated for documents, approvals, budgets, budget consensus, and hash-linked audit rows.
 
 ## Quick Login Accounts
 
@@ -140,6 +146,8 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 ### data/documents.txt
 
   docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
+
+Note: budgetCategory and amount are retained for compatibility/analytics, but budget inputs are managed in Budget Workspace.
 
 ### data/approvals.txt
 

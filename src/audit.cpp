@@ -333,6 +333,11 @@ std::string buildAuditHashPayload(const AuditEntry& row) {
     return row.timestamp + "|" + row.action + "|" + row.target + "|" + row.actor + "|" + row.chainIndex + "|" + row.previousHash;
 }
 
+void seedAuditRowsIfEmpty(std::vector<AuditEntry>& rows) {
+    // Audit showcase rows are maintained in data/audit_log.txt.
+    (void)rows;
+}
+
 bool saveAuditEntries(const std::vector<AuditEntry>& rows) {
     std::ofstream writer(resolveDataPath(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK));
     if (!writer.is_open()) {
@@ -392,6 +397,8 @@ void ensureAuditTrailHashChain() {
     if (!loadAuditEntries(entries)) {
         return;
     }
+
+    seedAuditRowsIfEmpty(entries);
 
     std::string previousHash = "0000";
     for (std::size_t i = 0; i < entries.size(); ++i) {

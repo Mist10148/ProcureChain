@@ -1,2 +1,7 @@
 entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
-BA001|NEW|2026|Testing Category|12345.00|Consensus submission test|2026-04-10 02:06:13|budget_admin|pending_approval|
+BA001|NEW|2026|Infrastructure Procurement|750000.00|Road rehabilitation phase 2 allocation|2026-02-01 09:05:00|budget_admin|published|2026-02-03 15:20:00
+BA002|NEW|2026|Health Supplies|420000.00|Rural health unit medicine replenishment|2026-02-20 08:40:00|budget_admin|published|2026-02-22 16:10:00
+BA003|ADJUSTMENT|2026|Office Operations|85000.00|Fuel and logistics adjustment for inspection teams|2026-03-05 10:15:00|budget_admin|approved|2026-03-07 14:05:00
+BA004|NEW|2026|Disaster Response|250000.00|Emergency stockpile top-up before typhoon season|2026-03-18 09:35:00|budget_admin|rejected|2026-03-20 13:30:00
+BA005|NEW|2026|Community Programs|160000.00|Skills training hubs equipment package|2026-04-02 10:05:00|budget_admin|pending_approval|
+BA006|NEW|2026|Procurement Compliance and Training|90000.00|Procurement law and audit readiness training cycle|2026-04-09 11:45:00|budget_admin|pending_approval|

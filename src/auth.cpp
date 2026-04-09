@@ -567,8 +567,8 @@ void ensureUserDataFileExists() {
     migrateAccountFilesIfNeeded();
     ensureSeedAdminAccounts();
     ensureBudgetConsensusFilesExist();
-    ensureApprovalsDataFileExists();
     ensureSampleDocumentsPresent();
+    ensureApprovalsDataFileExists();
     ensureAuditTrailHashChain();
 
     std::ifstream budgetCheck;
@@ -581,11 +581,11 @@ void ensureUserDataFileExists() {
 
         if (createBudgetFile.is_open()) {
             createBudgetFile << "category|amount\n";
-            createBudgetFile << "Office Supplies|50000\n";
-            createBudgetFile << "Infrastructure Procurement|200000\n";
-            createBudgetFile << "Health Supplies|100000\n";
-            createBudgetFile << "Educational Materials|75000\n";
-            createBudgetFile << "Miscellaneous Procurement|30000\n";
+            createBudgetFile << "Infrastructure Procurement|450000\n";
+            createBudgetFile << "Health Supplies|180000\n";
+            createBudgetFile << "Educational Materials|160000\n";
+            createBudgetFile << "Office Supplies|95000\n";
+            createBudgetFile << "Emergency Procurement|120000\n";
         }
     }
 }

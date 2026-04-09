@@ -190,9 +190,12 @@ The system stores procurement records and supports integrity verification.
 
 Acceptance Criteria:
 
-- Document upload requires title, category, description, and source file path
+- Document upload requires title, category, and description
+- Source file upload path is optional (metadata-only uploads are allowed)
 - Source file import accepts pdf/docx/csv/txt and copies files into local storage
+- Category selection uses guided choices with Other for custom category input
 - Document records store ID/title/category/description/department/date/uploader/status/hash/file metadata/budget fields
+- Document upload does not collect budget allocation inputs; budget allocation is handled in Budget Workspace
 - Verification compares recomputed SHA-256 hash with stored hash
 - Citizen verification checks whether hash evidence is present in blockchain records
 - System displays VALID/POTENTIALLY TAMPERED/CHAIN-MISSING outcomes
@@ -263,6 +266,7 @@ Acceptance Criteria:
 
 - budget_entries.txt stores submitted budget entries
 - budget_approvals.txt stores unanimous approval workflow per entry
+- budget category selection supports guided choices and custom Other input
 - Budget Officer and Municipal Administrator can approve/reject pending entries
 - Any rejection blocks publication
 - Full non-rejected decisions publish the budget entry into budgets.txt
@@ -432,6 +436,9 @@ Maintainability:
 
 Reliability:
 - system should safely load legacy rows and persist expanded schema rows
+
+Demo Readiness:
+- when seed files are empty, realistic mock datasets are auto-generated for analytics and consensus walkthroughs
 
 ## 12. Success Criteria
 

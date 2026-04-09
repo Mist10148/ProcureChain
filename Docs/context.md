@@ -27,14 +27,18 @@ Newly implemented governance/reporting slice:
 
 Latest integrity and consensus implementation updates:
 
-- document upload now requires title, category, description, and source file import path
+- document upload now requires title, category, and description
+- source file import path is optional (metadata-only upload is supported)
 - allowed import extensions are pdf, docx, csv, txt
+- document category uses guided choices with Other for custom input
 - uploaded files are copied into data/documents and hashed with SHA-256
 - citizen can search a published document and verify stored/recomputed hash with blockchain presence checks
 - budget workflow moved to consensus entries with unanimous approval before publication
+- budget input is separated from document upload and handled in Budget Workspace
 - budget entries use dedicated files (budget_entries.txt and budget_approvals.txt)
 - audit log now has hash-linked fields previousHash and currentHash
 - blockchain explorer view provides node-level integrity and per-block consensus/tamper diagnostics
+- empty seed files are auto-populated with realistic mock records for analytics/demo flows
 
 Latest analytics and UX updates:
 
@@ -147,6 +151,10 @@ Document fields currently stored:
 - file size bytes
 - budget category
 - amount
+
+Input behavior note:
+
+- budget category and amount remain in schema for compatibility and analytics, but they are no longer prompted in document upload.
 
 ### 4. Advanced Document Filtering
 

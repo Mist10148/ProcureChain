@@ -458,6 +458,51 @@ std::string trimCopy(const std::string& value) {
     return value.substr(start, end - start + 1);
 }
 
+std::vector<std::string> buildDocumentCategoryChoices() {
+    std::vector<std::string> choices;
+    choices.push_back("Purchase Request");
+    choices.push_back("Purchase Order");
+    choices.push_back("Contract");
+    choices.push_back("Canvass");
+    choices.push_back("Notice of Award");
+    choices.push_back("Inspection/Acceptance");
+    return choices;
+}
+
+bool promptCategoryChoice(const std::vector<std::string>& choices, std::string& outCategory) {
+    std::cout << "\n" << ui::bold("Choose Document Category") << "\n";
+    for (std::size_t i = 0; i < choices.size(); ++i) {
+        std::cout << "  [" << (i + 1) << "] " << choices[i] << "\n";
+    }
+    std::cout << "  [" << (choices.size() + 1) << "] Other (type custom category)\n";
+    std::cout << "  Enter choice: ";
+
+    int selected = 0;
+    std::cin >> selected;
+    if (std::cin.fail()) {
+        std::cin.clear();
+        clearInputBuffer();
+        return false;
+    }
+
+    if (selected >= 1 && static_cast<std::size_t>(selected) <= choices.size()) {
+        outCategory = choices[static_cast<std::size_t>(selected - 1)];
+        clearInputBuffer();
+        return true;
+    }
+
+    if (selected == static_cast<int>(choices.size()) + 1) {
+        clearInputBuffer();
+        std::cout << "  Custom category: ";
+        std::getline(std::cin, outCategory);
+        outCategory = trimCopy(outCategory);
+        return !outCategory.empty();
+    }
+
+    clearInputBuffer();
+    return false;
+}
+
 bool isSafeExportFileName(const std::string& fileName) {
     if (fileName.empty() || fileName.size() > 80) {
         return false;
@@ -600,9 +645,6 @@ std::vector<ApprovalChainRow> loadApprovalChainRows(const std::string& docId) {
 }
 
 void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain) {
-    std::ostringstream amountOut;
-    amountOut << std::fixed << std::setprecision(2) << doc.amount;
-
     std::ostringstream sizeOut;
     sizeOut << doc.fileSizeBytes;
 
@@ -622,8 +664,7 @@ void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain) {
     ui::printTableRow({"File Type", doc.fileType.empty() ? "(legacy/no import)" : doc.fileType}, widths);
     ui::printTableRow({"File Path", doc.filePath.empty() ? "(legacy/no import)" : doc.filePath}, widths);
     ui::printTableRow({"File Size (bytes)", sizeOut.str()}, widths);
-    ui::printTableRow({"Budget Category", doc.budgetCategory}, widths);
-    ui::printTableRow({"Allocated Amount", amountOut.str()}, widths);
+    ui::printTableRow({"Budget Link", "Managed in Budget Workspace (separate consensus flow)"}, widths);
     ui::printTableFooter(widths);
 
     if (!includeApprovalChain) {
@@ -745,9 +786,9 @@ bool writeDocumentsTxtReport(const std::string& outputPath,
         out << "  Date Uploaded   : " << rows[i].dateUploaded << "\n";
         out << "  Uploader        : " << rows[i].uploader << "\n";
         out << "  Status          : " << rows[i].status << "\n";
-        out << "  Budget Category : " << rows[i].budgetCategory << "\n";
-        out << "  Amount (PHP)    : " << amountOut.str() << "\n";
         out << "  Hash Value      : " << rows[i].hashValue << "\n";
+        out << "  File Metadata   : " << (rows[i].fileName.empty() ? "(none)" : rows[i].fileName) << "\n";
+        out << "  Budget Link     : managed in budget workspace\n";
         out << "--------------------------------------------------------------\n";
     }
 
@@ -761,18 +802,15 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
     std::vector<std::string> headers;
 
     if (includeHashValue) {
-        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash", "BudgetCat", "Amount"};
-        widths = {6, 18, 14, 14, 10, 12, 14, 9, 12, 8};
+        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash"};
+        widths = {6, 22, 16, 16, 10, 12, 16, 12};
     } else {
-        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "BudgetCat", "Amount"};
-        widths = {6, 20, 14, 14, 10, 12, 14, 12, 8};
+        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status"};
+        widths = {6, 24, 16, 16, 10, 12, 16};
     }
 
     ui::printTableHeader(headers, widths);
     for (size_t i = 0; i < docs.size(); ++i) {
-        std::ostringstream amountOut;
-        amountOut << std::fixed << std::setprecision(2) << docs[i].amount;
-
         if (includeHashValue) {
             ui::printTableRow({docs[i].docId,
                                docs[i].title,
@@ -781,9 +819,7 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
                                docs[i].dateUploaded,
                                docs[i].uploader,
                                docs[i].status,
-                               docs[i].hashValue,
-                               docs[i].budgetCategory,
-                               amountOut.str()},
+                               docs[i].hashValue},
                               widths);
         } else {
             ui::printTableRow({docs[i].docId,
@@ -792,9 +828,7 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
                                docs[i].department,
                                docs[i].dateUploaded,
                                docs[i].uploader,
-                               docs[i].status,
-                               docs[i].budgetCategory,
-                               amountOut.str()},
+                               docs[i].status},
                               widths);
         }
     }
@@ -896,7 +930,8 @@ std::string generateNextDocumentId() {
 }
 
 void ensureSampleDocumentsPresent() {
-    // Seeds representative rows only when the document file is empty.
+    // Showcase data is maintained in data/documents.txt, not hardcoded here.
+    // This pass only normalizes hashes/serialization for existing rows.
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
         return;
@@ -907,65 +942,7 @@ void ensureSampleDocumentsPresent() {
             docs[i].hashValue = computeDocumentRecordHash(docs[i]);
         }
         saveDocuments(docs);
-        return;
     }
-
-    Document row1;
-    row1.docId = "PR001";
-    row1.title = "Office Supplies Purchase";
-    row1.category = "Purchase Request";
-    row1.description = "Legacy seeded record";
-    row1.department = "Procurement Office";
-    row1.dateUploaded = "2026-04-09";
-    row1.uploader = "proc_admin";
-    row1.status = "published";
-    row1.fileName = "";
-    row1.fileType = "legacy";
-    row1.filePath = "";
-    row1.fileSizeBytes = 0;
-    row1.budgetCategory = "Office Supplies";
-    row1.amount = 5000.0;
-    row1.hashValue = computeDocumentRecordHash(row1);
-
-    Document row2;
-    row2.docId = "PO002";
-    row2.title = "Road Repair Contract";
-    row2.category = "Purchase Order";
-    row2.description = "Legacy seeded record";
-    row2.department = "Engineering Department";
-    row2.dateUploaded = "2026-04-09";
-    row2.uploader = "proc_admin";
-    row2.status = "published";
-    row2.fileName = "";
-    row2.fileType = "legacy";
-    row2.filePath = "";
-    row2.fileSizeBytes = 0;
-    row2.budgetCategory = "Infrastructure Procurement";
-    row2.amount = 45000.0;
-    row2.hashValue = computeDocumentRecordHash(row2);
-
-    Document row3;
-    row3.docId = "CA003";
-    row3.title = "Clinic Equipment Acquisition";
-    row3.category = "Contract";
-    row3.description = "Legacy seeded record";
-    row3.department = "Health Office";
-    row3.dateUploaded = "2026-04-09";
-    row3.uploader = "proc_admin";
-    row3.status = "pending_approval";
-    row3.fileName = "";
-    row3.fileType = "legacy";
-    row3.filePath = "";
-    row3.fileSizeBytes = 0;
-    row3.budgetCategory = "Health Supplies";
-    row3.amount = 25000.0;
-    row3.hashValue = computeDocumentRecordHash(row3);
-
-    std::vector<Document> seedRows;
-    seedRows.push_back(row1);
-    seedRows.push_back(row2);
-    seedRows.push_back(row3);
-    saveDocuments(seedRows);
 }
 
 void showPublishedDocuments(const std::string& actor) {
@@ -1068,37 +1045,31 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     Document doc;
     std::cout << "Title      : ";
     std::getline(std::cin, doc.title);
-    std::cout << "Category   : ";
-    std::getline(std::cin, doc.category);
+    if (!promptCategoryChoice(buildDocumentCategoryChoices(), doc.category)) {
+        std::cout << ui::error("[!] Invalid category selection.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
     std::cout << "Description: ";
     std::getline(std::cin, doc.description);
-    std::cout << "Source file path (.pdf/.docx/.csv/.txt): ";
+    std::cout << "Source file path (optional): ";
     std::string sourceFilePath;
     std::getline(std::cin, sourceFilePath);
-    std::cout << "Budget Category (blank = same as Category): ";
-    std::getline(std::cin, doc.budgetCategory);
 
-    if (doc.title.empty() || doc.category.empty() || doc.description.empty() || sourceFilePath.empty()) {
-        std::cout << ui::error("[!] Title, category, description, and source file path are required.") << "\n";
+    // Keep upload guidance visible so users know exact accepted formats.
+    std::cout << "  " << ui::muted("Tip: leave blank for metadata-only upload, or paste a full path to .pdf/.docx/.csv/.txt") << "\n";
+
+    if (doc.title.empty() || doc.category.empty() || doc.description.empty()) {
+        std::cout << ui::error("[!] Title, category, and description are required.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
-    if (doc.budgetCategory.empty()) {
-        doc.budgetCategory = doc.category;
-    }
-
-    std::cout << "Document Amount (PHP): ";
-    std::cin >> doc.amount;
-    if (std::cin.fail() || doc.amount < 0.0) {
-        std::cin.clear();
-        clearInputBuffer();
-        std::cout << ui::error("[!] Invalid document amount.") << "\n";
-        logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
-        waitForEnter();
-        return;
-    }
+    // Budget allocation is handled in the dedicated budget workspace.
+    doc.budgetCategory = "N/A";
+    doc.amount = 0.0;
 
     doc.docId = generateNextDocumentId();
     doc.dateUploaded = getCurrentTimestamp().substr(0, 10);
@@ -1106,33 +1077,42 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     doc.status = "pending_approval";
     doc.department = "General";
 
-    const std::string uploadDirectory = resolveUploadDirectory();
-    if (uploadDirectory.empty()) {
-        std::cout << ui::error("[!] Unable to prepare document storage folder.") << "\n";
-        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
-        waitForEnter();
-        return;
-    }
+    sourceFilePath = trimCopy(sourceFilePath);
+    if (!sourceFilePath.empty()) {
+        const std::string uploadDirectory = resolveUploadDirectory();
+        if (uploadDirectory.empty()) {
+            std::cout << ui::error("[!] Unable to prepare document storage folder.") << "\n";
+            logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+            waitForEnter();
+            return;
+        }
 
-    if (!copyImportedFileToStorage(sourceFilePath,
-                                   uploadDirectory,
-                                   doc.docId,
-                                   doc.filePath,
-                                   doc.fileName,
-                                   doc.fileType,
-                                   doc.fileSizeBytes)) {
-        std::cout << ui::error("[!] File import failed. Ensure the path exists and extension is one of: pdf, docx, csv, txt.") << "\n";
-        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
-        waitForEnter();
-        return;
-    }
+        if (!copyImportedFileToStorage(sourceFilePath,
+                                       uploadDirectory,
+                                       doc.docId,
+                                       doc.filePath,
+                                       doc.fileName,
+                                       doc.fileType,
+                                       doc.fileSizeBytes)) {
+            std::cout << ui::error("[!] File import failed. Ensure the path exists and extension is one of: pdf, docx, csv, txt.") << "\n";
+            logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+            waitForEnter();
+            return;
+        }
 
-    doc.hashValue = computeFileHashSha256(doc.filePath);
-    if (doc.hashValue.empty()) {
-        std::cout << ui::error("[!] Unable to compute SHA-256 hash for the imported file.") << "\n";
-        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
-        waitForEnter();
-        return;
+        doc.hashValue = computeFileHashSha256(doc.filePath);
+        if (doc.hashValue.empty()) {
+            std::cout << ui::error("[!] Unable to compute SHA-256 hash for the imported file.") << "\n";
+            logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+            waitForEnter();
+            return;
+        }
+    } else {
+        doc.fileName = "";
+        doc.fileType = "manual";
+        doc.filePath = "";
+        doc.fileSizeBytes = 0;
+        doc.hashValue = computeDocumentRecordHash(doc);
     }
 
     std::vector<Document> docs;
@@ -1154,9 +1134,13 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     logAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex);
     std::cout << "\n" << ui::success("[+] Document uploaded successfully.") << "\n";
     std::cout << "  Document ID : " << doc.docId << "\n";
-    std::cout << "  File Name   : " << doc.fileName << "\n";
-    std::cout << "  File Type   : " << doc.fileType << "\n";
-    std::cout << "  File Size   : " << doc.fileSizeBytes << " bytes\n";
+    if (doc.fileType == "manual") {
+        std::cout << "  File Import : skipped (metadata-only upload)\n";
+    } else {
+        std::cout << "  File Name   : " << doc.fileName << "\n";
+        std::cout << "  File Type   : " << doc.fileType << "\n";
+        std::cout << "  File Size   : " << doc.fileSizeBytes << " bytes\n";
+    }
     std::cout << "  SHA-256 Hash: " << doc.hashValue << "\n";
     waitForEnter();
 }

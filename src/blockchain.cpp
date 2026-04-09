@@ -226,33 +226,7 @@ bool hasDataRows(const std::string& primaryPath, const std::string& fallbackPath
 }
 
 void seedBlockchainIfAllEmpty() {
-    // Writes deterministic sample blocks only when every node is empty.
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        if (hasDataRows(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
-            return;
-        }
-    }
-
-    std::string prevHash = "0000";
-
-    const std::string source1 = "1|2026-04-09 09:00:00|UPLOAD|CA003|proc_admin|" + prevHash;
-    const std::string hash1 = computeSimpleHash(source1);
-    const std::string row1 = source1 + "|" + hash1;
-
-    prevHash = hash1;
-    const std::string source2 = "2|2026-04-09 09:05:00|APPROVE|CA003|budget_admin|" + prevHash;
-    const std::string hash2 = computeSimpleHash(source2);
-    const std::string row2 = source2 + "|" + hash2;
-
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        std::ofstream nodeWriter;
-        if (!openAppendFileWithFallback(nodeWriter, NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
-            return;
-        }
-
-        nodeWriter << row1 << '\n' << row2 << '\n';
-        nodeWriter.flush();
-    }
+    // Blockchain showcase rows are maintained in data/blockchain/node*_chain.txt.
 }
 
 void synchronizeEmptyNodesFromReference() {

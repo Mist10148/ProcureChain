@@ -12,6 +12,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -134,6 +135,17 @@ std::string toLowerCopy(std::string value) {
         }
     }
     return value;
+}
+
+std::string trimCopy(const std::string& value) {
+    const std::string whitespace = " \t\r\n";
+    const std::size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const std::size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
 }
 
 bool isBudgetApproverRole(const Admin& admin) {
@@ -432,6 +444,92 @@ bool isFiscalYearValid(const std::string& fiscalYear) {
     return true;
 }
 
+std::vector<std::string> buildBudgetCategoryChoices() {
+    std::set<std::string> categories;
+    categories.insert("Infrastructure Procurement");
+    categories.insert("Health Supplies");
+    categories.insert("Educational Materials");
+    categories.insert("Office Supplies");
+    categories.insert("Emergency Procurement");
+
+    std::vector<BudgetRow> existing;
+    if (loadBudgetRows(existing)) {
+        for (std::size_t i = 0; i < existing.size(); ++i) {
+            if (!existing[i].category.empty()) {
+                categories.insert(existing[i].category);
+            }
+        }
+    }
+
+    return std::vector<std::string>(categories.begin(), categories.end());
+}
+
+bool promptBudgetCategoryChoice(std::string& outCategory) {
+    const std::vector<std::string> choices = buildBudgetCategoryChoices();
+    if (choices.empty()) {
+        return false;
+    }
+
+    std::cout << "\n" << ui::bold("Choose Budget Category") << "\n";
+    for (std::size_t i = 0; i < choices.size(); ++i) {
+        std::cout << "  [" << (i + 1) << "] " << choices[i] << "\n";
+    }
+    std::cout << "  [" << (choices.size() + 1) << "] Other (type custom category)\n";
+    std::cout << "  Enter choice: ";
+
+    int selected = 0;
+    std::cin >> selected;
+    if (std::cin.fail()) {
+        std::cin.clear();
+        clearInputBuffer();
+        return false;
+    }
+
+    if (selected >= 1 && static_cast<std::size_t>(selected) <= choices.size()) {
+        outCategory = choices[static_cast<std::size_t>(selected - 1)];
+        clearInputBuffer();
+        return true;
+    }
+
+    if (selected == static_cast<int>(choices.size()) + 1) {
+        clearInputBuffer();
+        std::cout << "  Custom category: ";
+        std::getline(std::cin, outCategory);
+        outCategory = trimCopy(outCategory);
+        return !outCategory.empty();
+    }
+
+    clearInputBuffer();
+    return false;
+}
+
+void seedBudgetsIfEmpty() {
+    // Budget showcase rows should come from data/budgets.txt.
+    std::vector<BudgetRow> rows;
+    if (!loadBudgetRows(rows)) {
+        return;
+    }
+
+    saveBudgetRows(rows);
+}
+
+void seedBudgetConsensusIfEmpty() {
+    // Budget entry and approval showcase rows should come from data/*.txt files.
+    std::vector<BudgetEntry> entries;
+    if (!loadBudgetEntries(entries)) {
+        return;
+    }
+
+    saveBudgetEntries(entries);
+
+    std::vector<BudgetApproval> approvals;
+    if (!loadBudgetApprovals(approvals)) {
+        return;
+    }
+
+    saveBudgetApprovals(approvals);
+}
+
 void printBudgetTable(const std::vector<BudgetRow>& rows) {
     const std::vector<std::string> headers = {"Category", "Amount (PHP)", "Share"};
     const std::vector<int> widths = {30, 14, 8};
@@ -566,8 +664,15 @@ void submitBudgetEntry(const Admin& admin, const std::string& entryType) {
 
     std::cout << "Fiscal Year (YYYY): ";
     std::getline(std::cin, fiscalYear);
-    std::cout << "Category           : ";
-    std::getline(std::cin, category);
+
+    // Category list keeps data more consistent while still allowing custom entries.
+    if (!promptBudgetCategoryChoice(category)) {
+        std::cout << ui::error("[!] Invalid category selection.") << "\n";
+        logAuditAction("BUDGET_ENTRY_SUBMIT_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
     std::cout << "Allocated Amount   : ";
     std::cin >> allocatedAmount;
 
@@ -852,6 +957,9 @@ void ensureBudgetConsensusFilesExist() {
     if (loadBudgetApprovals(approvals)) {
         saveBudgetApprovals(approvals);
     }
+
+    seedBudgetsIfEmpty();
+    seedBudgetConsensusIfEmpty();
 }
 
 void viewBudgetAllocations(const std::string& actor) {

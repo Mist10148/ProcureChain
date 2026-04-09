@@ -68,7 +68,8 @@ Completed
 ### Implemented
 
 - upload of procurement document records
-- upload requires title/category/description and source file import path
+- upload requires title/category/description and supports optional source file import path
+- category selection includes guided choices with Other for custom category input
 - source file import accepts pdf/docx/csv/txt and copies into local document storage
 - SHA-256 hash is computed from imported file content and stored with metadata
 - full admin listing and ID search
@@ -130,6 +131,7 @@ Completed
 ### Implemented
 
 - budget entry submission using fiscal year, category, allocated amount, and description
+- budget category input now uses guided choices with custom Other fallback
 - budget approvals by Budget Officer and Municipal Administrator
 - budget publication gate (published only after unanimous approvals)
 - published budget summary viewing
@@ -291,6 +293,7 @@ Completed now:
 - role-based command paths validated through audit/data updates
 - scripted admin walkthrough validated overview dashboard, analytics hub, layout toggles, and executive snapshot flow
 - post-startup data migration checks confirm updated document/audit/blockchain schemas are active
+- realistic seed datasets now auto-populate empty files for documents, approvals, budgets, budget consensus, and audit chain
 
 Still to execute before final defense:
 

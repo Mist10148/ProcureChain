@@ -22,8 +22,6 @@ const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
-const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
-const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     // Constant-time path fallback: try primary, then fallback.
@@ -166,72 +164,12 @@ std::string findAdminUsernameByRole(const std::string& targetRole) {
     return "";
 }
 
-std::string findPendingDocumentIdForSeeding() {
-    // Picks the first pending document to attach initial approval rows.
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        return "";
-    }
-
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        const std::vector<std::string> tokens = splitPipe(line);
-        const std::string docId = tokens.size() > 0 ? tokens[0] : "";
-        const std::string status = tokens.size() > 6 ? tokens[6] : "";
-
-        if (status == "pending_approval" || status == "pending") {
-            return docId;
-        }
-    }
-
-    return "";
-}
-
 void seedApprovalsIfEmpty() {
-    // Seeds only when no approval rows exist; this keeps startup idempotent.
+    // Mock approval scenarios are maintained in data/approvals.txt.
+    // When empty, keep the file normalized and let runtime operations populate it.
     std::vector<Approval> rows;
     if (!loadApprovals(rows)) {
         return;
-    }
-
-    if (!rows.empty()) {
-        saveApprovals(rows);
-        return;
-    }
-
-    std::string docId = findPendingDocumentIdForSeeding();
-    if (docId.empty()) {
-        docId = "CA003";
-    }
-
-    const std::string budgetOfficer = findAdminUsernameByRole("Budget Officer");
-    const std::string municipalAdmin = findAdminUsernameByRole("Municipal Administrator");
-    const std::string now = getCurrentTimestamp();
-
-    if (!budgetOfficer.empty()) {
-        Approval a;
-        a.docId = docId;
-        a.approverUsername = budgetOfficer;
-        a.role = "Budget Officer";
-        a.status = "pending";
-        a.createdAt = now;
-        rows.push_back(a);
-    }
-
-    if (!municipalAdmin.empty()) {
-        Approval a;
-        a.docId = docId;
-        a.approverUsername = municipalAdmin;
-        a.role = "Municipal Administrator";
-        a.status = "pending";
-        a.createdAt = now;
-        rows.push_back(a);
     }
 
     saveApprovals(rows);
