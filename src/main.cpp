@@ -29,6 +29,12 @@ bool canViewPendingApprovals(const Admin& admin) {
            isRole(admin, "Super Admin");
 }
 
+bool canViewApprovalAnalytics(const Admin& admin) {
+    return isRole(admin, "Budget Officer") ||
+           isRole(admin, "Municipal Administrator") ||
+           isRole(admin, "Super Admin");
+}
+
 bool canApproveOrReject(const Admin& admin) {
     return isRole(admin, "Budget Officer") || isRole(admin, "Municipal Administrator");
 }
@@ -46,6 +52,10 @@ bool canValidateBlockchain(const Admin& admin) {
 }
 
 bool canVerifyDocumentIntegrity(const Admin& admin) {
+    return isRole(admin, "Super Admin");
+}
+
+bool canManageAccounts(const Admin& admin) {
     return isRole(admin, "Super Admin");
 }
 
@@ -119,6 +129,9 @@ void printAdminMenu(const Admin& admin) {
     std::cout << "  " << ui::info("[9]") << " View Audit Trail\n";
     std::cout << "  " << ui::info("[10]") << " Validate Blockchain\n";
     std::cout << "  " << ui::info("[11]") << " Verify Document Integrity\n";
+    std::cout << "  " << ui::info("[12]") << " Advanced Document Filters\n";
+    std::cout << "  " << ui::info("[13]") << " Approval Analytics Dashboard\n";
+    std::cout << "  " << ui::info("[14]") << " Account Lifecycle Management\n";
     std::cout << "  " << ui::info("[0]") << " Logout\n";
     std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
@@ -166,7 +179,7 @@ void runAdminDashboard(const Admin& admin) {
         clearScreen();
         printAdminMenu(admin);
 
-        if (!readBoundedMenuChoice(adminChoice, 0, 11)) {
+        if (!readBoundedMenuChoice(adminChoice, 0, 14)) {
             std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
@@ -236,6 +249,23 @@ void runAdminDashboard(const Admin& admin) {
                     break;
                 }
                 verifyDocumentIntegrity(admin.username);
+                break;
+            case 12:
+                filterDocumentsForAdmin(admin);
+                break;
+            case 13:
+                if (!canViewApprovalAnalytics(admin)) {
+                    denyAdminAction(admin, "VIEW_APPROVAL_ANALYTICS");
+                    break;
+                }
+                viewApprovalAnalyticsDashboard(admin);
+                break;
+            case 14:
+                if (!canManageAccounts(admin)) {
+                    denyAdminAction(admin, "ACCOUNT_LIFECYCLE");
+                    break;
+                }
+                manageAccountLifecycleForAdmin(admin);
                 break;
             case 0:
                 logAuditAction("ADMIN_LOGOUT", admin.adminId, admin.username);

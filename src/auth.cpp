@@ -5,7 +5,9 @@
 #include "../include/documents.h"
 #include "../include/ui.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -37,6 +39,18 @@ struct SeedAdminAccount {
     std::string role;
 };
 
+std::vector<std::string> splitPipe(const std::string& line) {
+    std::vector<std::string> tokens;
+    std::stringstream parser(line);
+    std::string token;
+
+    while (std::getline(parser, token, '|')) {
+        tokens.push_back(token);
+    }
+
+    return tokens;
+}
+
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     file.open(primaryPath);
     if (file.is_open()) {
@@ -59,8 +73,21 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
     return file.is_open();
 }
 
+std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
+    std::ifstream primary(primaryPath);
+    if (primary.is_open()) {
+        return primaryPath;
+    }
+
+    std::ifstream fallback(fallbackPath);
+    if (fallback.is_open()) {
+        return fallbackPath;
+    }
+
+    return primaryPath;
+}
+
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
-    // If the file already exists (primary or fallback), keep existing data untouched.
     std::ifstream checkFile;
     if (openInputFileWithFallback(checkFile, primaryPath, fallbackPath)) {
         return true;
@@ -82,6 +109,166 @@ bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fal
     return false;
 }
 
+std::string normalizeStatus(const std::string& value) {
+    if (value == "inactive" || value == "locked") {
+        return value;
+    }
+
+    return "active";
+}
+
+User parseUserTokens(const std::vector<std::string>& tokens) {
+    User row;
+    row.userId = tokens.size() > 0 ? tokens[0] : "";
+    row.fullName = tokens.size() > 1 ? tokens[1] : "";
+    row.username = tokens.size() > 2 ? tokens[2] : "";
+    row.password = tokens.size() > 3 ? tokens[3] : "";
+    row.status = normalizeStatus(tokens.size() > 4 ? tokens[4] : "active");
+    row.updatedAt = tokens.size() > 5 ? tokens[5] : "";
+
+    if (row.updatedAt.empty()) {
+        row.updatedAt = getCurrentTimestamp();
+    }
+
+    return row;
+}
+
+Admin parseAdminTokens(const std::vector<std::string>& tokens) {
+    Admin row;
+    row.adminId = tokens.size() > 0 ? tokens[0] : "";
+    row.fullName = tokens.size() > 1 ? tokens[1] : "";
+    row.username = tokens.size() > 2 ? tokens[2] : "";
+    row.password = tokens.size() > 3 ? tokens[3] : "";
+    row.role = tokens.size() > 4 ? tokens[4] : "";
+    row.status = normalizeStatus(tokens.size() > 5 ? tokens[5] : "active");
+    row.updatedAt = tokens.size() > 6 ? tokens[6] : "";
+
+    if (row.updatedAt.empty()) {
+        row.updatedAt = getCurrentTimestamp();
+    }
+
+    return row;
+}
+
+bool loadUsers(std::vector<User>& users) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    users.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("userID|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        User parsed = parseUserTokens(tokens);
+        if (parsed.userId.empty() || parsed.username.empty()) {
+            continue;
+        }
+
+        users.push_back(parsed);
+    }
+
+    return true;
+}
+
+bool loadAdmins(std::vector<Admin>& admins) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    admins.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("adminID|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        Admin parsed = parseAdminTokens(tokens);
+        if (parsed.adminId.empty() || parsed.username.empty()) {
+            continue;
+        }
+
+        admins.push_back(parsed);
+    }
+
+    return true;
+}
+
+bool saveUsers(const std::vector<User>& users) {
+    std::ofstream writer(resolveDataPath(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "userID|fullName|username|password|status|updatedAt\n";
+    for (size_t i = 0; i < users.size(); ++i) {
+        writer << users[i].userId << '|'
+               << users[i].fullName << '|'
+               << users[i].username << '|'
+               << users[i].password << '|'
+               << normalizeStatus(users[i].status) << '|'
+               << users[i].updatedAt << '\n';
+    }
+    writer.flush();
+    return true;
+}
+
+bool saveAdmins(const std::vector<Admin>& admins) {
+    std::ofstream writer(resolveDataPath(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "adminID|fullName|username|password|role|status|updatedAt\n";
+    for (size_t i = 0; i < admins.size(); ++i) {
+        writer << admins[i].adminId << '|'
+               << admins[i].fullName << '|'
+               << admins[i].username << '|'
+               << admins[i].password << '|'
+               << admins[i].role << '|'
+               << normalizeStatus(admins[i].status) << '|'
+               << admins[i].updatedAt << '\n';
+    }
+    writer.flush();
+    return true;
+}
+
+void migrateAccountFilesIfNeeded() {
+    std::vector<User> users;
+    if (loadUsers(users)) {
+        saveUsers(users);
+    }
+
+    std::vector<Admin> admins;
+    if (loadAdmins(admins)) {
+        saveAdmins(admins);
+    }
+}
+
 bool containsUsername(const std::vector<std::string>& usernames, const std::string& username) {
     for (size_t i = 0; i < usernames.size(); ++i) {
         if (usernames[i] == username) {
@@ -93,39 +280,16 @@ bool containsUsername(const std::vector<std::string>& usernames, const std::stri
 }
 
 void ensureSeedAdminAccounts() {
-    std::ifstream reader;
-    if (!openInputFileWithFallback(reader, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+    std::vector<Admin> admins;
+    if (!loadAdmins(admins)) {
         return;
     }
 
     std::vector<std::string> existingUsernames;
-    std::string line;
-    std::getline(reader, line); // Skip header.
-
-    while (std::getline(reader, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        std::string adminId;
-        std::string fullName;
-        std::string username;
-        std::string password;
-        std::string role;
-
-        std::getline(parser, adminId, '|');
-        std::getline(parser, fullName, '|');
-        std::getline(parser, username, '|');
-        std::getline(parser, password, '|');
-        std::getline(parser, role, '|');
-
-        if (!username.empty()) {
-            existingUsernames.push_back(username);
-        }
+    for (size_t i = 0; i < admins.size(); ++i) {
+        existingUsernames.push_back(admins[i].username);
     }
 
-    // Default classroom/demo accounts are appended only when missing by username.
     const SeedAdminAccount seeds[] = {
         {"System Admin Test", "admin_test", "admin1234", "Super Admin"},
         {"Procurement Officer Demo", "proc_admin", "proc1234", "Procurement Officer"},
@@ -133,41 +297,33 @@ void ensureSeedAdminAccounts() {
         {"Municipal Admin Demo", "mun_admin", "mun1234", "Municipal Administrator"}
     };
 
-    bool hasMissingSeed = false;
-    for (size_t i = 0; i < (sizeof(seeds) / sizeof(seeds[0])); ++i) {
-        if (!containsUsername(existingUsernames, seeds[i].username)) {
-            hasMissingSeed = true;
-            break;
-        }
-    }
-
-    if (!hasMissingSeed) {
-        return;
-    }
-
-    int nextNumber = static_cast<int>(existingUsernames.size()) + 1;
-
-    std::ofstream writer;
-    if (!openAppendFileWithFallback(writer, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
-        return;
-    }
+    int nextNumber = static_cast<int>(admins.size()) + 1;
+    bool changed = false;
 
     for (size_t i = 0; i < (sizeof(seeds) / sizeof(seeds[0])); ++i) {
         if (containsUsername(existingUsernames, seeds[i].username)) {
             continue;
         }
 
+        Admin newAdmin;
         std::ostringstream idBuilder;
         idBuilder << 'A' << std::setw(3) << std::setfill('0') << nextNumber;
-        nextNumber++;
+        newAdmin.adminId = idBuilder.str();
+        newAdmin.fullName = seeds[i].fullName;
+        newAdmin.username = seeds[i].username;
+        newAdmin.password = seeds[i].password;
+        newAdmin.role = seeds[i].role;
+        newAdmin.status = "active";
+        newAdmin.updatedAt = getCurrentTimestamp();
 
-        writer << idBuilder.str() << '|'
-               << seeds[i].fullName << '|'
-               << seeds[i].username << '|'
-               << seeds[i].password << '|'
-               << seeds[i].role << '\n';
+        admins.push_back(newAdmin);
+        nextNumber++;
+        changed = true;
     }
-    writer.flush();
+
+    if (changed) {
+        saveAdmins(admins);
+    }
 }
 
 void clearInputBuffer() {
@@ -180,41 +336,32 @@ void printAuthPageHeader(const std::string& title) {
 }
 
 bool hasValidAccountInput(const std::string& fullName, const std::string& username, const std::string& password) {
-    // Keep all account field checks centralized so signup paths enforce the same rules.
     if (fullName.empty() || username.empty()) {
         std::cout << ui::warning("[!] Full name and username are required.") << "\n";
         return false;
     }
 
     if (fullName.size() > MAX_FULLNAME_LENGTH) {
-        std::cout << ui::warning("[!] Full name is too long (max ")
-                  << MAX_FULLNAME_LENGTH
-                  << ui::warning(" characters).")
-                  << "\n";
+        std::cout << ui::warning("[!] Full name is too long (max ") << MAX_FULLNAME_LENGTH
+                  << ui::warning(" characters).") << "\n";
         return false;
     }
 
     if (username.size() > MAX_USERNAME_LENGTH) {
-        std::cout << ui::warning("[!] Username is too long (max ")
-                  << MAX_USERNAME_LENGTH
-                  << ui::warning(" characters).")
-                  << "\n";
+        std::cout << ui::warning("[!] Username is too long (max ") << MAX_USERNAME_LENGTH
+                  << ui::warning(" characters).") << "\n";
         return false;
     }
 
     if (password.size() < MIN_PASSWORD_LENGTH) {
-        std::cout << ui::warning("[!] Password must be at least ")
-                  << MIN_PASSWORD_LENGTH
-                  << ui::warning(" characters.")
-                  << "\n";
+        std::cout << ui::warning("[!] Password must be at least ") << MIN_PASSWORD_LENGTH
+                  << ui::warning(" characters.") << "\n";
         return false;
     }
 
     if (password.size() > MAX_PASSWORD_LENGTH) {
-        std::cout << ui::warning("[!] Password is too long (max ")
-                  << MAX_PASSWORD_LENGTH
-                  << ui::warning(" characters).")
-                  << "\n";
+        std::cout << ui::warning("[!] Password is too long (max ") << MAX_PASSWORD_LENGTH
+                  << ui::warning(" characters).") << "\n";
         return false;
     }
 
@@ -235,6 +382,140 @@ std::string getAdminRoleByChoice(int choice) {
             return "";
     }
 }
+
+std::string generateTemporaryPassword() {
+    static bool seeded = false;
+    if (!seeded) {
+        std::srand(static_cast<unsigned int>(std::time(NULL)));
+        seeded = true;
+    }
+
+    const std::string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    std::string out;
+    const int desiredLength = 10;
+
+    for (int i = 0; i < desiredLength; ++i) {
+        const int idx = std::rand() % static_cast<int>(alphabet.size());
+        out.push_back(alphabet[static_cast<size_t>(idx)]);
+    }
+
+    return out;
+}
+
+void printAccountLifecycleTable(const std::vector<User>& users, const std::vector<Admin>& admins) {
+    const std::vector<std::string> headers = {"Type", "ID", "Username", "Role/Name", "Status", "Updated"};
+    const std::vector<int> widths = {8, 6, 16, 24, 10, 19};
+
+    ui::printTableHeader(headers, widths);
+
+    for (size_t i = 0; i < users.size(); ++i) {
+        ui::printTableRow(
+            {"Citizen", users[i].userId, users[i].username, users[i].fullName, users[i].status, users[i].updatedAt},
+            widths);
+    }
+
+    for (size_t i = 0; i < admins.size(); ++i) {
+        ui::printTableRow(
+            {"Admin", admins[i].adminId, admins[i].username, admins[i].role, admins[i].status, admins[i].updatedAt},
+            widths);
+    }
+
+    ui::printTableFooter(widths);
+}
+
+bool updateCitizenStatus(const std::string& username, const std::string& newStatus) {
+    std::vector<User> users;
+    if (!loadUsers(users)) {
+        return false;
+    }
+
+    bool updated = false;
+    for (size_t i = 0; i < users.size(); ++i) {
+        if (users[i].username == username) {
+            users[i].status = normalizeStatus(newStatus);
+            users[i].updatedAt = getCurrentTimestamp();
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        return false;
+    }
+
+    return saveUsers(users);
+}
+
+bool updateAdminStatus(const std::string& username, const std::string& newStatus) {
+    std::vector<Admin> admins;
+    if (!loadAdmins(admins)) {
+        return false;
+    }
+
+    bool updated = false;
+    for (size_t i = 0; i < admins.size(); ++i) {
+        if (admins[i].username == username) {
+            admins[i].status = normalizeStatus(newStatus);
+            admins[i].updatedAt = getCurrentTimestamp();
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        return false;
+    }
+
+    return saveAdmins(admins);
+}
+
+bool resetCitizenPassword(const std::string& username, std::string& tempPassword) {
+    std::vector<User> users;
+    if (!loadUsers(users)) {
+        return false;
+    }
+
+    bool updated = false;
+    for (size_t i = 0; i < users.size(); ++i) {
+        if (users[i].username == username) {
+            tempPassword = generateTemporaryPassword();
+            users[i].password = tempPassword;
+            users[i].updatedAt = getCurrentTimestamp();
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        return false;
+    }
+
+    return saveUsers(users);
+}
+
+bool resetAdminPassword(const std::string& username, std::string& tempPassword) {
+    std::vector<Admin> admins;
+    if (!loadAdmins(admins)) {
+        return false;
+    }
+
+    bool updated = false;
+    for (size_t i = 0; i < admins.size(); ++i) {
+        if (admins[i].username == username) {
+            tempPassword = generateTemporaryPassword();
+            admins[i].password = tempPassword;
+            admins[i].updatedAt = getCurrentTimestamp();
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        return false;
+    }
+
+    return saveAdmins(admins);
+}
 } // namespace
 
 void clearScreen() {
@@ -248,13 +529,13 @@ void waitForEnter() {
 }
 
 void ensureUserDataFileExists() {
-    // Initialize required files first, then seed baseline records for a usable first run.
-    ensureFileWithHeader(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK, "userID|fullName|username|password");
-    ensureFileWithHeader(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK, "adminID|fullName|username|password|role");
-    ensureFileWithHeader(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK, "docID|title|category|department|dateUploaded|uploader|status|hashValue");
+    ensureFileWithHeader(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK, "userID|fullName|username|password|status|updatedAt");
+    ensureFileWithHeader(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK, "adminID|fullName|username|password|role|status|updatedAt");
+    ensureFileWithHeader(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK, "docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount");
     ensureFileWithHeader(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK, "category|amount");
-    ensureFileWithHeader(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK, "timestamp|action|targetID|actor");
+    ensureFileWithHeader(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK, "timestamp|action|targetID|actor|chainIndex");
 
+    migrateAccountFilesIfNeeded();
     ensureSeedAdminAccounts();
     ensureApprovalsDataFileExists();
     ensureSampleDocumentsPresent();
@@ -279,22 +560,12 @@ void ensureUserDataFileExists() {
 }
 
 int countExistingUsers() {
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
+    std::vector<User> users;
+    if (!loadUsers(users)) {
         return 0;
     }
 
-    std::string line;
-    int count = 0;
-    std::getline(file, line); // Skip header.
-
-    while (std::getline(file, line)) {
-        if (!line.empty()) {
-            count++;
-        }
-    }
-
-    return count;
+    return static_cast<int>(users.size());
 }
 
 std::string generateNextUserId() {
@@ -305,22 +576,12 @@ std::string generateNextUserId() {
 }
 
 int countExistingAdmins() {
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+    std::vector<Admin> admins;
+    if (!loadAdmins(admins)) {
         return 0;
     }
 
-    std::string line;
-    int count = 0;
-    std::getline(file, line); // Skip header.
-
-    while (std::getline(file, line)) {
-        if (!line.empty()) {
-            count++;
-        }
-    }
-
-    return count;
+    return static_cast<int>(admins.size());
 }
 
 std::string generateNextAdminId() {
@@ -331,62 +592,21 @@ std::string generateNextAdminId() {
 }
 
 bool isUsernameTaken(const std::string& username) {
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
-        return false;
-    }
-
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        std::string userId;
-        std::string fullName;
-        std::string currentUsername;
-        std::string password;
-
-        std::getline(parser, userId, '|');
-        std::getline(parser, fullName, '|');
-        std::getline(parser, currentUsername, '|');
-        std::getline(parser, password, '|');
-
-        if (currentUsername == username) {
-            return true;
+    std::vector<User> users;
+    if (loadUsers(users)) {
+        for (size_t i = 0; i < users.size(); ++i) {
+            if (users[i].username == username) {
+                return true;
+            }
         }
     }
 
-    std::ifstream adminFile;
-    if (!openInputFileWithFallback(adminFile, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
-        return false;
-    }
-
-    std::getline(adminFile, line); // Skip header.
-
-    while (std::getline(adminFile, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        std::string adminId;
-        std::string fullName;
-        std::string currentUsername;
-        std::string password;
-        std::string role;
-
-        std::getline(parser, adminId, '|');
-        std::getline(parser, fullName, '|');
-        std::getline(parser, currentUsername, '|');
-        std::getline(parser, password, '|');
-        std::getline(parser, role, '|');
-
-        if (currentUsername == username) {
-            return true;
+    std::vector<Admin> admins;
+    if (loadAdmins(admins)) {
+        for (size_t i = 0; i < admins.size(); ++i) {
+            if (admins[i].username == username) {
+                return true;
+            }
         }
     }
 
@@ -417,18 +637,17 @@ bool signUpCitizen() {
     }
 
     newUser.userId = generateNextUserId();
+    newUser.status = "active";
+    newUser.updatedAt = getCurrentTimestamp();
 
-    std::ofstream file;
-    if (!openAppendFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
+    std::vector<User> users;
+    loadUsers(users);
+    users.push_back(newUser);
+
+    if (!saveUsers(users)) {
         std::cout << ui::error("[!] Failed to save user account.") << "\n";
         return false;
     }
-
-    file << newUser.userId << '|'
-         << newUser.fullName << '|'
-         << newUser.username << '|'
-         << newUser.password << '\n';
-    file.flush();
 
     logAuditAction("SIGNUP_CITIZEN", newUser.userId, newUser.username);
     std::cout << ui::success("[+] Account created successfully. Your User ID is ") << newUser.userId << ".\n";
@@ -470,7 +689,7 @@ bool signUpAdmin() {
     std::cin >> roleChoice;
     if (std::cin.fail()) {
         std::cin.clear();
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        clearInputBuffer();
         std::cout << ui::warning("[!] Invalid role input.") << "\n";
         return false;
     }
@@ -482,19 +701,17 @@ bool signUpAdmin() {
     }
 
     newAdmin.adminId = generateNextAdminId();
+    newAdmin.status = "active";
+    newAdmin.updatedAt = getCurrentTimestamp();
 
-    std::ofstream file;
-    if (!openAppendFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+    std::vector<Admin> admins;
+    loadAdmins(admins);
+    admins.push_back(newAdmin);
+
+    if (!saveAdmins(admins)) {
         std::cout << ui::error("[!] Failed to save admin account.") << "\n";
         return false;
     }
-
-    file << newAdmin.adminId << '|'
-         << newAdmin.fullName << '|'
-         << newAdmin.username << '|'
-         << newAdmin.password << '|'
-         << newAdmin.role << '\n';
-    file.flush();
 
     logAuditAction("SIGNUP_ADMIN", newAdmin.adminId, newAdmin.username);
     std::cout << ui::success("[+] Admin account created successfully. Your Admin ID is ") << newAdmin.adminId << ".\n";
@@ -516,7 +733,7 @@ void signUpAccount() {
 
     if (std::cin.fail()) {
         std::cin.clear();
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        clearInputBuffer();
         std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
         return;
     }
@@ -554,40 +771,27 @@ bool loginCitizen(User& loggedInUser) {
         return false;
     }
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
+    std::vector<User> users;
+    if (!loadUsers(users)) {
         std::cout << ui::error("[!] Unable to open user account records.") << "\n";
         return false;
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    while (std::getline(file, line)) {
-        if (line.empty()) {
+    for (size_t i = 0; i < users.size(); ++i) {
+        if (users[i].username != username || users[i].password != password) {
             continue;
         }
 
-        std::stringstream parser(line);
-        std::string userId;
-        std::string fullName;
-        std::string currentUsername;
-        std::string currentPassword;
-
-        std::getline(parser, userId, '|');
-        std::getline(parser, fullName, '|');
-        std::getline(parser, currentUsername, '|');
-        std::getline(parser, currentPassword, '|');
-
-        if (currentUsername == username && currentPassword == password) {
-            loggedInUser.userId = userId;
-            loggedInUser.fullName = fullName;
-            loggedInUser.username = currentUsername;
-            loggedInUser.password = currentPassword;
-            logAuditAction("LOGIN_SUCCESS", userId, currentUsername);
-            std::cout << ui::success("[+] Welcome, ") << fullName << " (" << userId << ").\n";
-            return true;
+        if (users[i].status != "active") {
+            logAuditAction("LOGIN_BLOCKED_INACTIVE", users[i].userId, username);
+            std::cout << ui::error("[!] Account is inactive. Contact Super Admin.") << "\n";
+            return false;
         }
+
+        loggedInUser = users[i];
+        logAuditAction("LOGIN_SUCCESS", users[i].userId, username);
+        std::cout << ui::success("[+] Welcome, ") << users[i].fullName << " (" << users[i].userId << ").\n";
+        return true;
     }
 
     logAuditAction("LOGIN_FAILED", "N/A", username);
@@ -618,44 +822,29 @@ bool loginAdmin(Admin& loggedInAdmin) {
         return false;
     }
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+    std::vector<Admin> admins;
+    if (!loadAdmins(admins)) {
         std::cout << ui::error("[!] Unable to open admin account records.") << "\n";
         logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username);
         return false;
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    while (std::getline(file, line)) {
-        if (line.empty()) {
+    for (size_t i = 0; i < admins.size(); ++i) {
+        if (admins[i].username != username || admins[i].password != password) {
             continue;
         }
 
-        std::stringstream parser(line);
-        std::string adminId;
-        std::string fullName;
-        std::string currentUsername;
-        std::string currentPassword;
-        std::string role;
-
-        std::getline(parser, adminId, '|');
-        std::getline(parser, fullName, '|');
-        std::getline(parser, currentUsername, '|');
-        std::getline(parser, currentPassword, '|');
-        std::getline(parser, role, '|');
-
-        if (currentUsername == username && currentPassword == password) {
-            loggedInAdmin.adminId = adminId;
-            loggedInAdmin.fullName = fullName;
-            loggedInAdmin.username = currentUsername;
-            loggedInAdmin.password = currentPassword;
-            loggedInAdmin.role = role;
-            logAuditAction("ADMIN_LOGIN_SUCCESS", adminId, currentUsername);
-            std::cout << ui::success("[+] Welcome, ") << fullName << " (" << adminId << ") - " << role << ".\n";
-            return true;
+        if (admins[i].status != "active") {
+            logAuditAction("ADMIN_LOGIN_BLOCKED_INACTIVE", admins[i].adminId, username);
+            std::cout << ui::error("[!] Account is inactive. Contact Super Admin.") << "\n";
+            return false;
         }
+
+        loggedInAdmin = admins[i];
+        logAuditAction("ADMIN_LOGIN_SUCCESS", admins[i].adminId, username);
+        std::cout << ui::success("[+] Welcome, ") << admins[i].fullName
+                  << " (" << admins[i].adminId << ") - " << admins[i].role << ".\n";
+        return true;
     }
 
     logAuditAction("ADMIN_LOGIN_FAILED", "N/A", username);
@@ -666,4 +855,132 @@ bool loginAdmin(Admin& loggedInAdmin) {
 bool loginAdmin() {
     Admin tempAdmin;
     return loginAdmin(tempAdmin);
+}
+
+void manageAccountLifecycleForAdmin(const Admin& admin) {
+    if (admin.role != "Super Admin") {
+        std::cout << ui::error("[!] Access denied. Super Admin only.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    int choice = -1;
+
+    do {
+        clearScreen();
+        ui::printSectionTitle("ACCOUNT LIFECYCLE MANAGEMENT");
+        std::cout << "  " << ui::info("[1]") << " List all accounts\n";
+        std::cout << "  " << ui::info("[2]") << " Deactivate account\n";
+        std::cout << "  " << ui::info("[3]") << " Reactivate account\n";
+        std::cout << "  " << ui::info("[4]") << " Reset account password\n";
+        std::cout << "  " << ui::info("[0]") << " Back to Admin Dashboard\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        std::cin >> choice;
+        if (std::cin.fail()) {
+            std::cin.clear();
+            clearInputBuffer();
+            std::cout << ui::warning("[!] Invalid menu input.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 1) {
+            std::vector<User> users;
+            std::vector<Admin> admins;
+            if (!loadUsers(users) || !loadAdmins(admins)) {
+                std::cout << ui::error("[!] Unable to load account data.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            printAccountLifecycleTable(users, admins);
+            logAuditAction("ACCOUNT_LIST_VIEW", "MULTI", admin.username);
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 2 || choice == 3 || choice == 4) {
+            clearInputBuffer();
+            std::cout << "Target type: " << ui::info("[1] Citizen") << "  " << ui::info("[2] Admin") << "\n";
+            std::cout << "Enter type: ";
+
+            int typeChoice = 0;
+            std::cin >> typeChoice;
+            if (std::cin.fail() || (typeChoice != 1 && typeChoice != 2)) {
+                std::cin.clear();
+                clearInputBuffer();
+                std::cout << ui::warning("[!] Invalid account type.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            clearInputBuffer();
+            std::string username;
+            std::cout << "Target username: ";
+            std::getline(std::cin, username);
+
+            if (username.empty()) {
+                std::cout << ui::warning("[!] Username is required.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (choice == 2 || choice == 3) {
+                const std::string newStatus = (choice == 2) ? "inactive" : "active";
+
+                if (typeChoice == 2 && username == admin.username && choice == 2) {
+                    std::cout << ui::warning("[!] You cannot deactivate your current session account.") << "\n";
+                    waitForEnter();
+                    continue;
+                }
+
+                bool ok = false;
+                if (typeChoice == 1) {
+                    ok = updateCitizenStatus(username, newStatus);
+                } else {
+                    ok = updateAdminStatus(username, newStatus);
+                }
+
+                if (!ok) {
+                    std::cout << ui::error("[!] Account update failed or username not found.") << "\n";
+                    waitForEnter();
+                    continue;
+                }
+
+                const std::string action = (choice == 2) ? "ACCOUNT_DEACTIVATED" : "ACCOUNT_REACTIVATED";
+                logAuditAction(action, username, admin.username);
+                std::cout << ui::success("[+] Account status updated successfully.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            std::string generated;
+            bool ok = false;
+            if (typeChoice == 1) {
+                ok = resetCitizenPassword(username, generated);
+            } else {
+                ok = resetAdminPassword(username, generated);
+            }
+
+            if (!ok) {
+                std::cout << ui::error("[!] Password reset failed or username not found.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            logAuditAction("ACCOUNT_PASSWORD_RESET", username, admin.username);
+            std::cout << ui::success("[+] Temporary password generated: ") << generated << "\n";
+            std::cout << ui::muted("[i] Share this securely and ask the user to change it after login.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        if (choice != 0) {
+            std::cout << ui::warning("[!] Invalid menu choice.") << "\n";
+            waitForEnter();
+        }
+
+    } while (choice != 0);
 }

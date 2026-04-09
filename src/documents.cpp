@@ -22,6 +22,16 @@ namespace {
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
+struct DocumentFilter {
+    std::string status;
+    std::string exactDate;
+    std::string fromDate;
+    std::string toDate;
+    std::string category;
+    std::string department;
+    std::string uploader;
+};
+
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     file.open(primaryPath);
     if (file.is_open()) {
@@ -58,6 +68,16 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
     return primaryPath;
 }
 
+std::vector<std::string> splitPipe(const std::string& line) {
+    std::vector<std::string> tokens;
+    std::stringstream parser(line);
+    std::string token;
+    while (std::getline(parser, token, '|')) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
+
 std::string toLowerCopy(std::string value) {
     for (size_t i = 0; i < value.size(); ++i) {
         if (value[i] >= 'A' && value[i] <= 'Z') {
@@ -65,6 +85,117 @@ std::string toLowerCopy(std::string value) {
         }
     }
     return value;
+}
+
+bool containsCaseInsensitive(const std::string& text, const std::string& token) {
+    if (token.empty()) {
+        return true;
+    }
+    return toLowerCopy(text).find(toLowerCopy(token)) != std::string::npos;
+}
+
+bool isDateTextValid(const std::string& value) {
+    if (value.empty()) {
+        return true;
+    }
+    if (value.size() != 10) {
+        return false;
+    }
+    return std::isdigit(static_cast<unsigned char>(value[0])) &&
+           std::isdigit(static_cast<unsigned char>(value[1])) &&
+           std::isdigit(static_cast<unsigned char>(value[2])) &&
+           std::isdigit(static_cast<unsigned char>(value[3])) &&
+           value[4] == '-' &&
+           std::isdigit(static_cast<unsigned char>(value[5])) &&
+           std::isdigit(static_cast<unsigned char>(value[6])) &&
+           value[7] == '-' &&
+           std::isdigit(static_cast<unsigned char>(value[8])) &&
+           std::isdigit(static_cast<unsigned char>(value[9]));
+}
+
+Document parseDocumentTokens(const std::vector<std::string>& tokens) {
+    Document doc;
+    doc.docId = tokens.size() > 0 ? tokens[0] : "";
+    doc.title = tokens.size() > 1 ? tokens[1] : "";
+    doc.category = tokens.size() > 2 ? tokens[2] : "";
+    doc.department = tokens.size() > 3 ? tokens[3] : "";
+    doc.dateUploaded = tokens.size() > 4 ? tokens[4] : "";
+    doc.uploader = tokens.size() > 5 ? tokens[5] : "";
+    doc.status = tokens.size() > 6 ? tokens[6] : "pending_approval";
+    doc.hashValue = tokens.size() > 7 ? tokens[7] : "";
+    doc.budgetCategory = tokens.size() > 8 ? tokens[8] : doc.category;
+    doc.amount = 0.0;
+
+    if (tokens.size() > 9) {
+        std::stringstream amountIn(tokens[9]);
+        amountIn >> doc.amount;
+    }
+
+    if (doc.budgetCategory.empty()) {
+        doc.budgetCategory = doc.category;
+    }
+
+    return doc;
+}
+
+std::string serializeDocument(const Document& doc) {
+    // Hash source intentionally keeps original 7 fields to preserve compatibility with existing verification logic.
+    const std::string hashSource = doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.department + "|" +
+                                   doc.dateUploaded + "|" + doc.uploader + "|" + doc.status;
+
+    std::ostringstream out;
+    out << hashSource << '|'
+        << computeSimpleHash(hashSource) << '|'
+        << doc.budgetCategory << '|'
+        << std::fixed << std::setprecision(2) << doc.amount;
+    return out.str();
+}
+
+bool loadDocuments(std::vector<Document>& docs) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    docs.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        Document parsed = parseDocumentTokens(splitPipe(line));
+        if (parsed.docId.empty()) {
+            continue;
+        }
+
+        docs.push_back(parsed);
+    }
+
+    return true;
+}
+
+bool saveDocuments(const std::vector<Document>& docs) {
+    std::ofstream writer(resolveDataPath(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount\n";
+    for (size_t i = 0; i < docs.size(); ++i) {
+        writer << serializeDocument(docs[i]) << '\n';
+    }
+    writer.flush();
+    return true;
 }
 
 std::string statusDisplayLabel(const std::string& normalizedStatus) {
@@ -99,15 +230,18 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
     std::vector<std::string> headers;
 
     if (includeHashValue) {
-        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash"};
-        widths = {6, 20, 16, 16, 10, 12, 16, 10};
+        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash", "BudgetCat", "Amount"};
+        widths = {6, 18, 14, 14, 10, 12, 14, 9, 12, 8};
     } else {
-        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status"};
-        widths = {6, 24, 16, 16, 10, 12, 16};
+        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "BudgetCat", "Amount"};
+        widths = {6, 20, 14, 14, 10, 12, 14, 12, 8};
     }
 
     ui::printTableHeader(headers, widths);
     for (size_t i = 0; i < docs.size(); ++i) {
+        std::ostringstream amountOut;
+        amountOut << std::fixed << std::setprecision(2) << docs[i].amount;
+
         if (includeHashValue) {
             ui::printTableRow({docs[i].docId,
                                docs[i].title,
@@ -116,7 +250,9 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
                                docs[i].dateUploaded,
                                docs[i].uploader,
                                docs[i].status,
-                               docs[i].hashValue},
+                               docs[i].hashValue,
+                               docs[i].budgetCategory,
+                               amountOut.str()},
                               widths);
         } else {
             ui::printTableRow({docs[i].docId,
@@ -125,7 +261,9 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
                                docs[i].department,
                                docs[i].dateUploaded,
                                docs[i].uploader,
-                               docs[i].status},
+                               docs[i].status,
+                               docs[i].budgetCategory,
+                               amountOut.str()},
                               widths);
         }
     }
@@ -155,41 +293,63 @@ void printStatusChart(const std::vector<Document>& docs) {
         ui::printBar(statusDisplayLabel(it->first), it->second, maxCount, 24, ui::consensusColorCode(it->first));
     }
 }
+
+bool matchesFilter(const Document& doc, const DocumentFilter& filter) {
+    if (!filter.status.empty() && toLowerCopy(doc.status) != toLowerCopy(filter.status)) {
+        return false;
+    }
+
+    if (!filter.exactDate.empty() && doc.dateUploaded != filter.exactDate) {
+        return false;
+    }
+
+    // Date values use YYYY-MM-DD so lexical comparison is safe for inclusive range checks.
+    if (!filter.fromDate.empty() && doc.dateUploaded < filter.fromDate) {
+        return false;
+    }
+
+    if (!filter.toDate.empty() && doc.dateUploaded > filter.toDate) {
+        return false;
+    }
+
+    if (!containsCaseInsensitive(doc.category, filter.category)) {
+        return false;
+    }
+
+    if (!containsCaseInsensitive(doc.department, filter.department)) {
+        return false;
+    }
+
+    if (!containsCaseInsensitive(doc.uploader, filter.uploader)) {
+        return false;
+    }
+
+    return true;
+}
 } // namespace
 
 std::string generateNextDocumentId() {
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
         return "D001";
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
     int maxIdNumber = 0;
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        std::string docId;
-        std::getline(parser, docId, '|');
-
-        if (docId.size() < 2) {
+    for (size_t i = 0; i < docs.size(); ++i) {
+        if (docs[i].docId.size() < 2) {
             continue;
         }
 
         size_t numericStart = 1;
-        while (numericStart < docId.size() && !std::isdigit(static_cast<unsigned char>(docId[numericStart]))) {
+        while (numericStart < docs[i].docId.size() && !std::isdigit(static_cast<unsigned char>(docs[i].docId[numericStart]))) {
             numericStart++;
         }
 
-        if (numericStart >= docId.size()) {
+        if (numericStart >= docs[i].docId.size()) {
             continue;
         }
 
-        int parsedNumber = std::atoi(docId.substr(numericStart).c_str());
+        const int parsedNumber = std::atoi(docs[i].docId.substr(numericStart).c_str());
         if (parsedNumber > maxIdNumber) {
             maxIdNumber = parsedNumber;
         }
@@ -201,74 +361,72 @@ std::string generateNextDocumentId() {
 }
 
 void ensureSampleDocumentsPresent() {
-    std::ifstream reader;
-    if (!openInputFileWithFallback(reader, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
         return;
     }
 
-    std::string line;
-    int nonEmptyLines = 0;
-    while (std::getline(reader, line)) {
-        if (!line.empty()) {
-            nonEmptyLines++;
-        }
-    }
-
-    if (nonEmptyLines > 1) {
+    if (!docs.empty()) {
+        saveDocuments(docs);
         return;
     }
 
-    reader.close();
+    Document row1;
+    row1.docId = "PR001";
+    row1.title = "Office Supplies Purchase";
+    row1.category = "Purchase Request";
+    row1.department = "Procurement Office";
+    row1.dateUploaded = "2026-04-09";
+    row1.uploader = "proc_admin";
+    row1.status = "published";
+    row1.budgetCategory = "Office Supplies";
+    row1.amount = 5000.0;
 
-    std::ofstream writer;
-    if (!openAppendFileWithFallback(writer, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        return;
-    }
+    Document row2;
+    row2.docId = "PO002";
+    row2.title = "Road Repair Contract";
+    row2.category = "Purchase Order";
+    row2.department = "Engineering Department";
+    row2.dateUploaded = "2026-04-09";
+    row2.uploader = "proc_admin";
+    row2.status = "published";
+    row2.budgetCategory = "Infrastructure Procurement";
+    row2.amount = 45000.0;
 
-    std::string row1Source = "PR001|Office Supplies Purchase|Purchase Request|Procurement Office|2026-04-09|proc_admin|published";
-    std::string row2Source = "PO002|Road Repair Contract|Purchase Order|Engineering Department|2026-04-09|proc_admin|published";
-    std::string row3Source = "CA003|Clinic Equipment Acquisition|Contract|Health Office|2026-04-09|proc_admin|pending_approval";
+    Document row3;
+    row3.docId = "CA003";
+    row3.title = "Clinic Equipment Acquisition";
+    row3.category = "Contract";
+    row3.department = "Health Office";
+    row3.dateUploaded = "2026-04-09";
+    row3.uploader = "proc_admin";
+    row3.status = "pending_approval";
+    row3.budgetCategory = "Health Supplies";
+    row3.amount = 25000.0;
 
-    writer << row1Source << '|' << computeSimpleHash(row1Source) << '\n';
-    writer << row2Source << '|' << computeSimpleHash(row2Source) << '\n';
-    writer << row3Source << '|' << computeSimpleHash(row3Source) << '\n';
-    writer.flush();
+    std::vector<Document> seedRows;
+    seedRows.push_back(row1);
+    seedRows.push_back(row2);
+    seedRows.push_back(row3);
+    saveDocuments(seedRows);
 }
 
 void showPublishedDocuments(const std::string& actor) {
     clearScreen();
     ui::printSectionTitle("PUBLISHED PROCUREMENT DOCUMENTS");
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
         std::cout << ui::error("[!] Unable to open documents file.") << "\n";
         logAuditAction("VIEW_PUBLISHED_DOCS_FAILED", "N/A", actor);
         waitForEnter();
         return;
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
     std::vector<Document> publishedDocs;
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        Document doc;
-        std::getline(parser, doc.docId, '|');
-        std::getline(parser, doc.title, '|');
-        std::getline(parser, doc.category, '|');
-        std::getline(parser, doc.department, '|');
-        std::getline(parser, doc.dateUploaded, '|');
-        std::getline(parser, doc.uploader, '|');
-        std::getline(parser, doc.status, '|');
-        std::getline(parser, doc.hashValue, '|');
-
-        if (toLowerCopy(doc.status) == "published") {
-            publishedDocs.push_back(doc);
+    for (size_t i = 0; i < docs.size(); ++i) {
+        if (toLowerCopy(docs[i].status) == "published") {
+            publishedDocs.push_back(docs[i]);
         }
     }
 
@@ -294,50 +452,59 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 
     clearInputBuffer();
 
-    std::string title;
-    std::string category;
-    std::string department;
-
+    Document doc;
     std::cout << "Title      : ";
-    std::getline(std::cin, title);
+    std::getline(std::cin, doc.title);
     std::cout << "Category   : ";
-    std::getline(std::cin, category);
+    std::getline(std::cin, doc.category);
     std::cout << "Department : ";
-    std::getline(std::cin, department);
+    std::getline(std::cin, doc.department);
+    std::cout << "Budget Category (blank = same as Category): ";
+    std::getline(std::cin, doc.budgetCategory);
 
-    if (title.empty() || category.empty() || department.empty()) {
+    if (doc.title.empty() || doc.category.empty() || doc.department.empty()) {
         std::cout << ui::error("[!] Title, category, and department are required.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
-    std::string docId = generateNextDocumentId();
-    std::string dateUploaded = getCurrentTimestamp().substr(0, 10);
-    std::string status = "pending_approval";
+    if (doc.budgetCategory.empty()) {
+        doc.budgetCategory = doc.category;
+    }
 
-    // Hash source excludes hash column itself for stable recomputation.
-    std::string hashSource = docId + "|" + title + "|" + category + "|" + department + "|" +
-                             dateUploaded + "|" + admin.username + "|" + status;
-    std::string hashValue = computeSimpleHash(hashSource);
-
-    std::ofstream file;
-    if (!openAppendFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
-        std::cout << ui::error("[!] Unable to save document record.") << "\n";
-        logAuditAction("UPLOAD_DOC_FAILED", docId, admin.username);
+    std::cout << "Document Amount (PHP): ";
+    std::cin >> doc.amount;
+    if (std::cin.fail() || doc.amount < 0.0) {
+        std::cin.clear();
+        clearInputBuffer();
+        std::cout << ui::error("[!] Invalid document amount.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
-    file << hashSource << '|' << hashValue << '\n';
+    doc.docId = generateNextDocumentId();
+    doc.dateUploaded = getCurrentTimestamp().substr(0, 10);
+    doc.uploader = admin.username;
+    doc.status = "pending_approval";
+
+    std::ofstream file;
+    if (!openAppendFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        std::cout << ui::error("[!] Unable to save document record.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    file << serializeDocument(doc) << '\n';
     file.flush();
 
-    // Approval requests are generated immediately after upload for consensus workflow.
-    createApprovalRequestsForDocument(docId, admin.username);
-    appendBlockchainAction("UPLOAD", docId, admin.username);
+    createApprovalRequestsForDocument(doc.docId, admin.username);
+    const int chainIndex = appendBlockchainAction("UPLOAD", doc.docId, admin.username);
 
-    logAuditAction("UPLOAD_DOC", docId, admin.username);
-    std::cout << ui::success("[+] Document uploaded successfully with ID ") << docId << ".\n";
+    logAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex);
+    std::cout << ui::success("[+] Document uploaded successfully with ID ") << doc.docId << ".\n";
     waitForEnter();
 }
 
@@ -345,45 +512,20 @@ void viewAllDocumentsForAdmin(const Admin& admin) {
     clearScreen();
     ui::printSectionTitle("ALL DOCUMENT RECORDS");
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
         std::cout << ui::error("[!] Unable to open documents file.") << "\n";
         logAuditAction("VIEW_ALL_DOCS_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    bool hasRows = false;
-    std::vector<Document> allDocs;
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        hasRows = true;
-        std::stringstream parser(line);
-        Document doc;
-        std::getline(parser, doc.docId, '|');
-        std::getline(parser, doc.title, '|');
-        std::getline(parser, doc.category, '|');
-        std::getline(parser, doc.department, '|');
-        std::getline(parser, doc.dateUploaded, '|');
-        std::getline(parser, doc.uploader, '|');
-        std::getline(parser, doc.status, '|');
-        std::getline(parser, doc.hashValue, '|');
-
-        allDocs.push_back(doc);
-    }
-
-    if (!hasRows) {
+    if (docs.empty()) {
         std::cout << "\n" << ui::warning("[!] No documents available.") << "\n";
         logAuditAction("VIEW_ALL_DOCS_EMPTY", "N/A", admin.username);
     } else {
-        printDocumentsTable(allDocs, false);
-        printStatusChart(allDocs);
+        printDocumentsTable(docs, false);
+        printStatusChart(docs);
         logAuditAction("VIEW_ALL_DOCS", "MULTI", admin.username);
     }
 
@@ -406,92 +548,116 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
         return;
     }
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
         std::cout << ui::error("[!] Unable to open documents file.") << "\n";
         logAuditAction("SEARCH_DOC_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    bool found = false;
-    while (std::getline(file, line)) {
-        if (line.empty()) {
+    for (size_t i = 0; i < docs.size(); ++i) {
+        if (docs[i].docId != targetDocId) {
             continue;
         }
 
-        std::stringstream parser(line);
-        Document doc;
-        std::getline(parser, doc.docId, '|');
-        std::getline(parser, doc.title, '|');
-        std::getline(parser, doc.category, '|');
-        std::getline(parser, doc.department, '|');
-        std::getline(parser, doc.dateUploaded, '|');
-        std::getline(parser, doc.uploader, '|');
-        std::getline(parser, doc.status, '|');
-        std::getline(parser, doc.hashValue, '|');
-
-        if (doc.docId != targetDocId) {
-            continue;
-        }
-
-        found = true;
-        printDocumentsTable(std::vector<Document>(1, doc), true);
-        break;
+        printDocumentsTable(std::vector<Document>(1, docs[i]), true);
+        logAuditAction("SEARCH_DOC", targetDocId, admin.username);
+        waitForEnter();
+        return;
     }
 
-    if (!found) {
-        std::cout << "\n" << ui::warning("[!] Document ID not found.") << "\n";
-        logAuditAction("SEARCH_DOC_NOT_FOUND", targetDocId, admin.username);
+    std::cout << "\n" << ui::warning("[!] Document ID not found.") << "\n";
+    logAuditAction("SEARCH_DOC_NOT_FOUND", targetDocId, admin.username);
+    waitForEnter();
+}
+
+void filterDocumentsForAdmin(const Admin& admin) {
+    clearScreen();
+    ui::printSectionTitle("ADVANCED DOCUMENT FILTERS");
+
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
+        logAuditAction("FILTER_DOCS_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (docs.empty()) {
+        std::cout << ui::warning("[!] No documents available for filtering.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    clearInputBuffer();
+    DocumentFilter filter;
+    std::cout << "Status (optional, e.g. pending_approval/published/rejected): ";
+    std::getline(std::cin, filter.status);
+    std::cout << "Exact upload date (YYYY-MM-DD, optional): ";
+    std::getline(std::cin, filter.exactDate);
+    std::cout << "From date (YYYY-MM-DD, optional): ";
+    std::getline(std::cin, filter.fromDate);
+    std::cout << "To date (YYYY-MM-DD, optional): ";
+    std::getline(std::cin, filter.toDate);
+    std::cout << "Category contains (optional): ";
+    std::getline(std::cin, filter.category);
+    std::cout << "Department contains (optional): ";
+    std::getline(std::cin, filter.department);
+    std::cout << "Uploader contains (optional): ";
+    std::getline(std::cin, filter.uploader);
+
+    if (!isDateTextValid(filter.exactDate) || !isDateTextValid(filter.fromDate) || !isDateTextValid(filter.toDate)) {
+        std::cout << ui::error("[!] Invalid date format. Use YYYY-MM-DD.") << "\n";
+        logAuditAction("FILTER_DOCS_INPUT_ERROR", "DATE", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!filter.exactDate.empty() && (!filter.fromDate.empty() || !filter.toDate.empty())) {
+        std::cout << ui::warning("[!] Exact date was provided; date range fields will be ignored.") << "\n";
+        filter.fromDate.clear();
+        filter.toDate.clear();
+    }
+
+    if (!filter.fromDate.empty() && !filter.toDate.empty() && filter.fromDate > filter.toDate) {
+        std::cout << ui::error("[!] Date range is invalid: fromDate is after toDate.") << "\n";
+        logAuditAction("FILTER_DOCS_INPUT_ERROR", "RANGE", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<Document> filtered;
+    for (size_t i = 0; i < docs.size(); ++i) {
+        if (matchesFilter(docs[i], filter)) {
+            filtered.push_back(docs[i]);
+        }
+    }
+
+    if (filtered.empty()) {
+        std::cout << "\n" << ui::warning("[!] No records matched the selected filters.") << "\n";
+        logAuditAction("FILTER_DOCS_EMPTY", "MULTI", admin.username);
     } else {
-        logAuditAction("SEARCH_DOC", targetDocId, admin.username);
+        printDocumentsTable(filtered, false);
+        printStatusChart(filtered);
+        logAuditAction("FILTER_DOCS", "MULTI", admin.username);
     }
 
     waitForEnter();
 }
 
 bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::string& newStatus) {
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
         return false;
     }
 
-    std::vector<std::string> updatedRows;
-    std::string header;
-    std::getline(file, header);
-
     bool found = false;
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        Document doc;
-        std::getline(parser, doc.docId, '|');
-        std::getline(parser, doc.title, '|');
-        std::getline(parser, doc.category, '|');
-        std::getline(parser, doc.department, '|');
-        std::getline(parser, doc.dateUploaded, '|');
-        std::getline(parser, doc.uploader, '|');
-        std::getline(parser, doc.status, '|');
-        std::getline(parser, doc.hashValue, '|');
-
-        if (doc.docId == targetDocId) {
+    for (size_t i = 0; i < docs.size(); ++i) {
+        if (docs[i].docId == targetDocId) {
+            docs[i].status = newStatus;
             found = true;
-            doc.status = newStatus;
-
-            // Recompute hash whenever status changes to keep verify flow consistent.
-            std::string hashSource = doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.department + "|" +
-                                     doc.dateUploaded + "|" + doc.uploader + "|" + doc.status;
-            doc.hashValue = computeSimpleHash(hashSource);
-            updatedRows.push_back(hashSource + "|" + doc.hashValue);
-        } else {
-            updatedRows.push_back(line);
+            break;
         }
     }
 
@@ -499,19 +665,7 @@ bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::str
         return false;
     }
 
-    std::string targetPath = resolveDataPath(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK);
-    std::ofstream writer(targetPath);
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << header << '\n';
-    for (size_t i = 0; i < updatedRows.size(); ++i) {
-        writer << updatedRows[i] << '\n';
-    }
-    writer.flush();
-
-    return true;
+    return saveDocuments(docs);
 }
 
 void updateDocumentStatusForAdmin(const Admin& admin) {
@@ -540,7 +694,7 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     std::cin >> statusChoice;
     if (std::cin.fail()) {
         std::cin.clear();
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        clearInputBuffer();
         std::cout << ui::error("[!] Invalid status input.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", targetDocId, admin.username);
         waitForEnter();
@@ -568,8 +722,8 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
         return;
     }
 
-    appendBlockchainAction("STATUS_UPDATE_" + newStatus, targetDocId, admin.username);
-    logAuditAction("UPDATE_STATUS", targetDocId, admin.username);
+    const int chainIndex = appendBlockchainAction("STATUS_UPDATE_" + newStatus, targetDocId, admin.username);
+    logAuditAction("UPDATE_STATUS", targetDocId, admin.username, chainIndex);
     std::cout << ui::success("[+] Document status updated successfully.") << "\n";
     waitForEnter();
 }

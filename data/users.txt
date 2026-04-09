@@ -1,3 +1,3 @@
-userID|fullName|username|password
-U001|Citizen Matrix One|citizen_matrix1|pass1234
-U002|CJ Toki|Little misht|letmeinpls
+userID|fullName|username|password|status|updatedAt
+U001|Citizen Matrix One|citizen_matrix1|pass1234|active|2026-04-09 11:45:31
+U002|CJ Toki|Little misht|letmeinpls|active|2026-04-09 11:45:31

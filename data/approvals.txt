@@ -1,9 +1,9 @@
-docID|approverUsername|role|status
-CA003|budget_admin|Budget Officer|pending
-CA003|mun_admin|Municipal Administrator|pending
-D004|budget_admin|Budget Officer|approved
-D004|mun_admin|Municipal Administrator|approved
-D005|budget_admin|Budget Officer|approved
-D005|mun_admin|Municipal Administrator|pending
-D006|budget_admin|Budget Officer|rejected
-D006|mun_admin|Municipal Administrator|pending
+docID|approverUsername|role|status|createdAt|decidedAt
+CA003|budget_admin|Budget Officer|pending|2026-04-09 11:45:31|
+CA003|mun_admin|Municipal Administrator|pending|2026-04-09 11:45:31|
+D004|budget_admin|Budget Officer|approved|2026-04-09 11:45:31|
+D004|mun_admin|Municipal Administrator|approved|2026-04-09 11:45:31|
+D005|budget_admin|Budget Officer|approved|2026-04-09 11:45:31|
+D005|mun_admin|Municipal Administrator|pending|2026-04-09 11:45:31|
+D006|budget_admin|Budget Officer|rejected|2026-04-09 11:45:31|
+D006|mun_admin|Municipal Administrator|pending|2026-04-09 11:45:31|

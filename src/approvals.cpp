@@ -6,9 +6,12 @@
 #include "../include/documents.h"
 #include "../include/ui.h"
 
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <vector>
 
@@ -31,17 +34,6 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
     return file.is_open();
 }
 
-bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
-    file.open(primaryPath, std::ios::app);
-    if (file.is_open()) {
-        return true;
-    }
-
-    file.clear();
-    file.open(fallbackPath, std::ios::app);
-    return file.is_open();
-}
-
 std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
     std::ifstream primary(primaryPath);
     if (primary.is_open()) {
@@ -54,6 +46,83 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
     }
 
     return primaryPath;
+}
+
+std::vector<std::string> splitPipe(const std::string& line) {
+    std::vector<std::string> tokens;
+    std::stringstream parser(line);
+    std::string token;
+    while (std::getline(parser, token, '|')) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
+
+Approval parseApprovalTokens(const std::vector<std::string>& tokens) {
+    Approval row;
+    row.docId = tokens.size() > 0 ? tokens[0] : "";
+    row.approverUsername = tokens.size() > 1 ? tokens[1] : "";
+    row.role = tokens.size() > 2 ? tokens[2] : "";
+    row.status = tokens.size() > 3 ? tokens[3] : "pending";
+    row.createdAt = tokens.size() > 4 ? tokens[4] : "";
+    row.decidedAt = tokens.size() > 5 ? tokens[5] : "";
+
+    if (row.createdAt.empty()) {
+        row.createdAt = getCurrentTimestamp();
+    }
+
+    return row;
+}
+
+std::string serializeApproval(const Approval& row) {
+    return row.docId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt;
+}
+
+bool loadApprovals(std::vector<Approval>& rows) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    rows.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        Approval parsed = parseApprovalTokens(splitPipe(line));
+        if (parsed.docId.empty() || parsed.approverUsername.empty()) {
+            continue;
+        }
+
+        rows.push_back(parsed);
+    }
+
+    return true;
+}
+
+bool saveApprovals(const std::vector<Approval>& rows) {
+    std::ofstream writer(resolveDataPath(APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "docID|approverUsername|role|status|createdAt|decidedAt\n";
+    for (size_t i = 0; i < rows.size(); ++i) {
+        writer << serializeApproval(rows[i]) << '\n';
+    }
+    writer.flush();
+    return true;
 }
 
 bool isRequiredApproverRole(const std::string& role) {
@@ -74,18 +143,9 @@ std::string findAdminUsernameByRole(const std::string& targetRole) {
             continue;
         }
 
-        std::stringstream parser(line);
-        std::string adminId;
-        std::string fullName;
-        std::string username;
-        std::string password;
-        std::string role;
-
-        std::getline(parser, adminId, '|');
-        std::getline(parser, fullName, '|');
-        std::getline(parser, username, '|');
-        std::getline(parser, password, '|');
-        std::getline(parser, role, '|');
+        const std::vector<std::string> tokens = splitPipe(line);
+        const std::string username = tokens.size() > 2 ? tokens[2] : "";
+        const std::string role = tokens.size() > 4 ? tokens[4] : "";
 
         if (role == targetRole && !username.empty()) {
             return username;
@@ -104,30 +164,14 @@ std::string findPendingDocumentIdForSeeding() {
     std::string line;
     std::getline(file, line); // Skip header.
 
-    // Prefer an actual pending document so seeded approvals point to a real record.
     while (std::getline(file, line)) {
         if (line.empty()) {
             continue;
         }
 
-        std::stringstream parser(line);
-        std::string docId;
-        std::string title;
-        std::string category;
-        std::string department;
-        std::string dateUploaded;
-        std::string uploader;
-        std::string status;
-        std::string hashValue;
-
-        std::getline(parser, docId, '|');
-        std::getline(parser, title, '|');
-        std::getline(parser, category, '|');
-        std::getline(parser, department, '|');
-        std::getline(parser, dateUploaded, '|');
-        std::getline(parser, uploader, '|');
-        std::getline(parser, status, '|');
-        std::getline(parser, hashValue, '|');
+        const std::vector<std::string> tokens = splitPipe(line);
+        const std::string docId = tokens.size() > 0 ? tokens[0] : "";
+        const std::string status = tokens.size() > 6 ? tokens[6] : "";
 
         if (status == "pending_approval" || status == "pending") {
             return docId;
@@ -138,52 +182,46 @@ std::string findPendingDocumentIdForSeeding() {
 }
 
 void seedApprovalsIfEmpty() {
-    std::ifstream reader;
-    if (!openInputFileWithFallback(reader, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
         return;
     }
 
-    std::string line;
-    std::getline(reader, line); // Skip header.
-    while (std::getline(reader, line)) {
-        if (!line.empty()) {
-            return;
-        }
+    if (!rows.empty()) {
+        saveApprovals(rows);
+        return;
     }
 
-    // Seed only once when approvals data has no rows at all.
     std::string docId = findPendingDocumentIdForSeeding();
     if (docId.empty()) {
         docId = "CA003";
     }
 
-    std::string budgetOfficer = findAdminUsernameByRole("Budget Officer");
-    std::string municipalAdmin = findAdminUsernameByRole("Municipal Administrator");
-
-    if (budgetOfficer.empty() && municipalAdmin.empty()) {
-        return;
-    }
-
-    std::ofstream writer;
-    if (!openAppendFileWithFallback(writer, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
-        return;
-    }
+    const std::string budgetOfficer = findAdminUsernameByRole("Budget Officer");
+    const std::string municipalAdmin = findAdminUsernameByRole("Municipal Administrator");
+    const std::string now = getCurrentTimestamp();
 
     if (!budgetOfficer.empty()) {
-        writer << docId << '|'
-               << budgetOfficer << '|'
-               << "Budget Officer" << '|'
-               << "pending" << '\n';
+        Approval a;
+        a.docId = docId;
+        a.approverUsername = budgetOfficer;
+        a.role = "Budget Officer";
+        a.status = "pending";
+        a.createdAt = now;
+        rows.push_back(a);
     }
 
     if (!municipalAdmin.empty()) {
-        writer << docId << '|'
-               << municipalAdmin << '|'
-               << "Municipal Administrator" << '|'
-               << "pending" << '\n';
+        Approval a;
+        a.docId = docId;
+        a.approverUsername = municipalAdmin;
+        a.role = "Municipal Administrator";
+        a.status = "pending";
+        a.createdAt = now;
+        rows.push_back(a);
     }
 
-    writer.flush();
+    saveApprovals(rows);
 }
 
 void clearInputBuffer() {
@@ -195,6 +233,22 @@ void printConsensusLegend() {
               << ui::consensusStatus("approved") << " | "
               << ui::consensusStatus("denied") << " | "
               << ui::consensusStatus("pending") << "\n";
+}
+
+bool parseTimestamp(const std::string& text, std::time_t& outTime) {
+    if (text.empty()) {
+        return false;
+    }
+
+    std::tm tmValue = {};
+    std::istringstream in(text);
+    in >> std::get_time(&tmValue, "%Y-%m-%d %H:%M:%S");
+    if (in.fail()) {
+        return false;
+    }
+
+    outTime = std::mktime(&tmValue);
+    return outTime != static_cast<std::time_t>(-1);
 }
 
 void applyApprovalDecision(const Admin& admin, bool approve) {
@@ -214,40 +268,24 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
         std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
         logAuditAction("APPROVAL_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
     }
 
-    std::string header;
-    std::getline(file, header);
-
-    // Load all rows, update only the current approver's pending record for the target doc.
-    std::vector<Approval> rows;
-    std::string line;
     bool updated = false;
+    const std::string now = getCurrentTimestamp();
 
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        std::stringstream parser(line);
-        Approval row;
-        std::getline(parser, row.docId, '|');
-        std::getline(parser, row.approverUsername, '|');
-        std::getline(parser, row.role, '|');
-        std::getline(parser, row.status, '|');
-
-        if (row.docId == targetDocId && row.approverUsername == admin.username && row.status == "pending") {
-            row.status = approve ? "approved" : "rejected";
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].docId == targetDocId && rows[i].approverUsername == admin.username && rows[i].status == "pending") {
+            rows[i].status = approve ? "approved" : "rejected";
+            rows[i].decidedAt = now;
             updated = true;
+            break;
         }
-
-        rows.push_back(row);
     }
 
     if (!updated) {
@@ -257,28 +295,13 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
-    std::string targetPath = resolveDataPath(APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK);
-    std::ofstream writer(targetPath);
-    if (!writer.is_open()) {
+    if (!saveApprovals(rows)) {
         std::cout << ui::error("[!] Unable to update approvals file.") << "\n";
         logAuditAction("APPROVAL_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
     }
 
-    writer << header << '\n';
-    for (size_t i = 0; i < rows.size(); ++i) {
-        writer << rows[i].docId << '|'
-               << rows[i].approverUsername << '|'
-               << rows[i].role << '|'
-               << rows[i].status << '\n';
-    }
-    writer.flush();
-
-    // Determine document status after this decision.
-    // rejected  -> any approver rejects
-    // published -> all required approvers have non-pending status and none rejected
-    // pending   -> at least one required approver is still pending
     bool hasAny = false;
     bool hasPending = false;
     bool hasRejected = false;
@@ -314,12 +337,12 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     std::cout << "Consensus Result: " << ui::consensusStatus(nextDocStatus) << "\n";
 
     if (approve) {
-        appendBlockchainAction("APPROVE", targetDocId, admin.username);
-        logAuditAction("APPROVE_DOC", targetDocId, admin.username);
+        const int chainIndex = appendBlockchainAction("APPROVE", targetDocId, admin.username);
+        logAuditAction("APPROVE_DOC", targetDocId, admin.username, chainIndex);
         std::cout << ui::success("[+] Document approved successfully.") << "\n";
     } else {
-        appendBlockchainAction("REJECT", targetDocId, admin.username);
-        logAuditAction("REJECT_DOC", targetDocId, admin.username);
+        const int chainIndex = appendBlockchainAction("REJECT", targetDocId, admin.username);
+        logAuditAction("REJECT_DOC", targetDocId, admin.username, chainIndex);
         std::cout << ui::error("[+] Document denied successfully.") << "\n";
     }
 
@@ -337,8 +360,13 @@ void ensureApprovalsDataFileExists() {
         }
 
         if (createFile.is_open()) {
-            createFile << "docID|approverUsername|role|status\n";
+            createFile << "docID|approverUsername|role|status|createdAt|decidedAt\n";
         }
+    }
+
+    std::vector<Approval> existing;
+    if (loadApprovals(existing)) {
+        saveApprovals(existing);
     }
 
     seedApprovalsIfEmpty();
@@ -353,32 +381,23 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
     std::string line;
     std::getline(adminFile, line); // Skip header.
 
+    std::vector<Approval> existing;
+    loadApprovals(existing);
+
     std::vector<Approval> requests;
+    const std::string now = getCurrentTimestamp();
+
     while (std::getline(adminFile, line)) {
         if (line.empty()) {
             continue;
         }
 
-        std::stringstream parser(line);
-        std::string adminId;
-        std::string fullName;
-        std::string username;
-        std::string password;
-        std::string role;
+        const std::vector<std::string> tokens = splitPipe(line);
+        const std::string username = tokens.size() > 2 ? tokens[2] : "";
+        const std::string role = tokens.size() > 4 ? tokens[4] : "";
+        const std::string status = tokens.size() > 5 ? tokens[5] : "active";
 
-        std::getline(parser, adminId, '|');
-        std::getline(parser, fullName, '|');
-        std::getline(parser, username, '|');
-        std::getline(parser, password, '|');
-        std::getline(parser, role, '|');
-
-        // Uploader should not approve their own upload.
-        if (username == uploader) {
-            continue;
-        }
-
-        // Only designated approver roles are part of the consensus requirement.
-        if (!isRequiredApproverRole(role)) {
+        if (username == uploader || !isRequiredApproverRole(role) || status != "active") {
             continue;
         }
 
@@ -387,6 +406,7 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
         request.approverUsername = username;
         request.role = role;
         request.status = "pending";
+        request.createdAt = now;
         requests.push_back(request);
     }
 
@@ -394,20 +414,13 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
         return;
     }
 
-    std::ofstream file;
-    if (!openAppendFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
-        return;
-    }
-
     for (size_t i = 0; i < requests.size(); ++i) {
-        file << requests[i].docId << '|'
-             << requests[i].approverUsername << '|'
-             << requests[i].role << '|'
-             << requests[i].status << '\n';
+        existing.push_back(requests[i]);
     }
-    file.flush();
 
-    logAuditAction("APPROVAL_REQUESTS_CREATED", docId, uploader);
+    if (saveApprovals(existing)) {
+        logAuditAction("APPROVAL_REQUESTS_CREATED", docId, uploader);
+    }
 }
 
 void viewPendingApprovalsForAdmin(const Admin& admin) {
@@ -415,51 +428,32 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
     ui::printSectionTitle("PENDING APPROVALS");
     printConsensusLegend();
 
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
         std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
         logAuditAction("VIEW_PENDING_APPROVALS_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    bool hasRows = false;
     std::vector<Approval> pendingRows;
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].approverUsername == admin.username && rows[i].status == "pending") {
+            pendingRows.push_back(rows[i]);
         }
-
-        std::stringstream parser(line);
-        Approval row;
-        std::getline(parser, row.docId, '|');
-        std::getline(parser, row.approverUsername, '|');
-        std::getline(parser, row.role, '|');
-        std::getline(parser, row.status, '|');
-
-        if (row.approverUsername != admin.username || row.status != "pending") {
-            continue;
-        }
-
-        hasRows = true;
-        pendingRows.push_back(row);
     }
 
-    if (!hasRows) {
+    if (pendingRows.empty()) {
         std::cout << ui::warning("[!] No pending approvals for your account.") << "\n";
         logAuditAction("VIEW_PENDING_APPROVALS_EMPTY", "N/A", admin.username);
     } else {
-        const std::vector<std::string> headers = {"Document ID", "Role", "Status"};
-        const std::vector<int> widths = {12, 24, 12};
+        const std::vector<std::string> headers = {"Document ID", "Role", "Status", "Created"};
+        const std::vector<int> widths = {12, 24, 12, 19};
         ui::printTableHeader(headers, widths);
         for (size_t i = 0; i < pendingRows.size(); ++i) {
-            ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].status}, widths);
+            ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].status, pendingRows[i].createdAt}, widths);
         }
         ui::printTableFooter(widths);
-        std::cout << "\n  Displayed status color: " << ui::consensusStatus("pending") << "\n";
 
         std::cout << "\n" << ui::bold("Pending Load Chart") << "\n";
         ui::printBar("Pending approvals",
@@ -470,6 +464,97 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
         logAuditAction("VIEW_PENDING_APPROVALS", "MULTI", admin.username);
     }
 
+    waitForEnter();
+}
+
+void viewApprovalAnalyticsDashboard(const Admin& admin) {
+    clearScreen();
+    ui::printSectionTitle("APPROVAL ANALYTICS DASHBOARD");
+
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
+        std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
+        logAuditAction("APPROVAL_ANALYTICS_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (rows.empty()) {
+        std::cout << ui::warning("[!] No approval rows available.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    int approvedCount = 0;
+    int rejectedCount = 0;
+    int pendingCount = 0;
+    int decidedCount = 0;
+
+    std::map<std::string, int> decisionsByRole;
+    double totalDecisionHours = 0.0;
+    int timedRows = 0;
+
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].status == "approved") {
+            approvedCount++;
+            decidedCount++;
+            decisionsByRole[rows[i].role] += 1;
+        } else if (rows[i].status == "rejected") {
+            rejectedCount++;
+            decidedCount++;
+            decisionsByRole[rows[i].role] += 1;
+        } else {
+            pendingCount++;
+        }
+
+        std::time_t createdTime;
+        std::time_t decidedTime;
+        if (parseTimestamp(rows[i].createdAt, createdTime) && parseTimestamp(rows[i].decidedAt, decidedTime)) {
+            const double elapsedHours = std::difftime(decidedTime, createdTime) / 3600.0;
+            if (elapsedHours >= 0.0) {
+                totalDecisionHours += elapsedHours;
+                timedRows++;
+            }
+        }
+    }
+
+    const double rejectionRate = decidedCount > 0 ? (100.0 * rejectedCount / decidedCount) : 0.0;
+    const double avgDecisionHours = timedRows > 0 ? (totalDecisionHours / timedRows) : 0.0;
+
+    const std::vector<std::string> headers = {"Metric", "Value"};
+    const std::vector<int> widths = {30, 16};
+    ui::printTableHeader(headers, widths);
+
+    std::ostringstream rejOut;
+    rejOut << std::fixed << std::setprecision(2) << rejectionRate << "%";
+
+    std::ostringstream avgOut;
+    avgOut << std::fixed << std::setprecision(2) << avgDecisionHours << " hrs";
+
+    ui::printTableRow({"Total approval rows", std::to_string(rows.size())}, widths);
+    ui::printTableRow({"Decided rows", std::to_string(decidedCount)}, widths);
+    ui::printTableRow({"Pending rows", std::to_string(pendingCount)}, widths);
+    ui::printTableRow({"Approved rows", std::to_string(approvedCount)}, widths);
+    ui::printTableRow({"Rejected rows", std::to_string(rejectedCount)}, widths);
+    ui::printTableRow({"Rejection rate", rejOut.str()}, widths);
+    ui::printTableRow({"Average decision time", avgOut.str()}, widths);
+    ui::printTableRow({"Rows with timing data", std::to_string(timedRows)}, widths);
+    ui::printTableFooter(widths);
+
+    std::cout << "\n" << ui::bold("Throughput By Role") << "\n";
+    int maxRoleCount = 1;
+    for (std::map<std::string, int>::const_iterator it = decisionsByRole.begin(); it != decisionsByRole.end(); ++it) {
+        if (it->second > maxRoleCount) {
+            maxRoleCount = it->second;
+        }
+    }
+
+    for (std::map<std::string, int>::const_iterator it = decisionsByRole.begin(); it != decisionsByRole.end(); ++it) {
+        ui::printBar(it->first, static_cast<double>(it->second), static_cast<double>(maxRoleCount), 24);
+    }
+
+    std::cout << "\n" << ui::muted("[i] Legacy rows without timestamps are excluded from average-time computation.") << "\n";
+    logAuditAction("APPROVAL_ANALYTICS_VIEW", "MULTI", admin.username);
     waitForEnter();
 }
 

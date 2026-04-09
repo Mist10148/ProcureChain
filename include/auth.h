@@ -8,6 +8,8 @@ struct User {
     std::string fullName;
     std::string username;
     std::string password;
+    std::string status;
+    std::string updatedAt;
 };
 
 struct Admin {
@@ -16,6 +18,8 @@ struct Admin {
     std::string username;
     std::string password;
     std::string role;
+    std::string status;
+    std::string updatedAt;
 };
 
 void clearScreen();
@@ -33,5 +37,6 @@ bool loginCitizen(User& loggedInUser);
 bool loginCitizen();
 bool loginAdmin(Admin& loggedInAdmin);
 bool loginAdmin();
+void manageAccountLifecycleForAdmin(const Admin& admin);
 
 #endif

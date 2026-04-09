@@ -13,6 +13,8 @@ struct Document {
     std::string uploader;
     std::string status;
     std::string hashValue;
+    std::string budgetCategory;
+    double amount;
 };
 
 std::string generateNextDocumentId();
@@ -21,6 +23,7 @@ void showPublishedDocuments(const std::string& actor);
 void uploadDocumentAsAdmin(const Admin& admin);
 void viewAllDocumentsForAdmin(const Admin& admin);
 void searchDocumentByIdForAdmin(const Admin& admin);
+void filterDocumentsForAdmin(const Admin& admin);
 bool updateDocumentStatusBySystem(const std::string& docId, const std::string& newStatus);
 void updateDocumentStatusForAdmin(const Admin& admin);
 

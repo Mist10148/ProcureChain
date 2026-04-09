@@ -210,12 +210,12 @@ void ensureBlockchainNodeFilesExist() {
     seedBlockchainIfAllEmpty();
 }
 
-void appendBlockchainAction(const std::string& action, const std::string& docId, const std::string& actor) {
+int appendBlockchainAction(const std::string& action, const std::string& docId, const std::string& actor) {
     ensureBlockchainNodeFilesExist();
 
     std::ifstream nodeReader;
     if (!openInputFileWithFallback(nodeReader, NODE1_PATH, NODE1_FALLBACK)) {
-        return;
+        return -1;
     }
 
     std::string line;
@@ -257,13 +257,13 @@ void appendBlockchainAction(const std::string& action, const std::string& docId,
     std::ofstream node3;
 
     if (!openAppendFileWithFallback(node1, NODE1_PATH, NODE1_FALLBACK)) {
-        return;
+        return -1;
     }
     if (!openAppendFileWithFallback(node2, NODE2_PATH, NODE2_FALLBACK)) {
-        return;
+        return -1;
     }
     if (!openAppendFileWithFallback(node3, NODE3_PATH, NODE3_FALLBACK)) {
-        return;
+        return -1;
     }
 
     // Write the same block to all three simulated node files.
@@ -273,6 +273,8 @@ void appendBlockchainAction(const std::string& action, const std::string& docId,
     node1.flush();
     node2.flush();
     node3.flush();
+
+    return nextIndex;
 }
 
 void validateBlockchainNodes(const std::string& actor) {
