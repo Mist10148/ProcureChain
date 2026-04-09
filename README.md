@@ -26,7 +26,7 @@ High-level process:
 4. Document status updates automatically based on approval outcomes.
 5. Citizens can view published documents.
 6. Every important action is written to an audit log.
-7. Key events are appended to three blockchain node files and can be validated for consistency.
+7. Key events are appended to five blockchain node files and can be validated for consistency.
 8. Governance dashboards provide approval analytics and budget variance reporting.
 
 ## Main Features
@@ -51,7 +51,7 @@ High-level process:
 - CSV export for audit logs
   - export all
   - export filtered
-- Simulated blockchain append and validation across 3 node files
+- Simulated blockchain append and validation across 5 node files
 - Audit-to-blockchain linking for blockchain-backed actions
 
 ## Requirements
@@ -125,6 +125,8 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 ### data/blockchain/node1_chain.txt
 ### data/blockchain/node2_chain.txt
 ### data/blockchain/node3_chain.txt
+### data/blockchain/node4_chain.txt
+### data/blockchain/node5_chain.txt
 
     index|timestamp|action|documentID|actor|previousHash|currentHash
 

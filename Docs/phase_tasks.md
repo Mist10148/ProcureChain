@@ -105,7 +105,7 @@ Completed
 
 ### Implemented
 
-- append to three node ledger files
+- append to five node ledger files
 - per-node validation and cross-node consistency checks
 - integrity verification flow for document hash comparison
 

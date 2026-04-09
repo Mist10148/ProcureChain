@@ -149,7 +149,7 @@ Evidence notes:
 
 ### 7.1 Blockchain Write Path
 
-- [x] Key actions append to node1, node2, node3 chain files.
+- [x] Key actions append to node1, node2, node3, node4, node5 chain files.
 - [x] Block index is returned for linking.
 
 ### 7.2 Blockchain Validation

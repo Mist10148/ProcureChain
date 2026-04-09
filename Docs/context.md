@@ -264,11 +264,13 @@ Format:
 
 ### blockchain node files
 
-Simulate 3 ledger nodes:
+Simulate 5 ledger nodes:
 
 - node1_chain.txt
 - node2_chain.txt
 - node3_chain.txt
+- node4_chain.txt
+- node5_chain.txt
 
 Format:
 

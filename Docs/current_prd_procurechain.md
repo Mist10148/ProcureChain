@@ -271,7 +271,7 @@ Priority: High
 
 Description:
 
-System simulates blockchain behavior using 3 synchronized node files.
+System simulates blockchain behavior using 5 synchronized node files.
 
 Acceptance Criteria:
 

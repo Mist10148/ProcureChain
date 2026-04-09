@@ -11,12 +11,18 @@
 #include <vector>
 
 namespace {
-const std::string NODE1_PATH = "data/blockchain/node1_chain.txt";
-const std::string NODE2_PATH = "data/blockchain/node2_chain.txt";
-const std::string NODE3_PATH = "data/blockchain/node3_chain.txt";
-const std::string NODE1_FALLBACK = "../data/blockchain/node1_chain.txt";
-const std::string NODE2_FALLBACK = "../data/blockchain/node2_chain.txt";
-const std::string NODE3_FALLBACK = "../data/blockchain/node3_chain.txt";
+struct NodePath {
+    std::string primaryPath;
+    std::string fallbackPath;
+};
+
+const std::vector<NodePath> NODE_PATHS = {
+    {"data/blockchain/node1_chain.txt", "../data/blockchain/node1_chain.txt"},
+    {"data/blockchain/node2_chain.txt", "../data/blockchain/node2_chain.txt"},
+    {"data/blockchain/node3_chain.txt", "../data/blockchain/node3_chain.txt"},
+    {"data/blockchain/node4_chain.txt", "../data/blockchain/node4_chain.txt"},
+    {"data/blockchain/node5_chain.txt", "../data/blockchain/node5_chain.txt"}
+};
 
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
     std::ifstream primary(primaryPath);
@@ -63,6 +69,17 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
 
     file.clear();
     file.open(fallbackPath, std::ios::app);
+    return file.is_open();
+}
+
+bool openWriteFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    file.open(primaryPath, std::ios::out | std::ios::trunc);
+    if (file.is_open()) {
+        return true;
+    }
+
+    file.clear();
+    file.open(fallbackPath, std::ios::out | std::ios::trunc);
     return file.is_open();
 }
 
@@ -161,10 +178,10 @@ bool hasDataRows(const std::string& primaryPath, const std::string& fallbackPath
 }
 
 void seedBlockchainIfAllEmpty() {
-    if (hasDataRows(NODE1_PATH, NODE1_FALLBACK) ||
-        hasDataRows(NODE2_PATH, NODE2_FALLBACK) ||
-        hasDataRows(NODE3_PATH, NODE3_FALLBACK)) {
-        return;
+    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+        if (hasDataRows(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+            return;
+        }
     }
 
     std::string prevHash = "0000";
@@ -178,43 +195,65 @@ void seedBlockchainIfAllEmpty() {
     const std::string hash2 = computeSimpleHash(source2);
     const std::string row2 = source2 + "|" + hash2;
 
-    std::ofstream node1;
-    std::ofstream node2;
-    std::ofstream node3;
+    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+        std::ofstream nodeWriter;
+        if (!openAppendFileWithFallback(nodeWriter, NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+            return;
+        }
 
-    if (!openAppendFileWithFallback(node1, NODE1_PATH, NODE1_FALLBACK)) {
+        nodeWriter << row1 << '\n' << row2 << '\n';
+        nodeWriter.flush();
+    }
+}
+
+void synchronizeEmptyNodesFromReference() {
+    std::string referenceData;
+
+    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+        if (!hasDataRows(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+            continue;
+        }
+
+        referenceData = readFullFileWithFallback(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath);
+        if (!referenceData.empty()) {
+            break;
+        }
+    }
+
+    if (referenceData.empty()) {
         return;
     }
-    if (!openAppendFileWithFallback(node2, NODE2_PATH, NODE2_FALLBACK)) {
-        return;
-    }
-    if (!openAppendFileWithFallback(node3, NODE3_PATH, NODE3_FALLBACK)) {
-        return;
-    }
 
-    node1 << row1 << '\n' << row2 << '\n';
-    node2 << row1 << '\n' << row2 << '\n';
-    node3 << row1 << '\n' << row2 << '\n';
+    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+        if (hasDataRows(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+            continue;
+        }
 
-    node1.flush();
-    node2.flush();
-    node3.flush();
+        std::ofstream nodeWriter;
+        if (!openWriteFileWithFallback(nodeWriter, NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+            continue;
+        }
+
+        nodeWriter << referenceData;
+        nodeWriter.flush();
+    }
 }
 } // namespace
 
 void ensureBlockchainNodeFilesExist() {
     const std::string header = "index|timestamp|action|documentID|actor|previousHash|currentHash";
-    ensureFileWithHeader(NODE1_PATH, NODE1_FALLBACK, header);
-    ensureFileWithHeader(NODE2_PATH, NODE2_FALLBACK, header);
-    ensureFileWithHeader(NODE3_PATH, NODE3_FALLBACK, header);
+    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+        ensureFileWithHeader(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath, header);
+    }
     seedBlockchainIfAllEmpty();
+    synchronizeEmptyNodesFromReference();
 }
 
 int appendBlockchainAction(const std::string& action, const std::string& docId, const std::string& actor) {
     ensureBlockchainNodeFilesExist();
 
     std::ifstream nodeReader;
-    if (!openInputFileWithFallback(nodeReader, NODE1_PATH, NODE1_FALLBACK)) {
+    if (!openInputFileWithFallback(nodeReader, NODE_PATHS[0].primaryPath, NODE_PATHS[0].fallbackPath)) {
         return -1;
     }
 
@@ -252,27 +291,23 @@ int appendBlockchainAction(const std::string& action, const std::string& docId, 
 
     const std::string row = source + "|" + currentHash;
 
-    std::ofstream node1;
-    std::ofstream node2;
-    std::ofstream node3;
+    std::vector<std::ofstream> nodeWriters;
+    nodeWriters.reserve(NODE_PATHS.size());
 
-    if (!openAppendFileWithFallback(node1, NODE1_PATH, NODE1_FALLBACK)) {
-        return -1;
-    }
-    if (!openAppendFileWithFallback(node2, NODE2_PATH, NODE2_FALLBACK)) {
-        return -1;
-    }
-    if (!openAppendFileWithFallback(node3, NODE3_PATH, NODE3_FALLBACK)) {
-        return -1;
+    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+        std::ofstream nodeWriter;
+        if (!openAppendFileWithFallback(nodeWriter, NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+            return -1;
+        }
+
+        nodeWriters.push_back(std::move(nodeWriter));
     }
 
-    // Write the same block to all three simulated node files.
-    node1 << row << '\n';
-    node2 << row << '\n';
-    node3 << row << '\n';
-    node1.flush();
-    node2.flush();
-    node3.flush();
+    // Write the same block to all simulated node files.
+    for (std::size_t i = 0; i < nodeWriters.size(); ++i) {
+        nodeWriters[i] << row << '\n';
+        nodeWriters[i].flush();
+    }
 
     return nextIndex;
 }
@@ -283,24 +318,37 @@ void validateBlockchainNodes(const std::string& actor) {
 
     ensureBlockchainNodeFilesExist();
 
-    bool node1Valid = validateSingleChain(NODE1_PATH, NODE1_FALLBACK);
-    bool node2Valid = validateSingleChain(NODE2_PATH, NODE2_FALLBACK);
-    bool node3Valid = validateSingleChain(NODE3_PATH, NODE3_FALLBACK);
+    std::vector<bool> nodeValidFlags;
+    nodeValidFlags.reserve(NODE_PATHS.size());
 
-    std::string node1Data = readFullFileWithFallback(NODE1_PATH, NODE1_FALLBACK);
-    std::string node2Data = readFullFileWithFallback(NODE2_PATH, NODE2_FALLBACK);
-    std::string node3Data = readFullFileWithFallback(NODE3_PATH, NODE3_FALLBACK);
+    std::vector<std::string> nodeData;
+    nodeData.reserve(NODE_PATHS.size());
 
-    bool sameContent = !node1Data.empty() && node1Data == node2Data && node2Data == node3Data;
-    bool allValid = node1Valid && node2Valid && node3Valid && sameContent;
+    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+        nodeValidFlags.push_back(validateSingleChain(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath));
+        nodeData.push_back(readFullFileWithFallback(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath));
+    }
+
+    bool sameContent = !nodeData.empty() && !nodeData[0].empty();
+    for (std::size_t i = 1; i < nodeData.size() && sameContent; ++i) {
+        if (nodeData[i] != nodeData[0]) {
+            sameContent = false;
+        }
+    }
+
+    bool allValid = sameContent;
+    for (std::size_t i = 0; i < nodeValidFlags.size(); ++i) {
+        allValid = allValid && nodeValidFlags[i];
+    }
 
     const std::vector<std::string> headers = {"Validation Check", "Result"};
     const std::vector<int> widths = {30, 10};
 
     ui::printTableHeader(headers, widths);
-    ui::printTableRow({"Node 1 chain integrity", node1Valid ? "PASS" : "FAIL"}, widths);
-    ui::printTableRow({"Node 2 chain integrity", node2Valid ? "PASS" : "FAIL"}, widths);
-    ui::printTableRow({"Node 3 chain integrity", node3Valid ? "PASS" : "FAIL"}, widths);
+    for (std::size_t i = 0; i < nodeValidFlags.size(); ++i) {
+        const std::string label = "Node " + std::to_string(i + 1) + " chain integrity";
+        ui::printTableRow({label, nodeValidFlags[i] ? "PASS" : "FAIL"}, widths);
+    }
     ui::printTableRow({"Node content consistency", sameContent ? "PASS" : "FAIL"}, widths);
     ui::printTableFooter(widths);
 
