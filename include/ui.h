@@ -17,6 +17,11 @@ std::string warning(const std::string& text);
 std::string error(const std::string& text);
 std::string info(const std::string& text);
 std::string muted(const std::string& text);
+std::string primary(const std::string& text);
+std::string accent(const std::string& text);
+std::string roleLabel(const std::string& roleName);
+std::string consensusStatus(const std::string& status);
+const char* consensusColorCode(const std::string& status);
 
 std::string truncate(const std::string& text, std::size_t width);
 
@@ -26,6 +31,7 @@ void printTableHeader(const std::vector<std::string>& columns, const std::vector
 void printTableRow(const std::vector<std::string>& cells, const std::vector<int>& widths);
 void printTableFooter(const std::vector<int>& widths);
 void printBar(const std::string& label, double value, double maxValue, int width);
+void printBar(const std::string& label, double value, double maxValue, int width, const char* colorCode);
 
 } // namespace ui
 

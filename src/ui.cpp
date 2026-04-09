@@ -10,6 +10,16 @@
 namespace {
 bool g_uiInitialized = false;
 bool g_colorEnabled = false;
+
+std::string toLowerCopy(std::string value) {
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        if (value[i] >= 'A' && value[i] <= 'Z') {
+            value[i] = static_cast<char>(value[i] + ('a' - 'A'));
+        }
+    }
+
+    return value;
+}
 }
 
 namespace ui {
@@ -79,6 +89,70 @@ std::string muted(const std::string& text) {
     return paint(text, "90");
 }
 
+std::string primary(const std::string& text) {
+    return paint(text, "34");
+}
+
+std::string accent(const std::string& text) {
+    return paint(text, "35");
+}
+
+const char* consensusColorCode(const std::string& status) {
+    const std::string normalized = toLowerCopy(status);
+
+    if (normalized == "approved" || normalized == "published") {
+        return "32";
+    }
+
+    if (normalized == "denied" || normalized == "rejected") {
+        return "31";
+    }
+
+    if (normalized == "pending" || normalized == "pending_approval") {
+        return "33";
+    }
+
+    return "36";
+}
+
+std::string consensusStatus(const std::string& status) {
+    const std::string normalized = toLowerCopy(status);
+
+    if (normalized == "approved" || normalized == "published") {
+        return paint("Approved", consensusColorCode(normalized));
+    }
+
+    if (normalized == "denied" || normalized == "rejected") {
+        return paint("Denied", consensusColorCode(normalized));
+    }
+
+    if (normalized == "pending" || normalized == "pending_approval") {
+        return paint("Pending", consensusColorCode(normalized));
+    }
+
+    return paint(status, consensusColorCode(normalized));
+}
+
+std::string roleLabel(const std::string& roleName) {
+    if (roleName == "Super Admin") {
+        return accent(roleName);
+    }
+
+    if (roleName == "Procurement Officer") {
+        return info(roleName);
+    }
+
+    if (roleName == "Budget Officer") {
+        return primary(roleName);
+    }
+
+    if (roleName == "Municipal Administrator") {
+        return success(roleName);
+    }
+
+    return muted(roleName);
+}
+
 std::string truncate(const std::string& text, std::size_t width) {
     if (text.size() <= width) {
         return text;
@@ -128,6 +202,10 @@ void printTableFooter(const std::vector<int>& widths) {
 }
 
 void printBar(const std::string& label, double value, double maxValue, int width) {
+    printBar(label, value, maxValue, width, "34");
+}
+
+void printBar(const std::string& label, double value, double maxValue, int width, const char* colorCode) {
     if (maxValue <= 0.0) {
         maxValue = 1.0;
     }
@@ -152,7 +230,7 @@ void printBar(const std::string& label, double value, double maxValue, int width
                       std::string(static_cast<std::size_t>(width - fill), '.');
 
     std::cout << "  " << std::left << std::setw(22) << truncate(label, 22)
-              << " [" << paint(bar, "34") << "] "
+              << " [" << paint(bar, colorCode) << "] "
               << std::fixed << std::setprecision(2) << value << '\n';
 }
 

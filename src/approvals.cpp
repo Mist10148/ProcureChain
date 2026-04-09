@@ -190,9 +190,17 @@ void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
 
+void printConsensusLegend() {
+    std::cout << "  Consensus Legend: "
+              << ui::consensusStatus("approved") << " | "
+              << ui::consensusStatus("denied") << " | "
+              << ui::consensusStatus("pending") << "\n";
+}
+
 void applyApprovalDecision(const Admin& admin, bool approve) {
     clearScreen();
     ui::printSectionTitle(approve ? "APPROVE DOCUMENT" : "REJECT DOCUMENT");
+    printConsensusLegend();
 
     clearInputBuffer();
     std::string targetDocId;
@@ -200,7 +208,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << ui::warning("[!] Document ID is required.") << "\n";
+        std::cout << ui::error("[!] Document ID is required.") << "\n";
         logAuditAction("APPROVAL_INPUT_ERROR", "N/A", admin.username);
         waitForEnter();
         return;
@@ -243,7 +251,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     }
 
     if (!updated) {
-        std::cout << ui::warning("[!] No pending approval record found for this document and account.") << "\n";
+        std::cout << ui::error("[!] No pending approval record found for this document and account.") << "\n";
         logAuditAction("APPROVAL_NOT_FOUND", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -295,7 +303,15 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
         nextDocStatus = "published";
     }
 
-    updateDocumentStatusBySystem(targetDocId, nextDocStatus);
+    if (!updateDocumentStatusBySystem(targetDocId, nextDocStatus)) {
+        std::cout << ui::error("[!] Decision saved, but document status update failed.") << "\n";
+        logAuditAction("APPROVAL_STATUS_SYNC_FAILED", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << "\nDecision Saved: " << ui::consensusStatus(approve ? "approved" : "denied") << "\n";
+    std::cout << "Consensus Result: " << ui::consensusStatus(nextDocStatus) << "\n";
 
     if (approve) {
         appendBlockchainAction("APPROVE", targetDocId, admin.username);
@@ -304,7 +320,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     } else {
         appendBlockchainAction("REJECT", targetDocId, admin.username);
         logAuditAction("REJECT_DOC", targetDocId, admin.username);
-        std::cout << ui::success("[+] Document rejected successfully.") << "\n";
+        std::cout << ui::error("[+] Document denied successfully.") << "\n";
     }
 
     waitForEnter();
@@ -397,6 +413,7 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
 void viewPendingApprovalsForAdmin(const Admin& admin) {
     clearScreen();
     ui::printSectionTitle("PENDING APPROVALS");
+    printConsensusLegend();
 
     std::ifstream file;
     if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
@@ -442,9 +459,14 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
             ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].status}, widths);
         }
         ui::printTableFooter(widths);
+        std::cout << "\n  Displayed status color: " << ui::consensusStatus("pending") << "\n";
 
         std::cout << "\n" << ui::bold("Pending Load Chart") << "\n";
-        ui::printBar("Pending approvals", static_cast<double>(pendingRows.size()), static_cast<double>(pendingRows.size()), 24);
+        ui::printBar("Pending approvals",
+                     static_cast<double>(pendingRows.size()),
+                     static_cast<double>(pendingRows.size()),
+                     24,
+                     ui::consensusColorCode("pending"));
         logAuditAction("VIEW_PENDING_APPROVALS", "MULTI", admin.username);
     }
 

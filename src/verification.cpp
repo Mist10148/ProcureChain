@@ -44,7 +44,7 @@ std::string computeSimpleHash(const std::string& text) {
 
 void verifyDocumentIntegrity(const std::string& actor) {
     clearScreen();
-    ui::printSectionTitle("DOCUMENT INTEGRITY VERIFICATION");
+    ui::printSectionTitle("DOCUMENT INTEGRITY VERIFICATION (ADMIN)");
 
     clearInputBuffer();
     std::string targetDocId;
@@ -52,7 +52,7 @@ void verifyDocumentIntegrity(const std::string& actor) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << ui::warning("[!] Document ID is required.") << "\n";
+        std::cout << ui::error("[!] Document ID is required.") << "\n";
         logAuditAction("VERIFY_DOC_INPUT_ERROR", "N/A", actor);
         waitForEnter();
         return;
@@ -125,7 +125,7 @@ void verifyDocumentIntegrity(const std::string& actor) {
     }
 
     if (!found) {
-        std::cout << "\n" << ui::warning("[!] Document ID not found.") << "\n";
+        std::cout << "\n" << ui::error("[!] Document ID not found.") << "\n";
         logAuditAction("VERIFY_DOC_NOT_FOUND", targetDocId, actor);
     }
 

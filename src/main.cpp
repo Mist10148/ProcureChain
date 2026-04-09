@@ -45,6 +45,10 @@ bool canValidateBlockchain(const Admin& admin) {
     return isRole(admin, "Super Admin");
 }
 
+bool canVerifyDocumentIntegrity(const Admin& admin) {
+    return isRole(admin, "Super Admin");
+}
+
 void denyAdminAction(const Admin& admin, const std::string& actionCode) {
     std::cout << "\n" << ui::error("[!] Access denied for your role") << " (" << admin.role << ").\n";
     logAuditAction("ACCESS_DENIED_" + actionCode, "N/A", admin.username);
@@ -92,9 +96,9 @@ void printCitizenMenu(const User& citizen) {
     ui::printSectionTitle("CITIZEN DASHBOARD");
     std::cout << "  Logged in as: " << citizen.fullName << " (" << citizen.userId << ")\n\n";
     std::cout << "  " << ui::info("[1]") << " View Published Documents\n";
-    std::cout << "  " << ui::info("[2]") << " Verify Document Integrity\n";
-    std::cout << "  " << ui::info("[3]") << " View Procurement Budgets\n";
-    std::cout << "  " << ui::info("[4]") << " View Audit Trail\n";
+    std::cout << "  " << ui::info("[2]") << " View Procurement Budgets\n";
+    std::cout << "  " << ui::info("[3]") << " View Audit Trail\n";
+    std::cout << "  " << ui::muted("[Info]") << " Integrity verification is Admin-only (Super Admin).\n";
     std::cout << "  " << ui::info("[0]") << " Logout\n";
     std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
@@ -103,7 +107,7 @@ void printCitizenMenu(const User& citizen) {
 void printAdminMenu(const Admin& admin) {
     ui::printSectionTitle("ADMIN DASHBOARD");
     std::cout << "  Logged in as: " << admin.fullName << " (" << admin.adminId << ")\n";
-    std::cout << "  Role        : " << ui::success(admin.role) << "\n\n";
+    std::cout << "  Role        : " << ui::roleLabel(admin.role) << "\n\n";
     std::cout << "  " << ui::info("[1]") << " Upload Document\n";
     std::cout << "  " << ui::info("[2]") << " View All Documents\n";
     std::cout << "  " << ui::info("[3]") << " Search Document by ID\n";
@@ -114,6 +118,7 @@ void printAdminMenu(const Admin& admin) {
     std::cout << "  " << ui::info("[8]") << " Manage Budgets\n";
     std::cout << "  " << ui::info("[9]") << " View Audit Trail\n";
     std::cout << "  " << ui::info("[10]") << " Validate Blockchain\n";
+    std::cout << "  " << ui::info("[11]") << " Verify Document Integrity\n";
     std::cout << "  " << ui::info("[0]") << " Logout\n";
     std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
@@ -127,8 +132,8 @@ void runCitizenDashboard(const User& citizen) {
         clearScreen();
         printCitizenMenu(citizen);
 
-        if (!readBoundedMenuChoice(citizenChoice, 0, 4)) {
-            std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
+        if (!readBoundedMenuChoice(citizenChoice, 0, 3)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
 
@@ -137,12 +142,9 @@ void runCitizenDashboard(const User& citizen) {
                 showPublishedDocuments(citizen.username);
                 break;
             case 2:
-                verifyDocumentIntegrity(citizen.username);
-                break;
-            case 3:
                 viewBudgetAllocations(citizen.username);
                 break;
-            case 4:
+            case 3:
                 viewAuditTrail(citizen.username);
                 break;
             case 0:
@@ -164,8 +166,8 @@ void runAdminDashboard(const Admin& admin) {
         clearScreen();
         printAdminMenu(admin);
 
-        if (!readBoundedMenuChoice(adminChoice, 0, 10)) {
-            std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
+        if (!readBoundedMenuChoice(adminChoice, 0, 11)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
 
@@ -228,6 +230,13 @@ void runAdminDashboard(const Admin& admin) {
                 }
                 validateBlockchainNodes(admin.username);
                 break;
+            case 11:
+                if (!canVerifyDocumentIntegrity(admin)) {
+                    denyAdminAction(admin, "VERIFY_DOCUMENT");
+                    break;
+                }
+                verifyDocumentIntegrity(admin.username);
+                break;
             case 0:
                 logAuditAction("ADMIN_LOGOUT", admin.adminId, admin.username);
                 std::cout << "\n" << ui::success("[+] You have been logged out successfully.") << "\n";
@@ -250,7 +259,7 @@ void handleLoginFlow() {
 
     int loginType = -1;
     if (!readBoundedMenuChoice(loginType, 0, 2)) {
-        std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
+        std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
         return;
     }
 
@@ -285,7 +294,7 @@ int main() {
         printHomePage();
 
         if (!readBoundedMenuChoice(choice, HOME_MIN_CHOICE, HOME_MAX_CHOICE)) {
-            std::cout << "\n" << ui::warning("[!] Invalid input. Please enter a number from the menu.") << "\n";
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
 

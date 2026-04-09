@@ -67,6 +67,29 @@ std::string toLowerCopy(std::string value) {
     return value;
 }
 
+std::string statusDisplayLabel(const std::string& normalizedStatus) {
+    if (normalizedStatus == "approved" || normalizedStatus == "published") {
+        return "approved";
+    }
+
+    if (normalizedStatus == "denied" || normalizedStatus == "rejected") {
+        return "denied";
+    }
+
+    if (normalizedStatus == "pending" || normalizedStatus == "pending_approval") {
+        return "pending";
+    }
+
+    return normalizedStatus;
+}
+
+void printConsensusLegend() {
+    std::cout << "  Consensus Legend: "
+              << ui::consensusStatus("approved") << " | "
+              << ui::consensusStatus("denied") << " | "
+              << ui::consensusStatus("pending") << "\n";
+}
+
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
@@ -120,6 +143,7 @@ void printStatusChart(const std::vector<Document>& docs) {
     }
 
     std::cout << "\n" << ui::bold("Status Distribution") << "\n";
+    printConsensusLegend();
     double maxCount = 0.0;
     for (std::map<std::string, double>::const_iterator it = counts.begin(); it != counts.end(); ++it) {
         if (it->second > maxCount) {
@@ -128,7 +152,7 @@ void printStatusChart(const std::vector<Document>& docs) {
     }
 
     for (std::map<std::string, double>::const_iterator it = counts.begin(); it != counts.end(); ++it) {
-        ui::printBar(it->first, it->second, maxCount, 24);
+        ui::printBar(statusDisplayLabel(it->first), it->second, maxCount, 24, ui::consensusColorCode(it->first));
     }
 }
 } // namespace
@@ -282,7 +306,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::getline(std::cin, department);
 
     if (title.empty() || category.empty() || department.empty()) {
-        std::cout << ui::warning("[!] Title, category, and department are required.") << "\n";
+        std::cout << ui::error("[!] Title, category, and department are required.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
@@ -376,7 +400,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << ui::warning("[!] Document ID is required.") << "\n";
+        std::cout << ui::error("[!] Document ID is required.") << "\n";
         logAuditAction("SEARCH_DOC_INPUT_ERROR", "N/A", admin.username);
         waitForEnter();
         return;
@@ -500,16 +524,16 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     std::getline(std::cin, targetDocId);
 
     if (targetDocId.empty()) {
-        std::cout << ui::warning("[!] Document ID is required.") << "\n";
+        std::cout << ui::error("[!] Document ID is required.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
     std::cout << "\nSelect new status:\n";
-    std::cout << "  [1] pending_approval\n";
-    std::cout << "  [2] published\n";
-    std::cout << "  [3] rejected\n";
+    std::cout << "  [1] " << ui::consensusStatus("pending") << "\n";
+    std::cout << "  [2] " << ui::consensusStatus("approved") << "\n";
+    std::cout << "  [3] " << ui::consensusStatus("denied") << "\n";
     std::cout << "  Enter choice: ";
 
     int statusChoice = 0;
@@ -517,7 +541,7 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     if (std::cin.fail()) {
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        std::cout << ui::warning("[!] Invalid status input.") << "\n";
+        std::cout << ui::error("[!] Invalid status input.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", targetDocId, admin.username);
         waitForEnter();
         return;
@@ -531,7 +555,7 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     } else if (statusChoice == 3) {
         newStatus = "rejected";
     } else {
-        std::cout << ui::warning("[!] Invalid status option.") << "\n";
+        std::cout << ui::error("[!] Invalid status option.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", targetDocId, admin.username);
         waitForEnter();
         return;

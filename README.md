@@ -23,7 +23,7 @@ High-level process:
 2. Approval requests are created for required approver roles.
 3. Approvers approve or reject.
 4. Document status updates automatically based on approval outcomes.
-5. Citizens can view published documents and verify integrity.
+5. Citizens can view published documents, while integrity verification is restricted to Super Admin.
 6. Every important action is written to an audit log.
 7. Key events are appended to three blockchain node files and can be validated for consistency.
 
@@ -114,8 +114,8 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 2. Choose Login or Sign Up from Home.
 3. If logging in, choose Citizen or Admin login type.
 4. After login, the system opens the matching dashboard:
-	 - Citizen dashboard for viewing/verifying data
-	 - Admin dashboard for document, approval, budget, audit, and blockchain actions
+	 - Citizen dashboard for viewing published data and transparency records
+	 - Admin dashboard for document, approval, verification, budget, audit, and blockchain actions
 5. Actions write to:
 	 - data/documents.txt
 	 - data/approvals.txt
@@ -137,9 +137,10 @@ Use this sample run-through to demo the project:
 6. Open pending approvals and approve the same document.
 7. Login as Citizen.
 8. View published documents and confirm the approved document appears.
-9. Run document verification for that document ID.
-10. View audit trail to see recorded actions.
-11. Login as Super Admin and run blockchain validation.
+9. Logout and login as Super Admin.
+10. Run document verification for that document ID.
+11. View audit trail to see recorded actions.
+12. Run blockchain validation.
 
 ## How To Use Each Main Menu Quickly
 
@@ -150,7 +151,6 @@ Use this sample run-through to demo the project:
 
 - Citizen Dashboard
 	- View Published Documents
-	- Verify Document Integrity
 	- View Procurement Budgets
 	- View Audit Trail
 	- Logout
@@ -160,6 +160,7 @@ Use this sample run-through to demo the project:
 	- View pending approvals
 	- Approve or reject documents (role-limited)
 	- Manual status override (Super Admin)
+	- Verify document integrity (Super Admin)
 	- Manage budgets (Budget Officer and Super Admin)
 	- View audit trail
 	- Validate blockchain (Super Admin)
