@@ -13,6 +13,8 @@
 #include <vector>
 
 namespace {
+// Audit storage is append-only in practice; readers parse rows defensively so
+// legacy/malformed lines do not break the view/export flows.
 const std::string AUDIT_FILE_PATH_PRIMARY = "data/audit_log.txt";
 const std::string AUDIT_FILE_PATH_FALLBACK = "../data/audit_log.txt";
 
@@ -25,6 +27,7 @@ struct AuditEntry {
 };
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Constant-time fallback open strategy for read paths.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -36,6 +39,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Append mode preserves historical records while avoiding in-place rewrites.
     file.open(primaryPath, std::ios::app);
     if (file.is_open()) {
         return true;
@@ -47,6 +51,7 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
 }
 
 std::string toLowerCopy(std::string value) {
+    // ASCII-only lowercase conversion for case-insensitive filters.
     for (size_t i = 0; i < value.size(); ++i) {
         if (value[i] >= 'A' && value[i] <= 'Z') {
             value[i] = static_cast<char>(value[i] + ('a' - 'A'));
@@ -56,6 +61,7 @@ std::string toLowerCopy(std::string value) {
 }
 
 bool containsCaseInsensitive(const std::string& text, const std::string& token) {
+    // O(n) substring check after lowercasing both sides.
     if (token.empty()) {
         return true;
     }
@@ -75,6 +81,7 @@ bool looksLikeHeader(const std::string& firstLine) {
 }
 
 bool loadAuditEntries(std::vector<AuditEntry>& entries) {
+    // Full log parse: O(n) rows and O(n) memory for in-memory table operations.
     std::ifstream file;
     if (!openInputFileWithFallback(file, AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK)) {
         return false;
@@ -115,6 +122,7 @@ bool loadAuditEntries(std::vector<AuditEntry>& entries) {
 }
 
 std::string csvEscape(const std::string& raw) {
+    // CSV-safe quoting: wraps field and doubles embedded quotes.
     std::string escaped = "\"";
     for (size_t i = 0; i < raw.size(); ++i) {
         if (raw[i] == '\"') {
@@ -128,6 +136,7 @@ std::string csvEscape(const std::string& raw) {
 }
 
 bool isWithinDateRange(const std::string& timestamp, const std::string& fromDate, const std::string& toDate) {
+    // Uses lexical compare on YYYY-MM-DD, which preserves chronological order.
     const std::string day = timestamp.size() >= 10 ? timestamp.substr(0, 10) : "";
 
     if (!fromDate.empty() && day < fromDate) {
@@ -142,6 +151,7 @@ bool isWithinDateRange(const std::string& timestamp, const std::string& fromDate
 }
 
 std::string sanitizeFileToken(std::string token) {
+    // Restricts generated export filenames to a safe character subset.
     for (size_t i = 0; i < token.size(); ++i) {
         const char c = token[i];
         const bool safe = std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '-';
@@ -153,6 +163,7 @@ std::string sanitizeFileToken(std::string token) {
 }
 
 std::string defaultExportFileName() {
+    // Timestamp-based default avoids collisions for repeated exports.
     std::string stamp = getCurrentTimestamp();
     for (size_t i = 0; i < stamp.size(); ++i) {
         if (stamp[i] == ' ' || stamp[i] == ':') {
@@ -164,6 +175,7 @@ std::string defaultExportFileName() {
 }
 
 std::string chooseExportPath(const std::string& fileName) {
+    // Probes writable location by opening the target file once.
     std::ofstream primary("data/" + fileName);
     if (primary.is_open()) {
         primary.close();
@@ -180,6 +192,7 @@ std::string chooseExportPath(const std::string& fileName) {
 }
 
 void writeCsvRows(const std::string& outputPath, const std::vector<AuditEntry>& rows) {
+    // Linear write pipeline: O(n) where n is exported row count.
     std::ofstream out(outputPath);
     if (!out.is_open()) {
         std::cout << ui::error("[!] Unable to write export file.") << "\n";
@@ -199,6 +212,7 @@ void writeCsvRows(const std::string& outputPath, const std::vector<AuditEntry>& 
 } // namespace
 
 std::string getCurrentTimestamp() {
+    // Central timestamp format shared by audit, approvals, and blockchain rows.
     std::time_t now = std::time(NULL);
     std::tm localTime;
     localtime_s(&localTime, &now);
@@ -209,6 +223,7 @@ std::string getCurrentTimestamp() {
 }
 
 void logAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex) {
+    // Appends one normalized line so every module can emit traceable events.
     std::ofstream file;
     if (!openAppendFileWithFallback(file, AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK)) {
         return;
@@ -229,6 +244,8 @@ void logAuditAction(const std::string& action, const std::string& targetId, cons
 }
 
 void exportAuditTrailCsv(const std::string& actor) {
+    // Export flow supports full dump or interactive filtered dump in one screen.
+    // Worst-case complexity is O(n) for filtering + O(k) for writing output.
     clearScreen();
     ui::printSectionTitle("EXPORT AUDIT TRAIL (CSV)");
 
@@ -347,6 +364,8 @@ void exportAuditTrailCsv(const std::string& actor) {
 }
 
 void viewAuditTrail(const std::string& actor) {
+    // Displays tabular audit rows and an action-frequency chart from the same
+    // in-memory snapshot to keep screen data internally consistent.
     clearScreen();
     ui::printSectionTitle("AUDIT TRAIL");
 

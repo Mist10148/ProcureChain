@@ -19,10 +19,13 @@
 #include <algorithm>
 
 namespace {
+// Document management stores records in a flat file and supports listing,
+// searching, filtering, status transitions, and approval-request creation.
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
 struct DocumentFilter {
+    // Optional fields used to build an in-memory filter pipeline.
     std::string status;
     std::string exactDate;
     std::string fromDate;
@@ -33,6 +36,7 @@ struct DocumentFilter {
 };
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Constant-time path fallback for read operations.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -44,6 +48,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Append mode is used for document creation without rewriting full file.
     file.open(primaryPath, std::ios::app);
     if (file.is_open()) {
         return true;
@@ -55,6 +60,7 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
 }
 
 std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
+    // Selects the currently valid location for rewrite operations.
     std::ifstream primary(primaryPath);
     if (primary.is_open()) {
         return primaryPath;
@@ -69,6 +75,7 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
+    // One-pass tokenizer: O(m), m = line length.
     std::vector<std::string> tokens;
     std::stringstream parser(line);
     std::string token;
@@ -79,6 +86,7 @@ std::vector<std::string> splitPipe(const std::string& line) {
 }
 
 std::string toLowerCopy(std::string value) {
+    // ASCII lowercase utility for case-insensitive compare operations.
     for (size_t i = 0; i < value.size(); ++i) {
         if (value[i] >= 'A' && value[i] <= 'Z') {
             value[i] = static_cast<char>(value[i] + ('a' - 'A'));
@@ -88,6 +96,7 @@ std::string toLowerCopy(std::string value) {
 }
 
 bool containsCaseInsensitive(const std::string& text, const std::string& token) {
+    // O(n) substring check after normalization.
     if (token.empty()) {
         return true;
     }
@@ -95,6 +104,7 @@ bool containsCaseInsensitive(const std::string& text, const std::string& token) 
 }
 
 bool isDateTextValid(const std::string& value) {
+    // Validates strict YYYY-MM-DD text shape used by date filters.
     if (value.empty()) {
         return true;
     }
@@ -114,6 +124,7 @@ bool isDateTextValid(const std::string& value) {
 }
 
 Document parseDocumentTokens(const std::vector<std::string>& tokens) {
+    // Backward-compatible parser that defaults missing optional columns.
     Document doc;
     doc.docId = tokens.size() > 0 ? tokens[0] : "";
     doc.title = tokens.size() > 1 ? tokens[1] : "";
@@ -152,6 +163,7 @@ std::string serializeDocument(const Document& doc) {
 }
 
 bool loadDocuments(std::vector<Document>& docs) {
+    // Full dataset load used by search/filter/update flows: O(n).
     std::ifstream file;
     if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
         return false;
@@ -185,6 +197,7 @@ bool loadDocuments(std::vector<Document>& docs) {
 }
 
 bool saveDocuments(const std::vector<Document>& docs) {
+    // Canonical rewrite ensures hash/category/amount columns stay aligned.
     std::ofstream writer(resolveDataPath(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK));
     if (!writer.is_open()) {
         return false;
@@ -199,6 +212,7 @@ bool saveDocuments(const std::vector<Document>& docs) {
 }
 
 std::string statusDisplayLabel(const std::string& normalizedStatus) {
+    // Normalizes equivalent storage states for human-friendly chart labels.
     if (normalizedStatus == "approved" || normalizedStatus == "published") {
         return "approved";
     }
@@ -226,6 +240,7 @@ void clearInputBuffer() {
 }
 
 void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValue) {
+    // Tabular renderer for both full-list screens and single-record lookups.
     std::vector<int> widths;
     std::vector<std::string> headers;
 
@@ -271,6 +286,7 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
 }
 
 void printStatusChart(const std::vector<Document>& docs) {
+    // Aggregates status frequencies in O(n), then renders scaled bars.
     std::map<std::string, double> counts;
     for (size_t i = 0; i < docs.size(); ++i) {
         counts[toLowerCopy(docs[i].status)] += 1.0;
@@ -295,6 +311,8 @@ void printStatusChart(const std::vector<Document>& docs) {
 }
 
 bool matchesFilter(const Document& doc, const DocumentFilter& filter) {
+    // Applies all active criteria as an AND filter.
+    // Per-document cost is O(1) plus substring checks for text fields.
     if (!filter.status.empty() && toLowerCopy(doc.status) != toLowerCopy(filter.status)) {
         return false;
     }
@@ -329,6 +347,7 @@ bool matchesFilter(const Document& doc, const DocumentFilter& filter) {
 } // namespace
 
 std::string generateNextDocumentId() {
+    // Scans existing IDs and increments max numeric suffix: O(n).
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
         return "D001";
@@ -361,6 +380,7 @@ std::string generateNextDocumentId() {
 }
 
 void ensureSampleDocumentsPresent() {
+    // Seeds representative rows only when the document file is empty.
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
         return;
@@ -412,6 +432,7 @@ void ensureSampleDocumentsPresent() {
 }
 
 void showPublishedDocuments(const std::string& actor) {
+    // Citizen-facing screen that filters to published records only.
     clearScreen();
     ui::printSectionTitle("PUBLISHED PROCUREMENT DOCUMENTS");
 
@@ -447,6 +468,8 @@ void showPublishedDocuments(const std::string& actor) {
 }
 
 void uploadDocumentAsAdmin(const Admin& admin) {
+    // Upload flow appends a new pending document, then creates approval rows,
+    // then appends blockchain/audit events for traceability.
     clearScreen();
     ui::printSectionTitle("ADMIN DOCUMENT UPLOAD");
 
@@ -509,6 +532,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 }
 
 void viewAllDocumentsForAdmin(const Admin& admin) {
+    // Admin-wide visibility over all document rows in current storage.
     clearScreen();
     ui::printSectionTitle("ALL DOCUMENT RECORDS");
 
@@ -533,6 +557,7 @@ void viewAllDocumentsForAdmin(const Admin& admin) {
 }
 
 void searchDocumentByIdForAdmin(const Admin& admin) {
+    // Linear search over loaded rows: O(n) worst-case.
     clearScreen();
     ui::printSectionTitle("SEARCH DOCUMENT BY ID");
 
@@ -573,6 +598,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 }
 
 void filterDocumentsForAdmin(const Admin& admin) {
+    // Interactive multi-criteria filtering in one in-memory pass: O(n).
     clearScreen();
     ui::printSectionTitle("ADVANCED DOCUMENT FILTERS");
 
@@ -647,6 +673,7 @@ void filterDocumentsForAdmin(const Admin& admin) {
 }
 
 bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::string& newStatus) {
+    // Used by approval workflows to synchronize consensus outcome to documents.
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
         return false;
@@ -669,6 +696,7 @@ bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::str
 }
 
 void updateDocumentStatusForAdmin(const Admin& admin) {
+    // Manual status override reserved for admin workflows.
     clearScreen();
     ui::printSectionTitle("UPDATE DOCUMENT STATUS");
 

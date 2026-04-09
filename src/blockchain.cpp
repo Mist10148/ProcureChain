@@ -11,6 +11,8 @@
 #include <vector>
 
 namespace {
+// This module simulates a replicated blockchain by writing identical rows into
+// multiple node files and validating hash/previous-hash continuity per node.
 struct NodePath {
     std::string primaryPath;
     std::string fallbackPath;
@@ -25,6 +27,7 @@ const std::vector<NodePath> NODE_PATHS = {
 };
 
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
+    // Idempotent file bootstrap for each blockchain node file.
     std::ifstream primary(primaryPath);
     if (primary.is_open()) {
         return true;
@@ -51,6 +54,7 @@ bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fal
 }
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Path fallback keeps node access robust across launch directories.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -62,6 +66,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Append mode preserves existing chain rows in each node file.
     file.open(primaryPath, std::ios::app);
     if (file.is_open()) {
         return true;
@@ -73,6 +78,7 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
 }
 
 bool openWriteFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Truncate mode is used only when synchronizing empty nodes from reference.
     file.open(primaryPath, std::ios::out | std::ios::trunc);
     if (file.is_open()) {
         return true;
@@ -93,6 +99,7 @@ bool parseBlockLine(
     std::string& previousHash,
     std::string& currentHash
 ) {
+    // Parses one block row according to fixed schema order.
     std::stringstream parser(line);
     std::getline(parser, index, '|');
     std::getline(parser, timestamp, '|');
@@ -107,6 +114,8 @@ bool parseBlockLine(
 }
 
 bool validateSingleChain(const std::string& path, const std::string& fallback) {
+    // Validates one node by scanning all rows once: O(n).
+    // Checks both linkage (previousHash) and content hash recomputation.
     std::ifstream file;
     if (!openInputFileWithFallback(file, path, fallback)) {
         return false;
@@ -150,6 +159,7 @@ bool validateSingleChain(const std::string& path, const std::string& fallback) {
 }
 
 std::string readFullFileWithFallback(const std::string& primaryPath, const std::string& fallbackPath) {
+    // Returns full node content for cross-node consistency comparison.
     std::ifstream file;
     if (!openInputFileWithFallback(file, primaryPath, fallbackPath)) {
         return "";
@@ -161,6 +171,7 @@ std::string readFullFileWithFallback(const std::string& primaryPath, const std::
 }
 
 bool hasDataRows(const std::string& primaryPath, const std::string& fallbackPath) {
+    // True when at least one non-header row exists in the node file.
     std::ifstream file;
     if (!openInputFileWithFallback(file, primaryPath, fallbackPath)) {
         return false;
@@ -178,6 +189,7 @@ bool hasDataRows(const std::string& primaryPath, const std::string& fallbackPath
 }
 
 void seedBlockchainIfAllEmpty() {
+    // Writes deterministic sample blocks only when every node is empty.
     for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
         if (hasDataRows(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
             return;
@@ -207,6 +219,8 @@ void seedBlockchainIfAllEmpty() {
 }
 
 void synchronizeEmptyNodesFromReference() {
+    // Copies the first non-empty node into any empty node so replication starts
+    // from a consistent baseline before live writes happen.
     std::string referenceData;
 
     for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
@@ -241,6 +255,7 @@ void synchronizeEmptyNodesFromReference() {
 } // namespace
 
 void ensureBlockchainNodeFilesExist() {
+    // Startup integrity bootstrap for all simulated nodes.
     const std::string header = "index|timestamp|action|documentID|actor|previousHash|currentHash";
     for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
         ensureFileWithHeader(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath, header);
@@ -250,6 +265,11 @@ void ensureBlockchainNodeFilesExist() {
 }
 
 int appendBlockchainAction(const std::string& action, const std::string& docId, const std::string& actor) {
+    // Append pipeline:
+    // 1) read latest index/hash from node 1,
+    // 2) build next block,
+    // 3) append identical block to all nodes.
+    // Complexity is O(n + k), n=rows in chain, k=node count.
     ensureBlockchainNodeFilesExist();
 
     std::ifstream nodeReader;
@@ -313,6 +333,8 @@ int appendBlockchainAction(const std::string& action, const std::string& docId, 
 }
 
 void validateBlockchainNodes(const std::string& actor) {
+    // Performs per-node validation plus cross-node byte-level consistency check.
+    // Overall complexity: O(k * n), k=node count, n=rows per node.
     clearScreen();
     ui::printSectionTitle("BLOCKCHAIN VALIDATION (SIMULATED)");
 

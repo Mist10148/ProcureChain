@@ -16,6 +16,8 @@
 #include <vector>
 
 namespace {
+// Account management persists rows in flat files. Helpers in this file keep
+// parsing/writing consistent and backward-compatible with older row formats.
 const std::string USERS_FILE_PATH_PRIMARY = "data/users.txt";
 const std::string USERS_FILE_PATH_FALLBACK = "../data/users.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
@@ -33,6 +35,7 @@ const size_t MAX_PASSWORD_LENGTH = 50;
 const size_t MIN_PASSWORD_LENGTH = 4;
 
 struct SeedAdminAccount {
+    // Seed records ensure role-based flows are testable on first startup.
     std::string fullName;
     std::string username;
     std::string password;
@@ -40,6 +43,7 @@ struct SeedAdminAccount {
 };
 
 std::vector<std::string> splitPipe(const std::string& line) {
+    // Single-pass tokenizer: O(m), m = line length.
     std::vector<std::string> tokens;
     std::stringstream parser(line);
     std::string token;
@@ -52,6 +56,7 @@ std::vector<std::string> splitPipe(const std::string& line) {
 }
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Resolves runtime working-directory differences without caller branching.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -63,6 +68,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Appending avoids rewriting full files for single-row insert events.
     file.open(primaryPath, std::ios::app);
     if (file.is_open()) {
         return true;
@@ -74,6 +80,7 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
 }
 
 std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
+    // Chooses existing path when possible so writes target current dataset.
     std::ifstream primary(primaryPath);
     if (primary.is_open()) {
         return primaryPath;
@@ -88,6 +95,7 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
 }
 
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
+    // Creates missing data files with schema headers; O(1) file operations.
     std::ifstream checkFile;
     if (openInputFileWithFallback(checkFile, primaryPath, fallbackPath)) {
         return true;
@@ -110,6 +118,7 @@ bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fal
 }
 
 std::string normalizeStatus(const std::string& value) {
+    // Restricts to known states so unexpected text defaults to active.
     if (value == "inactive" || value == "locked") {
         return value;
     }
@@ -118,6 +127,7 @@ std::string normalizeStatus(const std::string& value) {
 }
 
 User parseUserTokens(const std::vector<std::string>& tokens) {
+    // Defensive parser for user rows with optional trailing fields.
     User row;
     row.userId = tokens.size() > 0 ? tokens[0] : "";
     row.fullName = tokens.size() > 1 ? tokens[1] : "";
@@ -134,6 +144,7 @@ User parseUserTokens(const std::vector<std::string>& tokens) {
 }
 
 Admin parseAdminTokens(const std::vector<std::string>& tokens) {
+    // Defensive parser for admin rows with optional trailing fields.
     Admin row;
     row.adminId = tokens.size() > 0 ? tokens[0] : "";
     row.fullName = tokens.size() > 1 ? tokens[1] : "";
@@ -151,6 +162,7 @@ Admin parseAdminTokens(const std::vector<std::string>& tokens) {
 }
 
 bool loadUsers(std::vector<User>& users) {
+    // Full scan read: O(u) time and O(u) memory, u = user rows.
     std::ifstream file;
     if (!openInputFileWithFallback(file, USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK)) {
         return false;
@@ -185,6 +197,7 @@ bool loadUsers(std::vector<User>& users) {
 }
 
 bool loadAdmins(std::vector<Admin>& admins) {
+    // Full scan read: O(a) time and O(a) memory, a = admin rows.
     std::ifstream file;
     if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
         return false;
@@ -219,6 +232,7 @@ bool loadAdmins(std::vector<Admin>& admins) {
 }
 
 bool saveUsers(const std::vector<User>& users) {
+    // Canonical rewrite keeps one header and one normalized row format.
     std::ofstream writer(resolveDataPath(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK));
     if (!writer.is_open()) {
         return false;
@@ -238,6 +252,7 @@ bool saveUsers(const std::vector<User>& users) {
 }
 
 bool saveAdmins(const std::vector<Admin>& admins) {
+    // Canonical rewrite keeps one header and one normalized row format.
     std::ofstream writer(resolveDataPath(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK));
     if (!writer.is_open()) {
         return false;
@@ -258,6 +273,7 @@ bool saveAdmins(const std::vector<Admin>& admins) {
 }
 
 void migrateAccountFilesIfNeeded() {
+    // Load+save pass upgrades legacy rows to current schema defaults.
     std::vector<User> users;
     if (loadUsers(users)) {
         saveUsers(users);
@@ -270,6 +286,7 @@ void migrateAccountFilesIfNeeded() {
 }
 
 bool containsUsername(const std::vector<std::string>& usernames, const std::string& username) {
+    // Linear lookup because dataset size is small and stored in vectors.
     for (size_t i = 0; i < usernames.size(); ++i) {
         if (usernames[i] == username) {
             return true;
@@ -280,6 +297,7 @@ bool containsUsername(const std::vector<std::string>& usernames, const std::stri
 }
 
 void ensureSeedAdminAccounts() {
+    // Idempotent seed: inserts only missing usernames, preserving existing data.
     std::vector<Admin> admins;
     if (!loadAdmins(admins)) {
         return;
@@ -336,6 +354,7 @@ void printAuthPageHeader(const std::string& title) {
 }
 
 bool hasValidAccountInput(const std::string& fullName, const std::string& username, const std::string& password) {
+    // Centralized input guardrails to keep sign-up flows consistent.
     if (fullName.empty() || username.empty()) {
         std::cout << ui::warning("[!] Full name and username are required.") << "\n";
         return false;
@@ -369,6 +388,7 @@ bool hasValidAccountInput(const std::string& fullName, const std::string& userna
 }
 
 std::string getAdminRoleByChoice(int choice) {
+    // Maps menu indices to role names used throughout authorization checks.
     switch (choice) {
         case 1:
             return "Procurement Officer";
@@ -384,6 +404,8 @@ std::string getAdminRoleByChoice(int choice) {
 }
 
 std::string generateTemporaryPassword() {
+    // Generates a simple random temporary password for reset workflows.
+    // This is not cryptographic; it is suitable for classroom simulation.
     static bool seeded = false;
     if (!seeded) {
         std::srand(static_cast<unsigned int>(std::time(NULL)));
@@ -403,6 +425,7 @@ std::string generateTemporaryPassword() {
 }
 
 void printAccountLifecycleTable(const std::vector<User>& users, const std::vector<Admin>& admins) {
+    // Renders merged user/admin account state into one support table.
     const std::vector<std::string> headers = {"Type", "ID", "Username", "Role/Name", "Status", "Updated"};
     const std::vector<int> widths = {8, 6, 16, 24, 10, 19};
 
@@ -424,6 +447,7 @@ void printAccountLifecycleTable(const std::vector<User>& users, const std::vecto
 }
 
 bool updateCitizenStatus(const std::string& username, const std::string& newStatus) {
+    // Linear find-update-save pipeline: O(u) per status update.
     std::vector<User> users;
     if (!loadUsers(users)) {
         return false;
@@ -447,6 +471,7 @@ bool updateCitizenStatus(const std::string& username, const std::string& newStat
 }
 
 bool updateAdminStatus(const std::string& username, const std::string& newStatus) {
+    // Linear find-update-save pipeline: O(a) per status update.
     std::vector<Admin> admins;
     if (!loadAdmins(admins)) {
         return false;
@@ -470,6 +495,7 @@ bool updateAdminStatus(const std::string& username, const std::string& newStatus
 }
 
 bool resetCitizenPassword(const std::string& username, std::string& tempPassword) {
+    // Resets one matching user credential and records update timestamp.
     std::vector<User> users;
     if (!loadUsers(users)) {
         return false;
@@ -494,6 +520,7 @@ bool resetCitizenPassword(const std::string& username, std::string& tempPassword
 }
 
 bool resetAdminPassword(const std::string& username, std::string& tempPassword) {
+    // Resets one matching admin credential and records update timestamp.
     std::vector<Admin> admins;
     if (!loadAdmins(admins)) {
         return false;
@@ -529,6 +556,7 @@ void waitForEnter() {
 }
 
 void ensureUserDataFileExists() {
+    // Startup bootstrap guarantees all dependent data files/schemas exist.
     ensureFileWithHeader(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK, "userID|fullName|username|password|status|updatedAt");
     ensureFileWithHeader(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK, "adminID|fullName|username|password|role|status|updatedAt");
     ensureFileWithHeader(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK, "docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount");
@@ -560,6 +588,7 @@ void ensureUserDataFileExists() {
 }
 
 int countExistingUsers() {
+    // Count is derived from loaded rows, so ID generation is O(u).
     std::vector<User> users;
     if (!loadUsers(users)) {
         return 0;
@@ -569,6 +598,7 @@ int countExistingUsers() {
 }
 
 std::string generateNextUserId() {
+    // ID format is U### and increments from current row count.
     int nextNumber = countExistingUsers() + 1;
     std::ostringstream idBuilder;
     idBuilder << 'U' << std::setw(3) << std::setfill('0') << nextNumber;
@@ -576,6 +606,7 @@ std::string generateNextUserId() {
 }
 
 int countExistingAdmins() {
+    // Count is derived from loaded rows, so ID generation is O(a).
     std::vector<Admin> admins;
     if (!loadAdmins(admins)) {
         return 0;
@@ -585,6 +616,7 @@ int countExistingAdmins() {
 }
 
 std::string generateNextAdminId() {
+    // ID format is A### and increments from current row count.
     int nextNumber = countExistingAdmins() + 1;
     std::ostringstream idBuilder;
     idBuilder << 'A' << std::setw(3) << std::setfill('0') << nextNumber;
@@ -592,6 +624,8 @@ std::string generateNextAdminId() {
 }
 
 bool isUsernameTaken(const std::string& username) {
+    // Global uniqueness check across both citizen and admin datasets.
+    // Complexity: O(u + a).
     std::vector<User> users;
     if (loadUsers(users)) {
         for (size_t i = 0; i < users.size(); ++i) {
@@ -614,6 +648,7 @@ bool isUsernameTaken(const std::string& username) {
 }
 
 bool signUpCitizen() {
+    // Interactive create flow: validate input, assign ID, append logical record.
     clearInputBuffer();
 
     User newUser;
@@ -655,6 +690,7 @@ bool signUpCitizen() {
 }
 
 bool signUpAdmin() {
+    // Mirrors citizen signup, with role selection and admin ID generation.
     clearInputBuffer();
 
     Admin newAdmin;
@@ -754,6 +790,7 @@ void signUpAccount() {
 }
 
 bool loginCitizen(User& loggedInUser) {
+    // Credential match is a linear scan over current user records: O(u).
     clearInputBuffer();
 
     std::string username;
@@ -805,6 +842,7 @@ bool loginCitizen() {
 }
 
 bool loginAdmin(Admin& loggedInAdmin) {
+    // Credential match is a linear scan over current admin records: O(a).
     clearInputBuffer();
 
     std::string username;
@@ -858,6 +896,8 @@ bool loginAdmin() {
 }
 
 void manageAccountLifecycleForAdmin(const Admin& admin) {
+    // Super Admin operations for status toggles and password resets.
+    // Each mutation path performs load-search-save on the target file.
     if (admin.role != "Super Admin") {
         std::cout << ui::error("[!] Access denied. Super Admin only.") << "\n";
         waitForEnter();

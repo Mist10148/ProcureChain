@@ -11,10 +11,13 @@
 #include <sstream>
 
 namespace {
+// Verification reads stored document rows and recomputes the same hash source
+// fields used during serialization to detect content drift.
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Constant-time path fallback for documents file reads.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -32,6 +35,7 @@ void clearInputBuffer() {
 
 std::string computeSimpleHash(const std::string& text) {
     // This is intentionally non-cryptographic and used only for classroom simulation.
+    // Complexity is O(m), m = text length.
     unsigned long long hash = 0;
     for (size_t i = 0; i < text.size(); ++i) {
         hash = (hash * 131ULL + static_cast<unsigned long long>(text[i])) % 0xFFFFFFFFULL;
@@ -43,6 +47,9 @@ std::string computeSimpleHash(const std::string& text) {
 }
 
 void verifyDocumentIntegrity(const std::string& actor) {
+    // Verification flow scans documents linearly until target ID is found,
+    // then compares stored hash vs recomputed hash and logs the outcome.
+    // Worst-case complexity is O(n) over document rows.
     clearScreen();
     ui::printSectionTitle("DOCUMENT INTEGRITY VERIFICATION (ADMIN)");
 

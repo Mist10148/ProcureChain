@@ -20,42 +20,51 @@ bool isRole(const Admin& admin, const std::string& roleName) {
 }
 
 bool canUploadDocuments(const Admin& admin) {
+    // Procurement and Super Admin roles can create new document rows.
     return isRole(admin, "Procurement Officer") || isRole(admin, "Super Admin");
 }
 
 bool canViewPendingApprovals(const Admin& admin) {
+    // Roles participating in consensus can inspect pending approval tasks.
     return isRole(admin, "Budget Officer") ||
            isRole(admin, "Municipal Administrator") ||
            isRole(admin, "Super Admin");
 }
 
 bool canViewApprovalAnalytics(const Admin& admin) {
+    // Analytics is available to governance roles and Super Admin.
     return isRole(admin, "Budget Officer") ||
            isRole(admin, "Municipal Administrator") ||
            isRole(admin, "Super Admin");
 }
 
 bool canApproveOrReject(const Admin& admin) {
+    // Final decision actions are limited to designated approver roles.
     return isRole(admin, "Budget Officer") || isRole(admin, "Municipal Administrator");
 }
 
 bool canManualOverrideStatus(const Admin& admin) {
+    // Manual overrides are intentionally strict to preserve auditability.
     return isRole(admin, "Super Admin");
 }
 
 bool canManageBudgets(const Admin& admin) {
+    // Budget officer domain action with Super Admin fallback authority.
     return isRole(admin, "Budget Officer") || isRole(admin, "Super Admin");
 }
 
 bool canValidateBlockchain(const Admin& admin) {
+    // Integrity validation endpoint restricted to Super Admin.
     return isRole(admin, "Super Admin");
 }
 
 bool canVerifyDocumentIntegrity(const Admin& admin) {
+    // Document hash verification is a privileged operation.
     return isRole(admin, "Super Admin");
 }
 
 bool canManageAccounts(const Admin& admin) {
+    // Account lifecycle controls are restricted to Super Admin.
     return isRole(admin, "Super Admin");
 }
 
@@ -80,6 +89,7 @@ bool readMenuChoice(int& choice) {
 }
 
 bool readBoundedMenuChoice(int& choice, int minChoice, int maxChoice) {
+    // Shared guard for numeric menus with bounded ranges.
     if (!readMenuChoice(choice)) {
         return false;
     }
@@ -92,6 +102,7 @@ bool readBoundedMenuChoice(int& choice, int minChoice, int maxChoice) {
 }
 
 void printHomePage() {
+    // Landing menu used before authentication.
     ui::printSectionTitle("MUNICIPAL PROCUREMENT DOCUMENT TRACKING SYSTEM");
     std::cout << "  " << ui::muted("Secure Access Portal") << "\n";
     std::cout << "  Please choose an option below:\n\n";
@@ -103,6 +114,7 @@ void printHomePage() {
 }
 
 void printCitizenMenu(const User& citizen) {
+    // Citizen scope is read-only: published docs, budgets, and audit views.
     ui::printSectionTitle("CITIZEN DASHBOARD");
     std::cout << "  Logged in as: " << citizen.fullName << " (" << citizen.userId << ")\n\n";
     std::cout << "  " << ui::info("[1]") << " View Published Documents\n";
@@ -115,6 +127,8 @@ void printCitizenMenu(const User& citizen) {
 }
 
 void printAdminMenu(const Admin& admin) {
+    // Admin dashboard exposes all actions; authorization is enforced at runtime
+    // in the dispatcher, not by hiding menu options.
     ui::printSectionTitle("ADMIN DASHBOARD");
     std::cout << "  Logged in as: " << admin.fullName << " (" << admin.adminId << ")\n";
     std::cout << "  Role        : " << ui::roleLabel(admin.role) << "\n\n";
@@ -138,6 +152,7 @@ void printAdminMenu(const Admin& admin) {
 }
 
 void runCitizenDashboard(const User& citizen) {
+    // Event loop for citizen actions until explicit logout.
     int citizenChoice = -1;
 
     do {
@@ -172,6 +187,8 @@ void runCitizenDashboard(const User& citizen) {
 }
 
 void runAdminDashboard(const Admin& admin) {
+    // Event loop for admin actions. Each case applies an access gate before
+    // executing side effects so authorization remains centralized and explicit.
     int adminChoice = -1;
 
     do {
@@ -279,6 +296,7 @@ void runAdminDashboard(const Admin& admin) {
 }
 
 void handleLoginFlow() {
+    // Two-step login flow: choose account type, then delegate to account login.
     clearScreen();
     ui::printSectionTitle("LOGIN TYPE");
     std::cout << "  " << ui::info("[1]") << " Citizen Login\n";
@@ -310,6 +328,8 @@ void handleLoginFlow() {
 }
 
 int main() {
+    // Program bootstrap initializes UI capabilities and required data files,
+    // then runs the home menu loop until the user exits.
     ui::initializeUi();
 
     // Startup ensures all required files and seed data exist before any user interaction.

@@ -8,10 +8,12 @@
 #endif
 
 namespace {
+// UI state is process-global and initialized lazily on first paint call.
 bool g_uiInitialized = false;
 bool g_colorEnabled = false;
 
 std::string toLowerCopy(std::string value) {
+    // ASCII lowercase conversion used by consensus status helpers.
     for (std::size_t i = 0; i < value.size(); ++i) {
         if (value[i] >= 'A' && value[i] <= 'Z') {
             value[i] = static_cast<char>(value[i] + ('a' - 'A'));
@@ -25,6 +27,7 @@ std::string toLowerCopy(std::string value) {
 namespace ui {
 
 bool isColorEnabled() {
+    // Enables ANSI escape processing once and caches the result.
     if (g_uiInitialized) {
         return g_colorEnabled;
     }
@@ -54,10 +57,12 @@ bool isColorEnabled() {
 }
 
 void initializeUi() {
+    // Explicit warm-up so first interactive screen already has color state set.
     (void)isColorEnabled();
 }
 
 std::string paint(const std::string& text, const char* colorCode) {
+    // Wraps text with ANSI color code if console capabilities are available.
     if (!isColorEnabled()) {
         return text;
     }
@@ -98,6 +103,7 @@ std::string accent(const std::string& text) {
 }
 
 const char* consensusColorCode(const std::string& status) {
+    // Maps logical approval states to stable color channels.
     const std::string normalized = toLowerCopy(status);
 
     if (normalized == "approved" || normalized == "published") {
@@ -116,6 +122,7 @@ const char* consensusColorCode(const std::string& status) {
 }
 
 std::string consensusStatus(const std::string& status) {
+    // User-facing status text with shared color semantics.
     const std::string normalized = toLowerCopy(status);
 
     if (normalized == "approved" || normalized == "published") {
@@ -134,6 +141,7 @@ std::string consensusStatus(const std::string& status) {
 }
 
 std::string roleLabel(const std::string& roleName) {
+    // Role tinting improves scanability in admin dashboard headers.
     if (roleName == "Super Admin") {
         return accent(roleName);
     }
@@ -154,6 +162,7 @@ std::string roleLabel(const std::string& roleName) {
 }
 
 std::string truncate(const std::string& text, std::size_t width) {
+    // Ensures fixed-width table rendering without overflow.
     if (text.size() <= width) {
         return text;
     }
@@ -166,12 +175,14 @@ std::string truncate(const std::string& text, std::size_t width) {
 }
 
 void printSectionTitle(const std::string& title) {
+    // Standardized page heading frame used across all screens.
     std::cout << "\n" << info("==============================================================") << "\n";
     std::cout << "  " << bold(title) << "\n";
     std::cout << info("==============================================================") << "\n";
 }
 
 void printTableRule(const std::vector<int>& widths) {
+    // Draws one horizontal table border from column widths.
     std::cout << '+';
     for (std::size_t i = 0; i < widths.size(); ++i) {
         std::cout << std::string(static_cast<std::size_t>(widths[i] + 2), '-') << '+';
@@ -180,6 +191,7 @@ void printTableRule(const std::vector<int>& widths) {
 }
 
 void printTableHeader(const std::vector<std::string>& columns, const std::vector<int>& widths) {
+    // Header renderer for plain text tables.
     printTableRule(widths);
     std::cout << '|';
     for (std::size_t i = 0; i < columns.size(); ++i) {
@@ -190,6 +202,7 @@ void printTableHeader(const std::vector<std::string>& columns, const std::vector
 }
 
 void printTableRow(const std::vector<std::string>& cells, const std::vector<int>& widths) {
+    // Row renderer shared by all table-producing modules.
     std::cout << '|';
     for (std::size_t i = 0; i < cells.size(); ++i) {
         std::cout << ' ' << std::left << std::setw(widths[i]) << truncate(cells[i], static_cast<std::size_t>(widths[i])) << " |";
@@ -202,10 +215,13 @@ void printTableFooter(const std::vector<int>& widths) {
 }
 
 void printBar(const std::string& label, double value, double maxValue, int width) {
+    // Convenience overload using the default bar color.
     printBar(label, value, maxValue, width, "34");
 }
 
 void printBar(const std::string& label, double value, double maxValue, int width, const char* colorCode) {
+    // Scales a value into fixed-width bar text. Complexity is O(width) because
+    // it builds two strings totaling exactly width characters.
     if (maxValue <= 0.0) {
         maxValue = 1.0;
     }

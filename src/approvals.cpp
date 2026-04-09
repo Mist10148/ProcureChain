@@ -16,6 +16,8 @@
 #include <vector>
 
 namespace {
+// Approval storage is file-based. Every operation here uses a primary path plus
+// a fallback path so the program works from either project root or src folder.
 const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
@@ -24,6 +26,7 @@ const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Constant-time path fallback: try primary, then fallback.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -35,6 +38,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
+    // Resolve the write target once so save routines stay deterministic.
     std::ifstream primary(primaryPath);
     if (primary.is_open()) {
         return primaryPath;
@@ -49,6 +53,7 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
+    // Linear tokenize pass over one line: O(m), where m is line length.
     std::vector<std::string> tokens;
     std::stringstream parser(line);
     std::string token;
@@ -59,6 +64,7 @@ std::vector<std::string> splitPipe(const std::string& line) {
 }
 
 Approval parseApprovalTokens(const std::vector<std::string>& tokens) {
+    // Backward-compatible parser: missing trailing fields are defaulted.
     Approval row;
     row.docId = tokens.size() > 0 ? tokens[0] : "";
     row.approverUsername = tokens.size() > 1 ? tokens[1] : "";
@@ -75,10 +81,12 @@ Approval parseApprovalTokens(const std::vector<std::string>& tokens) {
 }
 
 std::string serializeApproval(const Approval& row) {
+    // Keep schema order stable because other modules parse this exact layout.
     return row.docId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt;
 }
 
 bool loadApprovals(std::vector<Approval>& rows) {
+    // Full file scan: O(n) lines, O(n) memory for loaded rows.
     std::ifstream file;
     if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
         return false;
@@ -112,6 +120,7 @@ bool loadApprovals(std::vector<Approval>& rows) {
 }
 
 bool saveApprovals(const std::vector<Approval>& rows) {
+    // Rewrites the whole table each save for a canonical on-disk state: O(n).
     std::ofstream writer(resolveDataPath(APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK));
     if (!writer.is_open()) {
         return false;
@@ -126,10 +135,12 @@ bool saveApprovals(const std::vector<Approval>& rows) {
 }
 
 bool isRequiredApproverRole(const std::string& role) {
+    // Approval flow currently requires exactly two governance roles.
     return role == "Budget Officer" || role == "Municipal Administrator";
 }
 
 std::string findAdminUsernameByRole(const std::string& targetRole) {
+    // Linear search over admin records: O(a), a = admin row count.
     std::ifstream file;
     if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
         return "";
@@ -156,6 +167,7 @@ std::string findAdminUsernameByRole(const std::string& targetRole) {
 }
 
 std::string findPendingDocumentIdForSeeding() {
+    // Picks the first pending document to attach initial approval rows.
     std::ifstream file;
     if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
         return "";
@@ -182,6 +194,7 @@ std::string findPendingDocumentIdForSeeding() {
 }
 
 void seedApprovalsIfEmpty() {
+    // Seeds only when no approval rows exist; this keeps startup idempotent.
     std::vector<Approval> rows;
     if (!loadApprovals(rows)) {
         return;
@@ -225,6 +238,7 @@ void seedApprovalsIfEmpty() {
 }
 
 void clearInputBuffer() {
+    // Removes unread input so getline calls are not skipped by stale newlines.
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
 
@@ -236,6 +250,7 @@ void printConsensusLegend() {
 }
 
 bool parseTimestamp(const std::string& text, std::time_t& outTime) {
+    // Parses timestamps in the fixed "YYYY-MM-DD HH:MM:SS" format.
     if (text.empty()) {
         return false;
     }
@@ -252,6 +267,11 @@ bool parseTimestamp(const std::string& text, std::time_t& outTime) {
 }
 
 void applyApprovalDecision(const Admin& admin, bool approve) {
+    // Main decision flow:
+    // 1) update exactly one pending row for this approver,
+    // 2) recompute aggregate decision status for the document,
+    // 3) sync document status + append blockchain/audit entries.
+    // Complexity is O(n) over total approval rows for the document scans.
     clearScreen();
     ui::printSectionTitle(approve ? "APPROVE DOCUMENT" : "REJECT DOCUMENT");
     printConsensusLegend();
@@ -351,6 +371,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
 } // namespace
 
 void ensureApprovalsDataFileExists() {
+    // Ensures header presence, normalizes old rows, and seeds baseline requests.
     std::ifstream checkFile;
     if (!openInputFileWithFallback(checkFile, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
         std::ofstream createFile(APPROVALS_FILE_PATH_PRIMARY);
@@ -373,6 +394,8 @@ void ensureApprovalsDataFileExists() {
 }
 
 void createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader) {
+    // Creates one pending request per required active admin role.
+    // Complexity: O(a + n), where a=admin rows and n=existing approval rows.
     std::ifstream adminFile;
     if (!openInputFileWithFallback(adminFile, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
         return;
@@ -424,6 +447,7 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
 }
 
 void viewPendingApprovalsForAdmin(const Admin& admin) {
+    // Filters pending rows for one approver: O(n) scan on approval dataset.
     clearScreen();
     ui::printSectionTitle("PENDING APPROVALS");
     printConsensusLegend();
@@ -468,6 +492,8 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
 }
 
 void viewApprovalAnalyticsDashboard(const Admin& admin) {
+    // Aggregates approval KPIs in one pass: O(n) time, O(r) extra memory where
+    // r is number of distinct roles represented in decisions.
     clearScreen();
     ui::printSectionTitle("APPROVAL ANALYTICS DASHBOARD");
 

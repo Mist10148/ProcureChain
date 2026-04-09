@@ -15,17 +15,21 @@
 #include <vector>
 
 namespace {
+// Budget analytics reads static allocations and derives spending metrics from
+// approved/published documents for administrative reporting.
 const std::string BUDGETS_FILE_PATH_PRIMARY = "data/budgets.txt";
 const std::string BUDGETS_FILE_PATH_FALLBACK = "../data/budgets.txt";
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
 struct BudgetRow {
+    // Canonical row persisted in budgets.txt.
     std::string category;
     double amount;
 };
 
 struct VarianceRow {
+    // Derived analytics row (not persisted) for variance screen output.
     std::string category;
     double allocated;
     double actual;
@@ -34,6 +38,7 @@ struct VarianceRow {
 };
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
+    // Constant-time open fallback for runtime directory differences.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -45,6 +50,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
+    // Chooses preferred write target based on currently available data path.
     std::ifstream primary(primaryPath);
     if (primary.is_open()) {
         return primaryPath;
@@ -59,6 +65,7 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
+    // O(m) tokenizer for one pipe-delimited line.
     std::vector<std::string> tokens;
     std::stringstream parser(line);
     std::string token;
@@ -73,6 +80,7 @@ void clearInputBuffer() {
 }
 
 bool loadBudgetRows(std::vector<BudgetRow>& rows) {
+    // Reads all budget rows into memory: O(n) time, O(n) memory.
     std::ifstream file;
     if (!openInputFileWithFallback(file, BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK)) {
         return false;
@@ -117,6 +125,7 @@ bool loadBudgetRows(std::vector<BudgetRow>& rows) {
 }
 
 bool saveBudgetRows(const std::vector<BudgetRow>& rows) {
+    // Rewrites full budget table to keep a clean canonical file shape.
     std::string targetPath = resolveDataPath(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK);
     std::ofstream writer(targetPath);
     if (!writer.is_open()) {
@@ -133,6 +142,8 @@ bool saveBudgetRows(const std::vector<BudgetRow>& rows) {
 }
 
 void printBudgetTable(const std::vector<BudgetRow>& rows) {
+    // Computes total once, then prints each category with relative share.
+    // Complexity is O(n).
     const std::vector<std::string> headers = {"Category", "Amount (PHP)", "Share"};
     const std::vector<int> widths = {28, 14, 8};
 
@@ -156,6 +167,7 @@ void printBudgetTable(const std::vector<BudgetRow>& rows) {
 }
 
 void printBudgetChart(const std::vector<BudgetRow>& rows) {
+    // Bar chart scaling uses the maximum allocation in the current snapshot.
     if (rows.empty()) {
         return;
     }
@@ -174,6 +186,8 @@ void printBudgetChart(const std::vector<BudgetRow>& rows) {
 }
 
 std::map<std::string, double> loadActualSpendByCategory() {
+    // Aggregates approved/published document amounts by budget category.
+    // Complexity: O(d log c), d=document rows, c=distinct categories.
     std::map<std::string, double> totals;
 
     std::ifstream file;
@@ -225,6 +239,7 @@ std::map<std::string, double> loadActualSpendByCategory() {
 } // namespace
 
 void viewBudgetAllocations(const std::string& actor) {
+    // Summary view for allocation totals, percentages, and ranking chart.
     clearScreen();
     ui::printSectionTitle("PROCUREMENT BUDGET ALLOCATIONS");
 
@@ -262,6 +277,8 @@ void viewBudgetAllocations(const std::string& actor) {
 }
 
 void viewBudgetVarianceReport(const std::string& actor) {
+    // Combines allocated values and computed actuals into variance/utilization.
+    // Main cost is one budgets scan plus one documents aggregation pass.
     clearScreen();
     ui::printSectionTitle("BUDGET VARIANCE REPORT");
 
@@ -330,6 +347,8 @@ void viewBudgetVarianceReport(const std::string& actor) {
 }
 
 void manageBudgetsForAdmin(const Admin& admin) {
+    // Interactive CRUD-like budget menu for authorized admin users.
+    // Mutating options append blockchain + audit records after successful save.
     int choice = -1;
 
     do {
