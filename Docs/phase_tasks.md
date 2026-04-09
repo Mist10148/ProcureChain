@@ -1,73 +1,291 @@
-# ProcureChain Phase Tasks (Updated)
+# ProcureChain Phase Tasks and Implementation Timeline
 
-## Status Date
-2026-04-09
+## Project
+ProcureChain: Municipal Procurement Document Tracking System  
+Platform: C++ CLI (Procedural)  
+Storage: TXT files in data folder  
+Last Updated: 2026-04-09
 
-## Delivery Summary
+## Purpose of this Document
 
-The system has moved from baseline CRUD-like CLI flow to a governance-focused implementation with advanced filtering, analytics, lifecycle controls, and linked audit evidence.
+This file tracks the implementation phases of the ProcureChain finals project.
 
-## Completed Phases
+It documents:
 
-### Phase 0 to Phase 5: Foundation
-- project setup, file formats, modular source/header split
-- auth flow and role-based menu routing
-- core document lifecycle actions
+- what was planned per phase
+- what has already been implemented in code
+- what validation activities are completed
+- what optional improvements remain
 
-### Phase 6: Approval and Publication Control
-- role-targeted approval request generation
-- approval/rejection actions
-- automatic document status transitions
+This is intended to help collaborators quickly understand the status and next actions without reading the entire source code first.
 
-### Phase 7: Blockchain and Verification
-- multi-node append and validation
-- verification workflow and role restrictions
+## Phase 0: Repository and Baseline Setup
 
-### Phase 8: Budget and Audit Baseline
-- budget view/add/update
-- audit append and viewing
+### Objectives
 
-### Phase 9: Advanced Governance Features (Now Implemented)
-- advanced document filters (status/date/range/category/department/uploader)
-- approval analytics dashboard
-- budget variance report
-- account lifecycle admin (deactivate/reactivate/reset)
-- audit CSV export (all and filtered)
-- audit-to-blockchain chain index linkage
+- establish consistent folder structure
+- split source and headers by feature area
+- initialize core data files and blockchain node file paths
 
-## Current Work Package
+### Output
 
-### WP-1: Regression Validation
-1. Validate backward compatibility against legacy rows.
-2. Verify account status enforcement at login.
-3. Verify analytics formulas with sample data.
-4. Verify variance calculations with approved/published documents.
-5. Verify audit exports and chain index rendering.
+- modular source/header organization under src and include
+- startup bootstrap checks for required data files
+- seed-friendly baseline for users, admins, approvals, and blockchain rows
 
-### WP-2: Demo Readiness
-1. Prepare one scripted scenario per role.
-2. Capture sample exports for defense artifacts.
-3. Include one blockchain validation run and one integrity verification run.
+### Status
 
-### WP-3: Final Submission Packaging
-1. Keep source and headers cleanly organized.
-2. Keep Docs folder synchronized with implementation.
-3. Prepare final change summary.
+Completed
 
-## Suggested Validation Matrix
+## Phase 1: Authentication and Role Routing
 
-| Area | Key Check | Expected Outcome |
-|---|---|---|
-| Auth lifecycle | inactive account login | denied |
-| Document filters | combined criteria | only matching rows shown |
-| Approvals analytics | rejection rate + avg time | correct metrics |
-| Budget variance | allocated vs actual | correct variance and utilization |
-| Audit export | filtered CSV export | rows satisfy filters |
-| Audit-chain link | blockchain-backed action | chain index appears in audit |
-| Blockchain validation | full node check | pass unless tampered |
+### Objectives
 
-## Remaining Optional Stretch Tasks
+- implement login flow
+- implement signup flow for users and admins
+- enforce role-based menu routing
 
-1. Add forced password change flow after temporary reset.
-2. Add delegated approvals.
-3. Add richer date-range presets for reports.
+### Implemented
+
+- citizen signup and login
+- admin signup and login
+- role-aware dashboard routing
+- duplicate username protection
+- role display and enforcement in dashboards
+
+### Status
+
+Completed
+
+## Phase 2: Document Registry Core
+
+### Objectives
+
+- support document upload and listing
+- support document lookup by ID
+- support visibility rules for published records
+
+### Implemented
+
+- upload of procurement document records
+- full admin listing and ID search
+- citizen published-only viewing
+- metadata persistence using pipe-delimited format
+
+### Status
+
+Completed
+
+## Phase 3: Approval Workflow
+
+### Objectives
+
+- generate approval requests for required approver roles
+- implement approve/reject actions
+- automate document status transitions
+
+### Implemented
+
+- request generation for Budget Officer and Municipal Administrator
+- per-approver status persistence in approvals.txt
+- reject-any rule and unanimous publish rule
+- pending state handling while decisions are incomplete
+
+### Status
+
+Completed
+
+## Phase 4: Blockchain and Integrity Verification
+
+### Objectives
+
+- append key actions to simulated blockchain
+- validate chain linkage and node consistency
+- support document integrity checks
+
+### Implemented
+
+- append to three node ledger files
+- per-node validation and cross-node consistency checks
+- integrity verification flow for document hash comparison
+
+### Status
+
+Completed
+
+## Phase 5: Budget and Audit Baseline
+
+### Objectives
+
+- implement budget summary and admin update flows
+- centralize audit logging for core actions
+
+### Implemented
+
+- budget summary viewing
+- add budget category and update amount
+- audit append and audit trail rendering
+- action frequency display
+
+### Status
+
+Completed
+
+## Phase 6: Governance Reporting and Admin Controls (Current Expansion)
+
+### Objectives
+
+- add governance-grade querying and reporting
+- improve account administration controls
+- increase traceability across modules
+
+### Implemented Work Items
+
+#### 6.1 Advanced Document Filters
+
+Implemented criteria:
+
+- status
+- exact upload date
+- date range
+- category contains
+- department contains
+- uploader contains
+
+Notes:
+
+- filters can be combined in one query
+- date range checks enforce valid bounds
+
+#### 6.2 Approval Analytics Dashboard
+
+Implemented metrics:
+
+- total approval rows
+- decided and pending rows
+- approved and rejected totals
+- rejection rate
+- average decision time (hours)
+- throughput by role
+
+Data dependency:
+
+- approvals rows now include createdAt and decidedAt timestamps
+
+#### 6.3 Budget Variance Report
+
+Implemented computation:
+
+- allocated values from budgets.txt
+- actual totals aggregated from approved/published documents
+- variance and utilization per category
+
+#### 6.4 Account Lifecycle Administration
+
+Implemented controls (Super Admin):
+
+- list users and admins with status
+- deactivate account
+- reactivate account
+- reset password via generated temporary password
+
+Enforcement:
+
+- inactive accounts are denied during login
+
+#### 6.5 Audit CSV Export
+
+Implemented modes:
+
+- export all rows
+- export filtered rows (date/action/actor/target)
+
+#### 6.6 Audit-to-Blockchain Linkage
+
+Implemented behavior:
+
+- blockchain append returns chain index
+- audit rows store optional chain index
+- audit view displays chain index when present
+
+### Status
+
+Completed
+
+## Phase 7: Backward Compatibility and Data Migration Safety
+
+### Objectives
+
+- avoid breaking legacy rows after schema expansion
+- support optional fields during parsing
+
+### Implemented
+
+- tolerant parsers for expanded file formats
+- writes persist the current schema while older rows still load safely
+
+### Status
+
+Completed
+
+## Phase 8: Regression Validation and Demo Readiness
+
+### Validation Objectives
+
+- verify role gates across all dashboards
+- verify lifecycle login enforcement
+- verify analytics and variance math with sample data
+- verify audit export behavior and filter correctness
+- verify blockchain validation and integrity workflow
+
+### Validation State
+
+Partially completed
+
+Completed now:
+
+- compile success after feature integration
+- smoke launch/exit run
+- role-based command paths validated through audit/data updates
+
+Still to execute before final defense:
+
+- full scripted end-to-end walkthrough per role
+- one presentation-ready filtered CSV export sample
+- one intentional tamper simulation followed by blockchain validation
+
+## Optional Stretch Phases (If Time Allows)
+
+### Phase 9A: Security and UX Refinements
+
+- force password change flow after temporary reset
+- clearer in-menu status/error wording for edge cases
+
+### Phase 9B: Workflow Flexibility
+
+- delegated approvals
+- richer date presets for reports
+
+### Phase 9C: Reporting Enhancements
+
+- additional trend views over time windows
+- optional document-to-budget drilldown report
+
+## Current Priority Queue
+
+1. finalize documentation consistency across README + Docs files
+2. run full role-by-role final regression walkthrough
+3. produce demo artifacts (CSV export and validation screenshots/log snippets)
+4. polish menu prompts/messages for defense presentation
+
+## Summary of Implementation Position
+
+The project has moved beyond baseline CLI CRUD and now includes a governance-focused feature set:
+
+- advanced query/filter capability
+- approval performance analytics
+- budget variance reporting
+- account lifecycle administration
+- audit export and chain-linked traceability
+
+This places ProcureChain in a strong final-defense state while remaining within the required procedural C++ course scope.

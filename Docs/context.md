@@ -1,106 +1,360 @@
 # Context for ProcureChain Collaborators
 
-## Current Implementation Snapshot (2026-04-09)
+## Live Status (2026-04-09)
 
-Implemented and tested baseline includes:
+Current implemented baseline:
 
-- role-based auth and dashboards
-- account lifecycle controls (Super Admin)
-- document upload/view/search/status update
-- advanced multi-criteria document filters
-- unanimous approval workflow
-- approval analytics dashboard
-- budget management and variance reporting
-- audit viewing plus CSV export (all and filtered)
-- blockchain append and validation
-- audit-to-blockchain linkage via chain index
-- document integrity verification
+- citizen and admin auth flows exist (signup/login)
+- citizen dashboard is active
+- admin dashboard supports document upload/view/search, pending approvals, approve/reject decisions, manual status update, audit trail viewing, and blockchain validation
+- admin budget management is implemented (view/add/update)
+- published documents, verification, budget view, and audit logging are integrated
+- codebase is modularized by feature using src and include modules
+- admin dashboard actions enforce role permissions (Procurement/Budget/Municipal/Super Admin)
+- approval request generation is restricted to designated approver roles
+- key actions append blockchain transactions (upload/approve/reject/status/budget updates)
+- startup seeding initializes demo admin accounts, approvals, and blockchain starter rows when needed
+- role-based regression scenarios have been executed and validated through data and audit outputs
 
-## Project Boundaries
+Newly implemented governance/reporting slice:
 
-This is a beginner-level procedural C++ finals project.
+- advanced document filters (status, exact date, date range, category, department, uploader)
+- audit CSV export (all rows and filtered rows)
+- approval analytics dashboard (rejection rate, average decision time, throughput by role)
+- budget variance report (allocated vs actual, variance, utilization)
+- account lifecycle admin controls (deactivate/reactivate/reset password)
+- audit-to-blockchain linking via chain index
 
-Keep changes within:
+## Development Constraints
+
+The implementation must stay within topics already covered in class:
+
+- basic C++ syntax
 - functions
-- structs
+- arrays
 - vectors
+- structs
 - file handling
-- simple CLI menus
+- simple control flow and menus
 
-Avoid introducing:
-- full OOP redesign
-- DBMS/web stack
-- external distributed systems
+Do not redesign the project around:
 
-## Folder Layout
+- OOP / classes
+- inheritance / polymorphism
+- advanced frameworks
+- networking
+- real databases
+- web development
+- external blockchain platforms
 
-- src/: implementation modules
-- include/: module headers
-- data/: runtime storage
-- data/blockchain/: simulated node ledgers
-- Docs/: planning and project-tracking documents
+The code should remain easy to explain in a finals defense.
 
-## Data Files and Formats
+## Project Type
+
+- Language: C++
+- Interface: CLI / terminal-based
+- Storage: TXT files using delimiters
+- Data handling: vectors, arrays, structs, and functions
+- Hash and blockchain approach: simulated blockchain using text files
+
+## Final Project Goal
+
+Build a CLI system that simulates a municipal procurement document tracking system.
+
+The system allows:
+
+- layered admin access
+- citizen account login/signup
+- procurement document storage and tracking
+- unanimous approval workflow before publishing
+- document integrity verification
+- budget viewing and variance reporting
+- audit trail viewing and CSV export
+- simulated blockchain ledger validation
+
+## Core Functional Requirements
+
+### 1. Account-Based Access
+
+Supported roles:
+
+- Super Admin
+- Procurement Officer
+- Budget Officer
+- Municipal Administrator
+- Citizen/User
+
+Citizens sign up or log in before accessing published procurement records and transparency tools.
+
+### 2. Account Lifecycle Administration (Super Admin)
+
+Super Admin can:
+
+- list all citizen and admin accounts
+- deactivate or reactivate accounts
+- reset account password using generated temporary password
+
+Inactive accounts are denied at login.
+
+### 3. Procurement Document Management
+
+The system handles:
+
+- purchase requests
+- canvass forms
+- purchase orders
+- notices of award
+- contracts
+- inspection or acceptance records
+
+Document fields currently stored:
+
+- document ID
+- title
+- category
+- department
+- upload date
+- uploader
+- status
+- hash value
+- budget category
+- amount
+
+### 4. Advanced Document Filtering
+
+Admin filters support:
+
+- status
+- exact date
+- date range (from/to)
+- category (contains)
+- department (contains)
+- uploader (contains)
+
+Combined filtering is supported in one action.
+
+### 5. Unanimous Consensus Approval Protocol
+
+Publication requires decisions from required approver roles.
+
+Behavior:
+
+- document upload generates pending approval rows
+- one rejection marks document rejected
+- all required decisions without rejection publishes document
+- pending decisions keep document pending_approval
+
+### 6. Approval Analytics
+
+Analytics dashboard computes:
+
+- total rows
+- decided rows
+- pending rows
+- approved count
+- rejected count
+- rejection rate
+- average decision time (rows with complete timestamps)
+- throughput chart by role
+
+### 7. Budget Viewing and Variance
+
+Budget module supports:
+
+- viewing category allocations
+- adding category
+- updating category amount
+- variance report comparing allocated vs actual totals from approved/published documents
+
+### 8. Audit Trail and Export
+
+Audit captures key actions and supports:
+
+- table rendering
+- action frequency chart
+- CSV export (all rows)
+- CSV export (filtered rows by date/action/actor/target)
+
+### 9. Simulated Blockchain
+
+Three ledger files represent node copies.
+
+Each block stores:
+
+- index
+- timestamp
+- action
+- document ID
+- actor
+- previous hash
+- current hash
+
+Validation checks chain linkage and cross-node consistency.
+
+### 10. Audit-to-Blockchain Linking
+
+For blockchain-backed actions:
+
+- append function returns block index
+- audit row stores chainIndex
+- audit viewer displays chain index when present
+
+## Folder Structure
+
+Use this structure:
+
+    ProcureChain/
+    |
+    |-- src/
+    |-- include/
+    |-- data/
+    |   |-- blockchain/
+    |-- Docs/
+    |-- README.md
+
+## Meaning of Each Data File
 
 ### admins.txt
-adminID|fullName|username|password|role|status|updatedAt
+
+Stores admin accounts and roles.
+
+Format:
+
+    adminID|fullName|username|password|role|status|updatedAt
 
 ### users.txt
-userID|fullName|username|password|status|updatedAt
+
+Stores citizen accounts.
+
+Format:
+
+    userID|fullName|username|password|status|updatedAt
 
 ### documents.txt
-docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount
+
+Stores procurement document metadata and budget mapping.
+
+Format:
+
+    docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount
 
 ### approvals.txt
-docID|approverUsername|role|status|createdAt|decidedAt
+
+Stores approval state per document and approver.
+
+Format:
+
+    docID|approverUsername|role|status|createdAt|decidedAt
 
 ### budgets.txt
-category|amount
+
+Stores budget allocation per category.
+
+Format:
+
+    category|amount
 
 ### audit_log.txt
-timestamp|action|targetID|actor|chainIndex
+
+Stores activity logs and optional blockchain references.
+
+Format:
+
+    timestamp|action|targetID|actor|chainIndex
 
 ### blockchain node files
-index|timestamp|action|documentID|actor|previousHash|currentHash
 
-## Role Intent
+Simulate 3 ledger nodes:
+
+- node1_chain.txt
+- node2_chain.txt
+- node3_chain.txt
+
+Format:
+
+    index|timestamp|action|documentID|actor|previousHash|currentHash
+
+## Role Structure
 
 ### Super Admin
-- full governance controls
-- account lifecycle management
-- status override, blockchain validation, verification
+
+Can:
+
+- manage accounts and lifecycle status
+- view all records and reports
+- run blockchain validation
+- run document verification
 
 ### Procurement Officer
-- upload documents
-- view/search/filter documents
 
-### Budget Officer and Municipal Administrator
-- approve/reject pending documents
+Can:
+
+- upload procurement documents
+- search/view/filter document records
+
+### Approving Officers
+
+Examples:
+
+- Budget Officer
+- Municipal Administrator
+
+Can:
+
+- review pending documents
+- approve/reject documents
 - view approval analytics
 
-### Citizen
-- transparency views: published docs, budgets, audit trail
+### Citizen/User
 
-## Module Responsibilities
+Can:
 
-- auth.cpp: account storage, login, lifecycle admin actions
-- documents.cpp: document CRUD-like actions and advanced filters
-- approvals.cpp: approval decisions + analytics calculations
-- budget.cpp: budget management + variance report
-- audit.cpp: audit append/view/export
-- blockchain.cpp: append + validation
-- verification.cpp: hash recomputation and integrity check
-- main.cpp: menu routing and role gates
-- ui.cpp: consistent terminal rendering
+- sign up
+- log in
+- view published documents
+- view budgets
+- view audit trail and export CSV
 
-## Integration Notes
+## Recommended CLI Flow
 
-- Legacy rows are migrated forward lazily: loaders accept old field counts and writers persist current schema.
-- Blockchain append now returns block index so audit records can reference chain location.
-- Document status changes recompute hash using original hash-source fields for compatibility.
+### Main Menu
 
-## Quick Build Command
+- Login
+- Sign Up
+- Exit
 
-```powershell
-g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp -o procurechain.exe
-```
+### Citizen Menu
+
+- View Published Documents
+- View Budget Summary
+- View Audit Trail
+- Logout
+
+### Admin Menu
+
+- Upload Document
+- View All Documents
+- Search Document by ID
+- View Pending Approvals
+- Approve/Reject Document
+- Update Document Status
+- Manage Budgets
+- View Audit Trail
+- Validate Blockchain
+- Verify Document Integrity
+- Advanced Document Filters
+- Approval Analytics Dashboard
+- Account Lifecycle Management
+- Logout
+
+## Important Boundaries
+
+Do not turn this into:
+
+- a web app
+- a DB-backed system
+- an OOP-heavy capstone
+- a real blockchain network
+- an enterprise-grade architecture
+
+This remains a school finals project and should stay scoped accordingly.
