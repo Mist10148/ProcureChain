@@ -7,10 +7,12 @@ It is designed for classroom-level procedural programming and focuses on:
 - Role-based access for citizens and administrators
 - Role-visible menus that only show actions available to the logged-in role
 - Procurement document lifecycle tracking
+- File-import-backed procurement document registry (pdf, docx, csv, txt)
 - Multi-role approval workflow
-- Budget viewing and management
+- Budget consensus workflow and published budget projection
 - Audit trail logging and CSV export
 - Simulated blockchain consistency checks
+- Blockchain explorer across 5 nodes with divergence/tamper detection
 - Governance reporting and account lifecycle administration
 - Admin Command Center with grouped workspaces and analytics hub
 - Compact and full analytics layout modes with optional paged detail tables
@@ -24,13 +26,14 @@ ProcureChain helps a municipality track procurement documents from upload to pub
 
 High-level process:
 
-1. A procurement admin uploads a document with budget metadata and amount.
+1. A procurement admin uploads a document with title, category, description, and source file path.
 2. Approval requests are created for required approver roles.
 3. Approvers approve or reject.
-4. Document status updates automatically based on approval outcomes.
+4. Document is published only when unanimous required approvals are completed.
 5. Citizens can view published documents.
-6. Every important action is written to an audit log.
-7. Key events are appended to five blockchain node files and can be validated for consistency.
+6. Citizens can search a published document and verify its SHA-256 hash against blockchain records.
+7. Every important action is written to a hash-linked audit log.
+8. Key events are appended to five blockchain node files and can be validated for consistency.
 8. Governance dashboards provide approval, budget, audit, integrity, and executive analytics.
 9. Admin navigation is grouped into overview plus role-gated workspaces.
 
@@ -43,12 +46,18 @@ High-level process:
   - deactivate/reactivate accounts
   - reset password with generated temporary password
 - Published document viewing for citizens
+- Citizen published document search by document ID
+- Citizen published document hash verification (stored hash, recomputed hash, blockchain presence)
 - Admin document upload, search, full listing, and status update
+- Document upload includes mandatory title, category, description, and source file path
+- Allowed import extensions: pdf, docx, csv, txt
+- Uploaded document file is copied to data/documents and SHA-256 hash is displayed after success
 - Search assistance with recent document previews, ID/prefix/title matching, and guided selection
 - Advanced document filters by status/date/category/department/uploader
 - Filter suggestion hints (status/category/department/uploader/date) shown before input
 - Approval routing for Budget Officer and Municipal Administrator
 - Approval decision screen shows the current approver's pending document list before input
+- Publication gate for documents: rejected if any reject, published only with unanimous non-rejected decisions
 - Approval analytics dashboard
   - rejection rate
   - average decision time
@@ -61,15 +70,19 @@ High-level process:
   - executive snapshot
   - compact/full layout toggle
   - optional paged detail tables
-- Budget summary and admin budget management
+- Budget submission and consensus approvals
+- Budget entry fields: fiscal year, category, allocated amount, description
+- Budget publish gate: budget becomes publicly visible only after unanimous approvals
+- Published budget summary and budget variance reporting
 - Budget variance report (allocated vs actual)
-- Timestamped audit trail with chain index references
+- Timestamped audit trail with chain index and hash chain references
 - CSV export for audit logs
   - export all
   - export filtered
   - validated date range and safe filename checks
   - filter-value suggestions shown before filtered export input
 - Simulated blockchain append and validation across 5 node files
+- Blockchain explorer: per-node integrity, consensus matrix, per-block agreement, tamper alerts
 - Audit-to-blockchain linking for blockchain-backed actions
 
 ## Requirements
@@ -126,7 +139,7 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 
 ### data/documents.txt
 
-    docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount
+  docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
 
 ### data/approvals.txt
 
@@ -136,9 +149,17 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 
     category|amount
 
+### data/budget_entries.txt
+
+  entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
+
+### data/budget_approvals.txt
+
+  entryID|approverUsername|role|status|createdAt|decidedAt
+
 ### data/audit_log.txt
 
-    timestamp|action|targetID|actor|chainIndex
+  timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
 
 ### data/blockchain/node1_chain.txt
 ### data/blockchain/node2_chain.txt
@@ -161,6 +182,8 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 - View Published Documents
 - View Procurement Budgets
 - View Audit Trail (with export)
+- Search Published Document by ID
+- Verify Published Document Hash
 - Logout
 
 ### Admin Command Center
@@ -175,9 +198,9 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 - Approvals Workspace
   - view pending, approve, reject, detailed approval analytics
 - Budget Workspace
-  - view allocations, variance report, manage budgets
+  - view published allocations, submit budget entries, approve/reject budget entries, variance report
 - Audit and Integrity Workspace
-  - view audit trail, validate blockchain, verify document integrity, integrity snapshot
+  - view audit trail, validate blockchain, verify document integrity, integrity snapshot, blockchain explorer
 - Account Administration Workspace
   - account lifecycle management
 - Logout
@@ -253,7 +276,7 @@ Project planning and implementation docs are in:
 
 ## Important Limitation
 
-The verification hash is intentionally simple for classroom simulation and is not cryptographic security.
+ProcureChain now uses SHA-256 for deterministic integrity checks, but this remains a classroom file-based simulation and not a production security system.
 
 ## Troubleshooting
 

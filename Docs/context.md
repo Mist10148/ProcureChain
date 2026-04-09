@@ -25,6 +25,17 @@ Newly implemented governance/reporting slice:
 - account lifecycle admin controls (deactivate/reactivate/reset password)
 - audit-to-blockchain linking via chain index
 
+Latest integrity and consensus implementation updates:
+
+- document upload now requires title, category, description, and source file import path
+- allowed import extensions are pdf, docx, csv, txt
+- uploaded files are copied into data/documents and hashed with SHA-256
+- citizen can search a published document and verify stored/recomputed hash with blockchain presence checks
+- budget workflow moved to consensus entries with unanimous approval before publication
+- budget entries use dedicated files (budget_entries.txt and budget_approvals.txt)
+- audit log now has hash-linked fields previousHash and currentHash
+- blockchain explorer view provides node-level integrity and per-block consensus/tamper diagnostics
+
 Latest analytics and UX updates:
 
 - overview dashboard as top-level admin entry
@@ -124,11 +135,16 @@ Document fields currently stored:
 - document ID
 - title
 - category
+- description
 - department
 - upload date
 - uploader
 - status
 - hash value
+- file name
+- file type
+- file path
+- file size bytes
 - budget category
 - amount
 
@@ -173,9 +189,9 @@ Analytics dashboard computes:
 
 Budget module supports:
 
-- viewing category allocations
-- adding category
-- updating category amount
+- submitting budget entries with fiscal year, category, allocated amount, and description
+- unanimous budget approval workflow (Budget Officer + Municipal Administrator)
+- publishing approved budgets to public budget summary
 - variance report comparing allocated vs actual totals from approved/published documents
 
 ### 8. Audit Trail and Export
@@ -186,6 +202,7 @@ Audit captures key actions and supports:
 - action frequency chart
 - CSV export (all rows)
 - CSV export (filtered rows by date/action/actor/target)
+- hash-linked audit chain using previousHash and currentHash fields
 
 ### 9. Simulated Blockchain
 
@@ -203,6 +220,13 @@ Each block stores:
 
 Validation checks chain linkage and cross-node consistency.
 
+Explorer checks include:
+
+- per-node chain integrity
+- first mismatch index per node against reference chain
+- per-block consensus counts across all 5 nodes
+- tamper/divergence alerts
+
 ### 10. Audit-to-Blockchain Linking
 
 For blockchain-backed actions:
@@ -210,6 +234,10 @@ For blockchain-backed actions:
 - append function returns block index
 - audit row stores chainIndex
 - audit viewer displays chain index when present
+
+Hashing note:
+
+- document and chain integrity now use SHA-256 hash computation in the verification module
 
 ## Folder Structure
 
@@ -248,7 +276,7 @@ Stores procurement document metadata and budget mapping.
 
 Format:
 
-    docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount
+    docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
 
 ### approvals.txt
 
@@ -266,13 +294,29 @@ Format:
 
     category|amount
 
+### budget_entries.txt
+
+Stores budget entry submissions awaiting consensus.
+
+Format:
+
+    entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
+
+### budget_approvals.txt
+
+Stores per-approver budget consensus decisions.
+
+Format:
+
+    entryID|approverUsername|role|status|createdAt|decidedAt
+
 ### audit_log.txt
 
 Stores activity logs and optional blockchain references.
 
 Format:
 
-    timestamp|action|targetID|actor|chainIndex
+    timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
 
 ### blockchain node files
 
@@ -326,6 +370,8 @@ Can:
 - sign up
 - log in
 - view published documents
+- search published document by ID
+- verify published document hash and blockchain presence
 - view budgets
 - view audit trail and export CSV
 
@@ -351,13 +397,13 @@ Can:
     - quick integrity snapshot
     - toggle compact/full layout mode
 - Documents Workspace
-    - upload, view, search, advanced filters, manual status update
+    - upload with file import, view, search, advanced filters, manual status update
 - Approvals Workspace
     - pending queue, approve, reject, detailed approval analytics
 - Budget Workspace
-    - budget summary, variance report, budget management
+    - published budget summary, budget entry submission, budget approvals, variance report
 - Audit and Integrity Workspace
-    - audit trail, blockchain validation, integrity verification, integrity snapshot
+    - audit trail, blockchain validation, integrity verification, integrity snapshot, blockchain explorer
 - Account Administration Workspace
     - account lifecycle management
 - Logout

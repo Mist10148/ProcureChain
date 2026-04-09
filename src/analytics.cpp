@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -213,12 +214,21 @@ bool loadDocuments(std::vector<DocumentRow>& rows) {
         DocumentRow row;
         row.docId = tokens.size() > 0 ? tokens[0] : "";
         row.category = tokens.size() > 2 ? tokens[2] : "";
-        row.dateUploaded = tokens.size() > 4 ? tokens[4] : "";
-        row.status = tokens.size() > 6 ? tokens[6] : "";
-        row.budgetCategory = tokens.size() > 8 && !tokens[8].empty() ? tokens[8] : row.category;
+        if (tokens.size() >= 15) {
+            row.dateUploaded = tokens[5];
+            row.status = tokens[7];
+            row.budgetCategory = tokens[13].empty() ? row.category : tokens[13];
+        } else {
+            row.dateUploaded = tokens.size() > 4 ? tokens[4] : "";
+            row.status = tokens.size() > 6 ? tokens[6] : "";
+            row.budgetCategory = tokens.size() > 8 && !tokens[8].empty() ? tokens[8] : row.category;
+        }
         row.amount = 0.0;
 
-        if (tokens.size() > 9) {
+        if (tokens.size() >= 15) {
+            std::stringstream amountIn(tokens[14]);
+            amountIn >> row.amount;
+        } else if (tokens.size() > 9) {
             std::stringstream amountIn(tokens[9]);
             amountIn >> row.amount;
         }
@@ -492,11 +502,6 @@ std::string readFullFileWithFallback(const std::string& primaryPath, const std::
 }
 
 int countDocumentHashMismatches() {
-    std::vector<DocumentRow> docs;
-    if (!loadDocuments(docs)) {
-        return 0;
-    }
-
     std::ifstream file;
     if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
         return 0;
@@ -523,10 +528,26 @@ int countDocumentHashMismatches() {
             continue;
         }
 
-        const std::string source = tokens[0] + "|" + tokens[1] + "|" + tokens[2] + "|" + tokens[3] + "|" +
-                                   tokens[4] + "|" + tokens[5] + "|" + tokens[6];
-        const std::string storedHash = tokens[7];
-        const std::string computed = computeSimpleHash(source);
+        std::string storedHash;
+        std::string computed;
+
+        if (tokens.size() >= 15) {
+            storedHash = tokens[8];
+            const std::string filePath = tokens[11];
+
+            if (!filePath.empty() && std::filesystem::exists(filePath)) {
+                computed = computeFileHashSha256(filePath);
+            } else {
+                const std::string metadataSource = tokens[0] + "|" + tokens[1] + "|" + tokens[2] + "|" + tokens[3] + "|" +
+                                                   tokens[4] + "|" + tokens[5] + "|" + tokens[6];
+                computed = computeSimpleHash(metadataSource);
+            }
+        } else {
+            storedHash = tokens[7];
+            const std::string metadataSource = tokens[0] + "|" + tokens[1] + "|" + tokens[2] + "|" + "" + "|" +
+                                               tokens[3] + "|" + tokens[4] + "|" + tokens[5];
+            computed = computeSimpleHash(metadataSource);
+        }
 
         if (storedHash != computed) {
             mismatches++;

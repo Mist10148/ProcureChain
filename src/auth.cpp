@@ -2,6 +2,7 @@
 
 #include "../include/approvals.h"
 #include "../include/audit.h"
+#include "../include/budget.h"
 #include "../include/documents.h"
 #include "../include/ui.h"
 
@@ -559,14 +560,16 @@ void ensureUserDataFileExists() {
     // Startup bootstrap guarantees all dependent data files/schemas exist.
     ensureFileWithHeader(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK, "userID|fullName|username|password|status|updatedAt");
     ensureFileWithHeader(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK, "adminID|fullName|username|password|role|status|updatedAt");
-    ensureFileWithHeader(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK, "docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount");
+    ensureFileWithHeader(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK, "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount");
     ensureFileWithHeader(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK, "category|amount");
-    ensureFileWithHeader(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK, "timestamp|action|targetID|actor|chainIndex");
+    ensureFileWithHeader(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK, "timestamp|action|targetID|actor|chainIndex|previousHash|currentHash");
 
     migrateAccountFilesIfNeeded();
     ensureSeedAdminAccounts();
+    ensureBudgetConsensusFilesExist();
     ensureApprovalsDataFileExists();
     ensureSampleDocumentsPresent();
+    ensureAuditTrailHashChain();
 
     std::ifstream budgetCheck;
     if (!openInputFileWithFallback(budgetCheck, BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK)) {

@@ -6,5 +6,6 @@
 void ensureBlockchainNodeFilesExist();
 int appendBlockchainAction(const std::string& action, const std::string& docId, const std::string& actor);
 void validateBlockchainNodes(const std::string& actor);
+void viewBlockchainExplorer(const std::string& actor);
 
 #endif

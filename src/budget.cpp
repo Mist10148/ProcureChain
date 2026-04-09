@@ -6,6 +6,7 @@
 #include "../include/ui.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -15,21 +16,23 @@
 #include <vector>
 
 namespace {
-// Budget analytics reads static allocations and derives spending metrics from
-// approved/published documents for administrative reporting.
 const std::string BUDGETS_FILE_PATH_PRIMARY = "data/budgets.txt";
 const std::string BUDGETS_FILE_PATH_FALLBACK = "../data/budgets.txt";
+const std::string BUDGET_ENTRIES_FILE_PATH_PRIMARY = "data/budget_entries.txt";
+const std::string BUDGET_ENTRIES_FILE_PATH_FALLBACK = "../data/budget_entries.txt";
+const std::string BUDGET_APPROVALS_FILE_PATH_PRIMARY = "data/budget_approvals.txt";
+const std::string BUDGET_APPROVALS_FILE_PATH_FALLBACK = "../data/budget_approvals.txt";
+const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
+const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 
 struct BudgetRow {
-    // Canonical row persisted in budgets.txt.
     std::string category;
     double amount;
 };
 
 struct VarianceRow {
-    // Derived analytics row (not persisted) for variance screen output.
     std::string category;
     double allocated;
     double actual;
@@ -37,8 +40,29 @@ struct VarianceRow {
     double utilization;
 };
 
+struct BudgetEntry {
+    std::string entryId;
+    std::string entryType;
+    std::string fiscalYear;
+    std::string category;
+    double allocatedAmount;
+    std::string description;
+    std::string createdAt;
+    std::string createdBy;
+    std::string status;
+    std::string publishedAt;
+};
+
+struct BudgetApproval {
+    std::string entryId;
+    std::string approverUsername;
+    std::string role;
+    std::string status;
+    std::string createdAt;
+    std::string decidedAt;
+};
+
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
-    // Constant-time open fallback for runtime directory differences.
     file.open(primaryPath);
     if (file.is_open()) {
         return true;
@@ -50,7 +74,6 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
-    // Chooses preferred write target based on currently available data path.
     std::ifstream primary(primaryPath);
     if (primary.is_open()) {
         return primaryPath;
@@ -64,8 +87,33 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
     return primaryPath;
 }
 
+bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
+    std::ifstream primary(primaryPath);
+    if (primary.is_open()) {
+        return true;
+    }
+
+    std::ifstream fallback(fallbackPath);
+    if (fallback.is_open()) {
+        return true;
+    }
+
+    std::ofstream createPrimary(primaryPath);
+    if (createPrimary.is_open()) {
+        createPrimary << headerLine << '\n';
+        return true;
+    }
+
+    std::ofstream createFallback(fallbackPath);
+    if (createFallback.is_open()) {
+        createFallback << headerLine << '\n';
+        return true;
+    }
+
+    return false;
+}
+
 std::vector<std::string> splitPipe(const std::string& line) {
-    // O(m) tokenizer for one pipe-delimited line.
     std::vector<std::string> tokens;
     std::stringstream parser(line);
     std::string token;
@@ -79,8 +127,24 @@ void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
 
+std::string toLowerCopy(std::string value) {
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        if (value[i] >= 'A' && value[i] <= 'Z') {
+            value[i] = static_cast<char>(value[i] + ('a' - 'A'));
+        }
+    }
+    return value;
+}
+
+bool isBudgetApproverRole(const Admin& admin) {
+    return admin.role == "Budget Officer" || admin.role == "Municipal Administrator";
+}
+
+bool canSubmitBudgetEntry(const Admin& admin) {
+    return admin.role == "Budget Officer" || admin.role == "Super Admin";
+}
+
 bool loadBudgetRows(std::vector<BudgetRow>& rows) {
-    // Reads all budget rows into memory: O(n) time, O(n) memory.
     std::ifstream file;
     if (!openInputFileWithFallback(file, BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK)) {
         return false;
@@ -125,15 +189,13 @@ bool loadBudgetRows(std::vector<BudgetRow>& rows) {
 }
 
 bool saveBudgetRows(const std::vector<BudgetRow>& rows) {
-    // Rewrites full budget table to keep a clean canonical file shape.
-    std::string targetPath = resolveDataPath(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK);
-    std::ofstream writer(targetPath);
+    std::ofstream writer(resolveDataPath(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK));
     if (!writer.is_open()) {
         return false;
     }
 
     writer << "category|amount\n";
-    for (size_t i = 0; i < rows.size(); ++i) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
         writer << rows[i].category << '|' << std::fixed << std::setprecision(2) << rows[i].amount << '\n';
     }
     writer.flush();
@@ -141,19 +203,246 @@ bool saveBudgetRows(const std::vector<BudgetRow>& rows) {
     return true;
 }
 
+BudgetEntry parseBudgetEntryTokens(const std::vector<std::string>& tokens) {
+    BudgetEntry entry;
+    entry.entryId = tokens.size() > 0 ? tokens[0] : "";
+    entry.entryType = tokens.size() > 1 ? tokens[1] : "NEW";
+    entry.fiscalYear = tokens.size() > 2 ? tokens[2] : "";
+    entry.category = tokens.size() > 3 ? tokens[3] : "";
+    entry.allocatedAmount = 0.0;
+    entry.description = tokens.size() > 5 ? tokens[5] : "";
+    entry.createdAt = tokens.size() > 6 ? tokens[6] : "";
+    entry.createdBy = tokens.size() > 7 ? tokens[7] : "";
+    entry.status = tokens.size() > 8 ? tokens[8] : "pending_approval";
+    entry.publishedAt = tokens.size() > 9 ? tokens[9] : "";
+
+    if (tokens.size() > 4) {
+        std::stringstream amountIn(tokens[4]);
+        amountIn >> entry.allocatedAmount;
+    }
+
+    return entry;
+}
+
+std::string serializeBudgetEntry(const BudgetEntry& entry) {
+    std::ostringstream amountOut;
+    amountOut << std::fixed << std::setprecision(2) << entry.allocatedAmount;
+
+    return entry.entryId + "|" + entry.entryType + "|" + entry.fiscalYear + "|" + entry.category + "|" +
+           amountOut.str() + "|" + entry.description + "|" + entry.createdAt + "|" + entry.createdBy + "|" +
+           entry.status + "|" + entry.publishedAt;
+}
+
+bool loadBudgetEntries(std::vector<BudgetEntry>& rows) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, BUDGET_ENTRIES_FILE_PATH_PRIMARY, BUDGET_ENTRIES_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    rows.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("entryID|") == 0) {
+                continue;
+            }
+        }
+
+        const BudgetEntry entry = parseBudgetEntryTokens(splitPipe(line));
+        if (!entry.entryId.empty()) {
+            rows.push_back(entry);
+        }
+    }
+
+    return true;
+}
+
+bool saveBudgetEntries(const std::vector<BudgetEntry>& rows) {
+    std::ofstream writer(resolveDataPath(BUDGET_ENTRIES_FILE_PATH_PRIMARY, BUDGET_ENTRIES_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt\n";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        writer << serializeBudgetEntry(rows[i]) << '\n';
+    }
+
+    writer.flush();
+    return true;
+}
+
+BudgetApproval parseBudgetApprovalTokens(const std::vector<std::string>& tokens) {
+    BudgetApproval row;
+    row.entryId = tokens.size() > 0 ? tokens[0] : "";
+    row.approverUsername = tokens.size() > 1 ? tokens[1] : "";
+    row.role = tokens.size() > 2 ? tokens[2] : "";
+    row.status = tokens.size() > 3 ? tokens[3] : "pending";
+    row.createdAt = tokens.size() > 4 ? tokens[4] : "";
+    row.decidedAt = tokens.size() > 5 ? tokens[5] : "";
+    return row;
+}
+
+std::string serializeBudgetApproval(const BudgetApproval& row) {
+    return row.entryId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt;
+}
+
+bool loadBudgetApprovals(std::vector<BudgetApproval>& rows) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, BUDGET_APPROVALS_FILE_PATH_PRIMARY, BUDGET_APPROVALS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    rows.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("entryID|") == 0) {
+                continue;
+            }
+        }
+
+        const BudgetApproval row = parseBudgetApprovalTokens(splitPipe(line));
+        if (!row.entryId.empty() && !row.approverUsername.empty()) {
+            rows.push_back(row);
+        }
+    }
+
+    return true;
+}
+
+bool saveBudgetApprovals(const std::vector<BudgetApproval>& rows) {
+    std::ofstream writer(resolveDataPath(BUDGET_APPROVALS_FILE_PATH_PRIMARY, BUDGET_APPROVALS_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "entryID|approverUsername|role|status|createdAt|decidedAt\n";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        writer << serializeBudgetApproval(rows[i]) << '\n';
+    }
+
+    writer.flush();
+    return true;
+}
+
+std::string findActiveAdminUsernameByRole(const std::string& targetRole) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        return "";
+    }
+
+    std::string line;
+    std::getline(file, line);
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        const std::string username = tokens.size() > 2 ? tokens[2] : "";
+        const std::string role = tokens.size() > 4 ? tokens[4] : "";
+        const std::string status = tokens.size() > 5 ? tokens[5] : "active";
+
+        if (role == targetRole && status == "active" && !username.empty()) {
+            return username;
+        }
+    }
+
+    return "";
+}
+
+std::string generateNextBudgetEntryId(const std::vector<BudgetEntry>& entries) {
+    int maxNumber = 0;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].entryId.size() < 3) {
+            continue;
+        }
+
+        const int value = std::atoi(entries[i].entryId.substr(2).c_str());
+        if (value > maxNumber) {
+            maxNumber = value;
+        }
+    }
+
+    std::ostringstream out;
+    out << "BA" << std::setw(3) << std::setfill('0') << (maxNumber + 1);
+    return out.str();
+}
+
+bool createBudgetApprovalRequests(const std::string& entryId) {
+    std::vector<BudgetApproval> approvals;
+    if (!loadBudgetApprovals(approvals)) {
+        return false;
+    }
+
+    const std::string budgetOfficer = findActiveAdminUsernameByRole("Budget Officer");
+    const std::string municipalAdmin = findActiveAdminUsernameByRole("Municipal Administrator");
+
+    if (budgetOfficer.empty() || municipalAdmin.empty()) {
+        return false;
+    }
+
+    const std::string now = getCurrentTimestamp();
+
+    BudgetApproval a;
+    a.entryId = entryId;
+    a.approverUsername = budgetOfficer;
+    a.role = "Budget Officer";
+    a.status = "pending";
+    a.createdAt = now;
+    approvals.push_back(a);
+
+    a.entryId = entryId;
+    a.approverUsername = municipalAdmin;
+    a.role = "Municipal Administrator";
+    a.status = "pending";
+    a.createdAt = now;
+    approvals.push_back(a);
+
+    return saveBudgetApprovals(approvals);
+}
+
+bool isFiscalYearValid(const std::string& fiscalYear) {
+    if (fiscalYear.size() != 4) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < fiscalYear.size(); ++i) {
+        if (fiscalYear[i] < '0' || fiscalYear[i] > '9') {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void printBudgetTable(const std::vector<BudgetRow>& rows) {
-    // Computes total once, then prints each category with relative share.
-    // Complexity is O(n).
     const std::vector<std::string> headers = {"Category", "Amount (PHP)", "Share"};
-    const std::vector<int> widths = {28, 14, 8};
+    const std::vector<int> widths = {30, 14, 8};
 
     double total = 0.0;
-    for (size_t i = 0; i < rows.size(); ++i) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
         total += rows[i].amount;
     }
 
     ui::printTableHeader(headers, widths);
-    for (size_t i = 0; i < rows.size(); ++i) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
         std::ostringstream amountOut;
         amountOut << std::fixed << std::setprecision(2) << rows[i].amount;
 
@@ -167,27 +456,24 @@ void printBudgetTable(const std::vector<BudgetRow>& rows) {
 }
 
 void printBudgetChart(const std::vector<BudgetRow>& rows) {
-    // Bar chart scaling uses the maximum allocation in the current snapshot.
     if (rows.empty()) {
         return;
     }
 
     double maxAmount = 0.0;
-    for (size_t i = 0; i < rows.size(); ++i) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
         if (rows[i].amount > maxAmount) {
             maxAmount = rows[i].amount;
         }
     }
 
     std::cout << "\n" << ui::bold("Budget Allocation Chart") << "\n";
-    for (size_t i = 0; i < rows.size(); ++i) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
         ui::printBar(rows[i].category, rows[i].amount, maxAmount, 24);
     }
 }
 
 std::map<std::string, double> loadActualSpendByCategory() {
-    // Aggregates approved/published document amounts by budget category.
-    // Complexity: O(d log c), d=document rows, c=distinct categories.
     std::map<std::string, double> totals;
 
     std::ifstream file;
@@ -215,16 +501,21 @@ std::map<std::string, double> loadActualSpendByCategory() {
             continue;
         }
 
-        const std::string status = tokens[6];
+        const std::string status = toLowerCopy(tokens.size() >= 15 ? tokens[7] : tokens[6]);
         if (status != "approved" && status != "published") {
             continue;
         }
 
-        const std::string fallbackCategory = tokens[2];
-        const std::string budgetCategory = tokens.size() > 8 && !tokens[8].empty() ? tokens[8] : fallbackCategory;
+        const std::string fallbackCategory = tokens.size() >= 15 ? tokens[2] : (tokens.size() > 2 ? tokens[2] : "");
+        const std::string budgetCategory = tokens.size() >= 15
+            ? (tokens[13].empty() ? fallbackCategory : tokens[13])
+            : (tokens.size() > 8 && !tokens[8].empty() ? tokens[8] : fallbackCategory);
 
         double amount = 0.0;
-        if (tokens.size() > 9) {
+        if (tokens.size() >= 15) {
+            std::stringstream amountIn(tokens[14]);
+            amountIn >> amount;
+        } else if (tokens.size() > 9) {
             std::stringstream amountIn(tokens[9]);
             amountIn >> amount;
         }
@@ -236,12 +527,336 @@ std::map<std::string, double> loadActualSpendByCategory() {
 
     return totals;
 }
+
+bool applyPublishedBudgetChange(const BudgetEntry& entry) {
+    std::vector<BudgetRow> rows;
+    if (!loadBudgetRows(rows)) {
+        return false;
+    }
+
+    bool found = false;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].category == entry.category) {
+            rows[i].amount = entry.allocatedAmount;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        BudgetRow row;
+        row.category = entry.category;
+        row.amount = entry.allocatedAmount;
+        rows.push_back(row);
+    }
+
+    return saveBudgetRows(rows);
+}
+
+void submitBudgetEntry(const Admin& admin, const std::string& entryType) {
+    clearScreen();
+    ui::printSectionTitle("SUBMIT BUDGET ENTRY");
+
+    clearInputBuffer();
+
+    std::string fiscalYear;
+    std::string category;
+    std::string description;
+    double allocatedAmount = 0.0;
+
+    std::cout << "Fiscal Year (YYYY): ";
+    std::getline(std::cin, fiscalYear);
+    std::cout << "Category           : ";
+    std::getline(std::cin, category);
+    std::cout << "Allocated Amount   : ";
+    std::cin >> allocatedAmount;
+
+    if (std::cin.fail()) {
+        std::cin.clear();
+        clearInputBuffer();
+        std::cout << ui::error("[!] Invalid amount.") << "\n";
+        logAuditAction("BUDGET_ENTRY_SUBMIT_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    clearInputBuffer();
+    std::cout << "Description        : ";
+    std::getline(std::cin, description);
+
+    if (!isFiscalYearValid(fiscalYear) || category.empty() || description.empty() || allocatedAmount < 0.0) {
+        std::cout << ui::error("[!] Fiscal year, category, description, and non-negative amount are required.") << "\n";
+        logAuditAction("BUDGET_ENTRY_SUBMIT_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<BudgetEntry> entries;
+    if (!loadBudgetEntries(entries)) {
+        std::cout << ui::error("[!] Unable to open budget entries file.") << "\n";
+        logAuditAction("BUDGET_ENTRY_SUBMIT_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    BudgetEntry entry;
+    entry.entryId = generateNextBudgetEntryId(entries);
+    entry.entryType = entryType;
+    entry.fiscalYear = fiscalYear;
+    entry.category = category;
+    entry.allocatedAmount = allocatedAmount;
+    entry.description = description;
+    entry.createdAt = getCurrentTimestamp();
+    entry.createdBy = admin.username;
+    entry.status = "pending_approval";
+    entry.publishedAt = "";
+    entries.push_back(entry);
+
+    if (!saveBudgetEntries(entries)) {
+        std::cout << ui::error("[!] Failed to save budget entry.") << "\n";
+        logAuditAction("BUDGET_ENTRY_SUBMIT_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!createBudgetApprovalRequests(entry.entryId)) {
+        std::cout << ui::error("[!] Failed to create budget approval requests.") << "\n";
+        logAuditAction("BUDGET_ENTRY_SUBMIT_FAILED", entry.entryId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    const int chainIndex = appendBlockchainAction("BUDGET_SUBMIT", entry.entryId, admin.username);
+    logAuditAction("BUDGET_ENTRY_SUBMIT", entry.entryId, admin.username, chainIndex);
+
+    std::cout << ui::success("[+] Budget entry submitted for unanimous approval.") << "\n";
+    std::cout << "  Entry ID     : " << entry.entryId << "\n";
+    std::cout << "  Entry Type   : " << entry.entryType << "\n";
+    std::cout << "  Fiscal Year  : " << entry.fiscalYear << "\n";
+    std::cout << "  Category     : " << entry.category << "\n";
+    std::cout << "  Amount (PHP) : " << std::fixed << std::setprecision(2) << entry.allocatedAmount << "\n";
+    waitForEnter();
+}
+
+void viewPendingBudgetEntriesForApprover(const Admin& admin) {
+    clearScreen();
+    ui::printSectionTitle("PENDING BUDGET ENTRIES");
+
+    std::vector<BudgetApproval> approvals;
+    std::vector<BudgetEntry> entries;
+
+    if (!loadBudgetApprovals(approvals) || !loadBudgetEntries(entries)) {
+        std::cout << ui::error("[!] Unable to open budget approval datasets.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    std::map<std::string, BudgetEntry> entryLookup;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        entryLookup[entries[i].entryId] = entries[i];
+    }
+
+    std::vector<std::vector<std::string>> tableRows;
+    for (std::size_t i = 0; i < approvals.size(); ++i) {
+        if (approvals[i].approverUsername != admin.username || approvals[i].status != "pending") {
+            continue;
+        }
+
+        std::map<std::string, BudgetEntry>::const_iterator entryIt = entryLookup.find(approvals[i].entryId);
+        if (entryIt == entryLookup.end()) {
+            continue;
+        }
+
+        std::ostringstream amountOut;
+        amountOut << std::fixed << std::setprecision(2) << entryIt->second.allocatedAmount;
+
+        tableRows.push_back({approvals[i].entryId,
+                             entryIt->second.entryType,
+                             entryIt->second.fiscalYear,
+                             entryIt->second.category,
+                             amountOut.str(),
+                             approvals[i].status});
+    }
+
+    if (tableRows.empty()) {
+        std::cout << ui::warning("[!] No pending budget approvals for your account.") << "\n";
+        logAuditAction("VIEW_PENDING_BUDGET_APPROVALS_EMPTY", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    const std::vector<std::string> headers = {"Entry ID", "Type", "Fiscal Year", "Category", "Amount", "Status"};
+    const std::vector<int> widths = {10, 18, 12, 22, 12, 10};
+    ui::printTableHeader(headers, widths);
+    for (std::size_t i = 0; i < tableRows.size(); ++i) {
+        ui::printTableRow(tableRows[i], widths);
+    }
+    ui::printTableFooter(widths);
+
+    logAuditAction("VIEW_PENDING_BUDGET_APPROVALS", "MULTI", admin.username);
+    waitForEnter();
+}
+
+void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
+    clearScreen();
+    ui::printSectionTitle(approve ? "APPROVE BUDGET ENTRY" : "REJECT BUDGET ENTRY");
+
+    std::vector<BudgetApproval> approvals;
+    std::vector<BudgetEntry> entries;
+
+    if (!loadBudgetApprovals(approvals) || !loadBudgetEntries(entries)) {
+        std::cout << ui::error("[!] Unable to open budget approval datasets.") << "\n";
+        logAuditAction("BUDGET_APPROVAL_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<BudgetApproval> pendingForUser;
+    for (std::size_t i = 0; i < approvals.size(); ++i) {
+        if (approvals[i].approverUsername == admin.username && approvals[i].status == "pending") {
+            pendingForUser.push_back(approvals[i]);
+        }
+    }
+
+    if (pendingForUser.empty()) {
+        std::cout << ui::warning("[!] No pending budget approvals for your account.") << "\n";
+        logAuditAction("BUDGET_APPROVAL_NOT_FOUND", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << "\n" << ui::bold("Available Pending Budget Entry IDs") << "\n";
+    for (std::size_t i = 0; i < pendingForUser.size(); ++i) {
+        std::cout << "  - " << pendingForUser[i].entryId << "\n";
+    }
+
+    clearInputBuffer();
+    std::string entryId;
+    std::cout << "Entry ID: ";
+    std::getline(std::cin, entryId);
+
+    if (entryId.empty()) {
+        std::cout << ui::error("[!] Entry ID is required.") << "\n";
+        logAuditAction("BUDGET_APPROVAL_INPUT_ERROR", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    bool updated = false;
+    const std::string now = getCurrentTimestamp();
+    for (std::size_t i = 0; i < approvals.size(); ++i) {
+        if (approvals[i].entryId == entryId && approvals[i].approverUsername == admin.username && approvals[i].status == "pending") {
+            approvals[i].status = approve ? "approved" : "rejected";
+            approvals[i].decidedAt = now;
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        std::cout << ui::error("[!] No pending approval found for this budget entry and account.") << "\n";
+        logAuditAction("BUDGET_APPROVAL_NOT_FOUND", entryId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!saveBudgetApprovals(approvals)) {
+        std::cout << ui::error("[!] Unable to save budget approvals.") << "\n";
+        logAuditAction("BUDGET_APPROVAL_FAILED", entryId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    bool hasAny = false;
+    bool hasPending = false;
+    bool hasRejected = false;
+    for (std::size_t i = 0; i < approvals.size(); ++i) {
+        if (approvals[i].entryId != entryId) {
+            continue;
+        }
+
+        hasAny = true;
+        if (approvals[i].status == "pending") {
+            hasPending = true;
+        } else if (approvals[i].status == "rejected") {
+            hasRejected = true;
+        }
+    }
+
+    std::string nextStatus = "pending_approval";
+    if (hasRejected) {
+        nextStatus = "rejected";
+    } else if (hasAny && !hasPending) {
+        nextStatus = "published";
+    }
+
+    bool entryUpdated = false;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].entryId == entryId) {
+            entries[i].status = nextStatus;
+            if (nextStatus == "published") {
+                entries[i].publishedAt = getCurrentTimestamp();
+                if (!applyPublishedBudgetChange(entries[i])) {
+                    std::cout << ui::error("[!] Budget decision saved, but published budget update failed.") << "\n";
+                    logAuditAction("BUDGET_PUBLISH_FAILED", entryId, admin.username);
+                    waitForEnter();
+                    return;
+                }
+            }
+            entryUpdated = true;
+            break;
+        }
+    }
+
+    if (!entryUpdated || !saveBudgetEntries(entries)) {
+        std::cout << ui::error("[!] Decision saved, but budget entry status update failed.") << "\n";
+        logAuditAction("BUDGET_STATUS_SYNC_FAILED", entryId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << "\nDecision Saved: " << ui::consensusStatus(approve ? "approved" : "rejected") << "\n";
+    std::cout << "Consensus Result: " << ui::consensusStatus(nextStatus) << "\n";
+
+    if (approve) {
+        const int chainIndex = appendBlockchainAction("BUDGET_APPROVE", entryId, admin.username);
+        logAuditAction("BUDGET_APPROVE", entryId, admin.username, chainIndex);
+    } else {
+        const int chainIndex = appendBlockchainAction("BUDGET_REJECT", entryId, admin.username);
+        logAuditAction("BUDGET_REJECT", entryId, admin.username, chainIndex);
+    }
+
+    if (nextStatus == "published") {
+        const int publishChainIndex = appendBlockchainAction("BUDGET_PUBLISH", entryId, admin.username);
+        logAuditAction("BUDGET_PUBLISH", entryId, admin.username, publishChainIndex);
+    }
+
+    waitForEnter();
+}
 } // namespace
 
+void ensureBudgetConsensusFilesExist() {
+    ensureFileWithHeader(BUDGET_ENTRIES_FILE_PATH_PRIMARY,
+                         BUDGET_ENTRIES_FILE_PATH_FALLBACK,
+                         "entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt");
+    ensureFileWithHeader(BUDGET_APPROVALS_FILE_PATH_PRIMARY,
+                         BUDGET_APPROVALS_FILE_PATH_FALLBACK,
+                         "entryID|approverUsername|role|status|createdAt|decidedAt");
+
+    std::vector<BudgetEntry> entries;
+    if (loadBudgetEntries(entries)) {
+        saveBudgetEntries(entries);
+    }
+
+    std::vector<BudgetApproval> approvals;
+    if (loadBudgetApprovals(approvals)) {
+        saveBudgetApprovals(approvals);
+    }
+}
+
 void viewBudgetAllocations(const std::string& actor) {
-    // Summary view for allocation totals, percentages, and ranking chart.
     clearScreen();
-    ui::printSectionTitle("PROCUREMENT BUDGET ALLOCATIONS");
+    ui::printSectionTitle("PROCUREMENT BUDGET ALLOCATIONS (PUBLISHED)");
 
     std::vector<BudgetRow> rows;
     if (!loadBudgetRows(rows)) {
@@ -252,14 +867,14 @@ void viewBudgetAllocations(const std::string& actor) {
     }
 
     if (rows.empty()) {
-        std::cout << "\n" << ui::warning("[!] No budget entries available.") << "\n";
+        std::cout << "\n" << ui::warning("[!] No published budget entries available.") << "\n";
         logAuditAction("VIEW_BUDGETS_EMPTY", "N/A", actor);
         waitForEnter();
         return;
     }
 
     double totalBudget = 0.0;
-    for (size_t i = 0; i < rows.size(); ++i) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
         totalBudget += rows[i].amount;
     }
 
@@ -270,15 +885,13 @@ void viewBudgetAllocations(const std::string& actor) {
     printBudgetTable(rows);
     printBudgetChart(rows);
 
-    std::cout << "\n" << ui::success("Total Budget: PHP ") << std::fixed << std::setprecision(2) << totalBudget << "\n";
+    std::cout << "\n" << ui::success("Total Published Budget: PHP ") << std::fixed << std::setprecision(2) << totalBudget << "\n";
     logAuditAction("VIEW_BUDGETS", "MULTI", actor);
 
     waitForEnter();
 }
 
 void viewBudgetVarianceReport(const std::string& actor) {
-    // Combines allocated values and computed actuals into variance/utilization.
-    // Main cost is one budgets scan plus one documents aggregation pass.
     clearScreen();
     ui::printSectionTitle("BUDGET VARIANCE REPORT");
 
@@ -299,7 +912,7 @@ void viewBudgetVarianceReport(const std::string& actor) {
     const std::map<std::string, double> actuals = loadActualSpendByCategory();
     std::vector<VarianceRow> report;
 
-    for (size_t i = 0; i < budgets.size(); ++i) {
+    for (std::size_t i = 0; i < budgets.size(); ++i) {
         VarianceRow row;
         row.category = budgets[i].category;
         row.allocated = budgets[i].amount;
@@ -315,7 +928,7 @@ void viewBudgetVarianceReport(const std::string& actor) {
     const std::vector<int> widths = {24, 12, 12, 12, 12};
     ui::printTableHeader(headers, widths);
 
-    for (size_t i = 0; i < report.size(); ++i) {
+    for (std::size_t i = 0; i < report.size(); ++i) {
         std::ostringstream allocated;
         std::ostringstream actual;
         std::ostringstream variance;
@@ -331,14 +944,14 @@ void viewBudgetVarianceReport(const std::string& actor) {
     ui::printTableFooter(widths);
 
     double maxActual = 1.0;
-    for (size_t i = 0; i < report.size(); ++i) {
+    for (std::size_t i = 0; i < report.size(); ++i) {
         if (report[i].actual > maxActual) {
             maxActual = report[i].actual;
         }
     }
 
     std::cout << "\n" << ui::bold("Actual Spend By Category") << "\n";
-    for (size_t i = 0; i < report.size(); ++i) {
+    for (std::size_t i = 0; i < report.size(); ++i) {
         ui::printBar(report[i].category, report[i].actual, maxActual, 24);
     }
 
@@ -347,17 +960,22 @@ void viewBudgetVarianceReport(const std::string& actor) {
 }
 
 void manageBudgetsForAdmin(const Admin& admin) {
-    // Interactive CRUD-like budget menu for authorized admin users.
-    // Mutating options append blockchain + audit records after successful save.
     int choice = -1;
 
     do {
         clearScreen();
-        ui::printSectionTitle("ADMIN BUDGET MANAGEMENT");
-        std::cout << "  " << ui::info("[1]") << " View Budget Summary\n";
-        std::cout << "  " << ui::info("[2]") << " Add Budget Category\n";
-        std::cout << "  " << ui::info("[3]") << " Update Budget Amount\n";
-        std::cout << "  " << ui::info("[4]") << " View Budget Variance Report\n";
+        ui::printSectionTitle("ADMIN BUDGET CONSENSUS WORKSPACE");
+        std::cout << "  " << ui::info("[1]") << " View Published Budget Allocations\n";
+        if (canSubmitBudgetEntry(admin)) {
+            std::cout << "  " << ui::info("[2]") << " Submit New Budget Entry\n";
+            std::cout << "  " << ui::info("[3]") << " Submit Allocation Update\n";
+        }
+        if (isBudgetApproverRole(admin)) {
+            std::cout << "  " << ui::info("[4]") << " View Pending Budget Entries\n";
+            std::cout << "  " << ui::info("[5]") << " Approve Budget Entry\n";
+            std::cout << "  " << ui::info("[6]") << " Reject Budget Entry\n";
+        }
+        std::cout << "  " << ui::info("[7]") << " View Budget Variance Report\n";
         std::cout << "  " << ui::info("[0]") << " Back to Admin Dashboard\n";
         std::cout << ui::muted("--------------------------------------------------------------") << "\n";
         std::cout << "  Enter your choice: ";
@@ -371,163 +989,60 @@ void manageBudgetsForAdmin(const Admin& admin) {
             continue;
         }
 
+        if (choice == 0) {
+            break;
+        }
+
         if (choice == 1) {
             viewBudgetAllocations(admin.username);
             continue;
         }
 
-        if (choice == 4) {
+        if (choice == 7) {
             viewBudgetVarianceReport(admin.username);
             continue;
         }
 
-        if (choice == 2) {
-            clearScreen();
-            ui::printSectionTitle("ADD BUDGET CATEGORY");
-
-            clearInputBuffer();
-
-            std::string category;
-            std::cout << "Category Name: ";
-            std::getline(std::cin, category);
-
-            if (category.empty()) {
-                std::cout << ui::warning("[!] Category name is required.") << "\n";
-                logAuditAction("BUDGET_ADD_FAILED", "N/A", admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            double amount = 0.0;
-            std::cout << "Amount (PHP): ";
-            std::cin >> amount;
-            if (std::cin.fail() || amount < 0.0) {
-                std::cin.clear();
-                clearInputBuffer();
-                std::cout << ui::warning("[!] Invalid budget amount.") << "\n";
-                logAuditAction("BUDGET_ADD_FAILED", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            std::vector<BudgetRow> rows;
-            if (!loadBudgetRows(rows)) {
-                std::cout << ui::error("[!] Unable to open budgets file.") << "\n";
-                logAuditAction("BUDGET_ADD_FAILED", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            bool exists = false;
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (rows[i].category == category) {
-                    exists = true;
-                    break;
-                }
-            }
-
-            if (exists) {
-                std::cout << ui::warning("[!] Category already exists. Use update instead.") << "\n";
-                logAuditAction("BUDGET_ADD_DUPLICATE", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            BudgetRow newRow;
-            newRow.category = category;
-            newRow.amount = amount;
-            rows.push_back(newRow);
-
-            if (!saveBudgetRows(rows)) {
-                std::cout << ui::error("[!] Failed to save budget changes.") << "\n";
-                logAuditAction("BUDGET_ADD_FAILED", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            const int chainIndex = appendBlockchainAction("BUDGET_ADD", category, admin.username);
-            logAuditAction("BUDGET_ADD", category, admin.username, chainIndex);
-            std::cout << ui::success("[+] Budget category added successfully.") << "\n";
+        if ((choice == 2 || choice == 3) && !canSubmitBudgetEntry(admin)) {
+            std::cout << ui::warning("[!] Access denied for this role.") << "\n";
+            logAuditAction("ACCESS_DENIED_BUDGET_SUBMIT", "N/A", admin.username);
             waitForEnter();
+            continue;
+        }
+
+        if ((choice == 4 || choice == 5 || choice == 6) && !isBudgetApproverRole(admin)) {
+            std::cout << ui::warning("[!] Access denied for this role.") << "\n";
+            logAuditAction("ACCESS_DENIED_BUDGET_APPROVE", "N/A", admin.username);
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 2) {
+            submitBudgetEntry(admin, "NEW");
             continue;
         }
 
         if (choice == 3) {
-            clearScreen();
-            ui::printSectionTitle("UPDATE BUDGET AMOUNT");
-
-            clearInputBuffer();
-
-            std::string category;
-            std::cout << "Category Name to Update: ";
-            std::getline(std::cin, category);
-
-            if (category.empty()) {
-                std::cout << ui::warning("[!] Category name is required.") << "\n";
-                logAuditAction("BUDGET_UPDATE_FAILED", "N/A", admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            std::vector<BudgetRow> rows;
-            if (!loadBudgetRows(rows)) {
-                std::cout << ui::error("[!] Unable to open budgets file.") << "\n";
-                logAuditAction("BUDGET_UPDATE_FAILED", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            bool found = false;
-            size_t rowIndex = 0;
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (rows[i].category == category) {
-                    found = true;
-                    rowIndex = i;
-                    break;
-                }
-            }
-
-            if (!found) {
-                std::cout << ui::warning("[!] Category not found.") << "\n";
-                logAuditAction("BUDGET_UPDATE_NOT_FOUND", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            double newAmount = 0.0;
-            std::cout << "New Amount (PHP): ";
-            std::cin >> newAmount;
-            if (std::cin.fail() || newAmount < 0.0) {
-                std::cin.clear();
-                clearInputBuffer();
-                std::cout << ui::warning("[!] Invalid budget amount.") << "\n";
-                logAuditAction("BUDGET_UPDATE_FAILED", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            rows[rowIndex].amount = newAmount;
-
-            if (!saveBudgetRows(rows)) {
-                std::cout << ui::error("[!] Failed to save budget changes.") << "\n";
-                logAuditAction("BUDGET_UPDATE_FAILED", category, admin.username);
-                waitForEnter();
-                continue;
-            }
-
-            const int chainIndex = appendBlockchainAction("BUDGET_UPDATE", category, admin.username);
-            logAuditAction("BUDGET_UPDATE", category, admin.username, chainIndex);
-            std::cout << ui::success("[+] Budget amount updated successfully.") << "\n";
-            waitForEnter();
+            submitBudgetEntry(admin, "ALLOCATION_CHANGE");
             continue;
         }
 
-        if (choice == 0) {
-            break;
+        if (choice == 4) {
+            viewPendingBudgetEntriesForApprover(admin);
+            continue;
+        }
+
+        if (choice == 5) {
+            applyBudgetApprovalDecision(admin, true);
+            continue;
+        }
+
+        if (choice == 6) {
+            applyBudgetApprovalDecision(admin, false);
+            continue;
         }
 
         std::cout << "\n" << ui::warning("[!] Invalid menu choice.") << "\n";
         waitForEnter();
-
     } while (choice != 0);
 }

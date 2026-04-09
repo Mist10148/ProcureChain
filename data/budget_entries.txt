@@ -1,0 +1,2 @@
+entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
+BA001|NEW|2026|Testing Category|12345.00|Consensus submission test|2026-04-10 02:06:13|budget_admin|pending_approval|

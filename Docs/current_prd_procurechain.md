@@ -16,22 +16,26 @@ Implemented in code right now:
 - citizen signup/login and admin signup/login
 - menu routing with citizen and admin dashboards
 - admin document management (upload/view/search/update status)
+- document import upload flow with file metadata capture (pdf/docx/csv/txt)
 - admin command center with grouped workspaces and overview dashboard
 - advanced document filters (status, date/date range, category, department, uploader)
 - guided search/filter suggestions with recent available records shown before input
 - approvals module (request creation + pending view + approve/reject with document status transitions)
+- citizen published-document search and verification flow
 - analytics hub with approval, budget, audit, integrity, and executive views
 - compact/full layout mode toggle for analytics rendering
 - optional paged detail table flow in analytics reports
-- budget module (view/add/update) and variance reporting
+- budget consensus module (submit/view pending/approve/reject/publish) and variance reporting
 - blockchain module (node file setup + chain validation and node consistency checking)
+- blockchain explorer with per-node mismatch and per-block consensus diagnostics
 - blockchain append hooks on key actions (upload/approve/reject/manual status/budget updates)
 - published document viewing (published-only)
-- document integrity verification (simple classroom hash)
+- document integrity verification with SHA-256 hash recomputation and blockchain checks
 - audit logging for core auth/citizen/admin actions
 - audit CSV export (all rows and filtered rows)
 - audit export input hardening (date range and filename validation)
 - audit-to-blockchain linking through chain index values
+- audit hash-linking through previousHash/currentHash fields
 - user account lifecycle administration for Super Admin
   - list accounts
   - deactivate/reactivate account
@@ -40,7 +44,7 @@ Implemented in code right now:
 - admin sub-role permission enforcement is active in dashboard actions
 - admin menus are role-visible (users only see actions/workspaces available to their role)
 
-Still pending against full desired scope:
+Still pending against optional desired scope:
 
 - optional forced password change-on-next-login flow
 - optional delegated approvals
@@ -186,10 +190,12 @@ The system stores procurement records and supports integrity verification.
 
 Acceptance Criteria:
 
-- Document records store ID/title/category/department/date/uploader/status/hash
-- Document rows also store budgetCategory and amount
-- Verification compares recomputed hash with stored hash
-- System displays VALID or POTENTIALLY TAMPERED
+- Document upload requires title, category, description, and source file path
+- Source file import accepts pdf/docx/csv/txt and copies files into local storage
+- Document records store ID/title/category/description/department/date/uploader/status/hash/file metadata/budget fields
+- Verification compares recomputed SHA-256 hash with stored hash
+- Citizen verification checks whether hash evidence is present in blockchain records
+- System displays VALID/POTENTIALLY TAMPERED/CHAIN-MISSING outcomes
 - Published records are visible to citizen accounts
 
 ### Feature 4: Advanced Document Filters
@@ -224,6 +230,7 @@ Acceptance Criteria:
 - Any rejection marks the document rejected
 - Complete non-rejected decisions publish document
 - Approve/reject actions update both approvals and document status
+- Citizens can only verify and inspect published documents
 
 ### Feature 6: Approval Analytics Dashboard
 
@@ -244,18 +251,21 @@ Acceptance Criteria:
 - Layout mode toggle updates chart and table density
 - Optional paged detail table can be opened for deeper row inspection
 
-### Feature 7: Procurement Budget Summary and Variance
+### Feature 7: Procurement Budget Consensus and Variance
 
 Priority: High
 
 Description:
 
-Budget module supports category allocation management and variance analysis.
+Budget module supports consensus-governed budget publication and variance analysis.
 
 Acceptance Criteria:
 
-- budgets.txt stores category allocation values
-- Authorized admins can add and update categories
+- budget_entries.txt stores submitted budget entries
+- budget_approvals.txt stores unanimous approval workflow per entry
+- Budget Officer and Municipal Administrator can approve/reject pending entries
+- Any rejection blocks publication
+- Full non-rejected decisions publish the budget entry into budgets.txt
 - Variance report compares allocated vs actual totals
 - Actual totals derive from approved/published documents by budget category
 - Report shows variance amount and utilization percentage
@@ -270,13 +280,14 @@ System keeps a readable audit history and supports CSV output for demos/complian
 
 Acceptance Criteria:
 
-- Major actions append to audit_log.txt with timestamp/action/target/actor/chainIndex
+- Major actions append to audit_log.txt with timestamp/action/target/actor/chainIndex/previousHash/currentHash
 - Audit view renders table and action-frequency chart
 - CSV export supports all rows
 - CSV export supports filtered rows (date/action/actor/target)
 - Export validates date range bounds before file write
 - Export validates filename safety before file write
 - Export action is itself logged
+- Audit rows are hash-linked with previousHash and currentHash values
 
 ### Feature 9: Simulated Blockchain Ledger
 
@@ -293,6 +304,7 @@ Acceptance Criteria:
 - Validation checks chain linkage in each node
 - Validation checks full-node content consistency
 - Validation result logged in audit trail
+- Explorer screen shows node-level integrity, first mismatch, per-block agreement counts, and tamper alerts
 
 ### Feature 10: Audit-to-Blockchain Linking
 
@@ -322,6 +334,8 @@ Acceptance Criteria:
 - View Published Documents
 - View Budget Summary
 - View Audit Trail
+- Search Published Document by ID
+- Verify Published Document Hash
 - Logout
 
 ### Admin Command Center
@@ -336,9 +350,9 @@ Acceptance Criteria:
 - Approvals Workspace
   - pending approvals, approve/reject, detailed approval analytics
 - Budget Workspace
-  - view allocations, variance report, manage budgets
+  - view published allocations, submit budget entries, approve/reject budget entries, variance report
 - Audit and Integrity Workspace
-  - audit trail, blockchain validation, document integrity verification, integrity snapshot
+  - audit trail, blockchain validation, document integrity verification, integrity snapshot, blockchain explorer
 - Account Administration Workspace
   - lifecycle controls
 - Logout
@@ -359,7 +373,7 @@ userID|fullName|username|password|status|updatedAt
 
 ### documents.txt
 
-docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount
+docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
 
 ### approvals.txt
 
@@ -369,9 +383,17 @@ docID|approverUsername|role|status|createdAt|decidedAt
 
 category|amount
 
+### budget_entries.txt
+
+entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
+
+### budget_approvals.txt
+
+entryID|approverUsername|role|status|createdAt|decidedAt
+
 ### audit_log.txt
 
-timestamp|action|targetID|actor|chainIndex
+timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
 
 ### blockchain node files
 
@@ -424,6 +446,10 @@ The project is successful if it can demonstrate:
 - audit trail logging and CSV export
 - simulated blockchain validation with linked audit evidence
 
+Integrity note:
+
+- Hash computation now uses SHA-256 in the project verification module.
+
 ## 13. Scope Summary
 
 ProcureChain is a beginner-friendly C++ CLI municipal procurement document tracking system. It uses file handling, vectors, arrays, functions, and structs to implement:
@@ -435,5 +461,4 @@ ProcureChain is a beginner-friendly C++ CLI municipal procurement document track
 - governance reporting
 - budget visibility and variance
 - audit logs and exports
-- a simulated blockchain using 3 text-based ledger files
 - a simulated blockchain using 5 text-based ledger files

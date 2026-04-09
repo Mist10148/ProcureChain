@@ -8,11 +8,16 @@ struct Document {
     std::string docId;
     std::string title;
     std::string category;
+    std::string description;
     std::string department;
     std::string dateUploaded;
     std::string uploader;
     std::string status;
     std::string hashValue;
+    std::string fileName;
+    std::string fileType;
+    std::string filePath;
+    long long fileSizeBytes;
     std::string budgetCategory;
     double amount;
 };
@@ -20,6 +25,7 @@ struct Document {
 std::string generateNextDocumentId();
 void ensureSampleDocumentsPresent();
 void showPublishedDocuments(const std::string& actor);
+void searchPublishedDocumentForCitizen(const std::string& actor);
 void uploadDocumentAsAdmin(const Admin& admin);
 void viewAllDocumentsForAdmin(const Admin& admin);
 void searchDocumentByIdForAdmin(const Admin& admin);

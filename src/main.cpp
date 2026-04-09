@@ -52,7 +52,7 @@ bool canManualOverrideStatus(const Admin& admin) {
 
 bool canManageBudgets(const Admin& admin) {
     // Budget officer domain action with Super Admin fallback authority.
-    return isRole(admin, "Budget Officer") || isRole(admin, "Super Admin");
+    return isRole(admin, "Budget Officer") || isRole(admin, "Municipal Administrator") || isRole(admin, "Super Admin");
 }
 
 bool canValidateBlockchain(const Admin& admin) {
@@ -146,7 +146,8 @@ void printCitizenMenu(const User& citizen) {
     std::cout << "  " << ui::info("[1]") << " View Published Documents\n";
     std::cout << "  " << ui::info("[2]") << " View Procurement Budgets\n";
     std::cout << "  " << ui::info("[3]") << " View Audit Trail\n";
-    std::cout << "  " << ui::muted("[Info]") << " Integrity verification is Admin-only (Super Admin).\n";
+    std::cout << "  " << ui::info("[4]") << " Search Published Document by ID\n";
+    std::cout << "  " << ui::info("[5]") << " Verify Published Document Hash\n";
     std::cout << "  " << ui::info("[0]") << " Logout\n";
     std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
@@ -357,6 +358,8 @@ void runAuditIntegrityWorkspace(const Admin& admin) {
     }
     actionCodes.push_back(4);
     actionLabels.push_back("Integrity Snapshot (Visual)");
+    actionCodes.push_back(5);
+    actionLabels.push_back("Blockchain Explorer (5 Nodes)");
 
     int choice = -1;
 
@@ -390,6 +393,9 @@ void runAuditIntegrityWorkspace(const Admin& admin) {
                 break;
             case 4:
                 viewIntegritySnapshot(admin);
+                break;
+            case 5:
+                viewBlockchainExplorer(admin.username);
                 break;
             default:
                 break;
@@ -444,7 +450,7 @@ void runCitizenDashboard(const User& citizen) {
         clearScreen();
         printCitizenMenu(citizen);
 
-        if (!readBoundedMenuChoice(citizenChoice, 0, 3)) {
+        if (!readBoundedMenuChoice(citizenChoice, 0, 5)) {
             std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
@@ -458,6 +464,12 @@ void runCitizenDashboard(const User& citizen) {
                 break;
             case 3:
                 viewAuditTrail(citizen.username);
+                break;
+            case 4:
+                searchPublishedDocumentForCitizen(citizen.username);
+                break;
+            case 5:
+                verifyPublishedDocumentAsCitizen(citizen.username);
                 break;
             case 0:
                 logAuditAction("CITIZEN_LOGOUT", citizen.userId, citizen.username);

@@ -56,19 +56,25 @@ Evidence notes:
 
 ### 3.1 Core Document Actions
 
-- [x] Upload document record with required metadata.
+- [x] Upload document record with title/category/description and source file import path.
+- [x] Upload import accepts only pdf/docx/csv/txt.
+- [x] Upload success output shows SHA-256 hash.
 - [x] View all documents (admin).
 - [x] Search document by ID.
 - [x] Search screen shows recent/available document hints before input.
 - [x] Search supports guided matching (exact ID, ID prefix, title/category keyword).
 - [x] View published documents (citizen only view).
+- [x] Citizen can search published document by ID and inspect full detail panel.
+- [x] Citizen hash verification compares stored vs recomputed hash and checks blockchain presence.
 - [x] Manual status update path is available (role-gated).
 
 ### 3.2 Extended Document Data
 
 - [x] budgetCategory field stored in document rows.
 - [x] amount field stored in document rows.
-- [x] hash value stored and used for verification workflow.
+- [x] description field stored in document rows.
+- [x] file metadata stored (fileName, fileType, filePath, fileSizeBytes).
+- [x] SHA-256 hash value stored and used for verification workflow.
 
 ### 3.3 Advanced Document Filtering
 
@@ -123,9 +129,12 @@ Evidence notes:
 
 ### 5.1 Budget CRUD-like Controls
 
-- [x] View budget summary.
-- [x] Add budget category.
-- [x] Update budget amount.
+- [x] Submit budget entry with fiscal year/category/allocated amount/description.
+- [x] Budget approval rows are created for required approver roles.
+- [x] Budget Officer can approve/reject assigned budget entries.
+- [x] Municipal Administrator can approve/reject assigned budget entries.
+- [x] Budget entry is published only after unanimous non-rejected approvals.
+- [x] Published budget summary updates only after budget publication.
 
 ### 5.2 Variance Reporting
 
@@ -143,6 +152,7 @@ Evidence notes:
 - [x] Key actions append audit rows.
 - [x] Audit viewer renders tabular history.
 - [x] Action frequency chart is displayed.
+- [x] Audit rows include hash-linked previousHash/currentHash values.
 
 ### 6.2 CSV Export
 
@@ -171,10 +181,14 @@ Evidence notes:
 - [x] Per-node linkage validation works.
 - [x] Cross-node consistency validation works.
 - [x] Validation output is visible and actionable for demo.
+- [x] Blockchain explorer view shows node integrity and per-block agreement.
+- [x] Explorer surfaces mismatch/tamper diagnostics when divergence exists.
 
 ### 7.3 Document Integrity Verification
 
 - [x] Recomputed hash comparison is available.
+- [x] Hash algorithm used is SHA-256.
+- [x] Verification includes blockchain hash-presence check.
 - [x] Integrity status is displayed clearly.
 
 ---
@@ -214,7 +228,8 @@ Evidence notes:
 - [ ] Execute a full scripted walkthrough for each role account.
 - [ ] Generate at least one filtered audit CSV for presentation.
 - [ ] Demonstrate one blockchain validation pass during defense.
-- [ ] Run one integrity verification example in demo flow.
+- [ ] Run one citizen integrity verification example in demo flow.
+- [ ] Demonstrate blockchain explorer consensus/tamper panel.
 - [ ] Polish wording/labels in menus where needed for presentation clarity.
 
 Progress note:

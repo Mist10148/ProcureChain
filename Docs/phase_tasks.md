@@ -68,8 +68,12 @@ Completed
 ### Implemented
 
 - upload of procurement document records
+- upload requires title/category/description and source file import path
+- source file import accepts pdf/docx/csv/txt and copies into local document storage
+- SHA-256 hash is computed from imported file content and stored with metadata
 - full admin listing and ID search
 - citizen published-only viewing
+- citizen published-document search by ID with detail panel and approval-chain visibility
 - metadata persistence using pipe-delimited format
 
 ### Status
@@ -90,6 +94,7 @@ Completed
 - per-approver status persistence in approvals.txt
 - reject-any rule and unanimous publish rule
 - pending state handling while decisions are incomplete
+- publication is withheld until unanimous non-rejected decisions are completed
 
 ### Status
 
@@ -102,12 +107,14 @@ Completed
 - append key actions to simulated blockchain
 - validate chain linkage and node consistency
 - support document integrity checks
+- provide an explorer view for node and block-level tamper diagnostics
 
 ### Implemented
 
 - append to five node ledger files
 - per-node validation and cross-node consistency checks
-- integrity verification flow for document hash comparison
+- integrity verification flow for document hash comparison and blockchain hash evidence
+- blockchain explorer with first mismatch index and per-block agreement counts
 
 ### Status
 
@@ -117,15 +124,18 @@ Completed
 
 ### Objectives
 
-- implement budget summary and admin update flows
+- implement budget consensus submission/approval/publication flows
 - centralize audit logging for core actions
 
 ### Implemented
 
-- budget summary viewing
-- add budget category and update amount
+- budget entry submission using fiscal year, category, allocated amount, and description
+- budget approvals by Budget Officer and Municipal Administrator
+- budget publication gate (published only after unanimous approvals)
+- published budget summary viewing
 - audit append and audit trail rendering
 - action frequency display
+- hash-linked audit chain with previousHash/currentHash
 
 ### Status
 
@@ -191,6 +201,7 @@ Implemented computation:
 - allocated values from budgets.txt
 - actual totals aggregated from approved/published documents
 - variance and utilization per category
+- published budget totals become the public baseline only after budget consensus publication
 
 #### 6.4 Account Lifecycle Administration
 
@@ -279,12 +290,14 @@ Completed now:
 - smoke launch/exit run
 - role-based command paths validated through audit/data updates
 - scripted admin walkthrough validated overview dashboard, analytics hub, layout toggles, and executive snapshot flow
+- post-startup data migration checks confirm updated document/audit/blockchain schemas are active
 
 Still to execute before final defense:
 
 - full scripted end-to-end walkthrough per role
 - one presentation-ready filtered CSV export sample
 - one intentional tamper simulation followed by blockchain validation
+- one citizen hash verification demonstration showing on-chain and mismatch outcomes
 
 ## Optional Stretch Phases (If Time Allows)
 
@@ -317,7 +330,9 @@ The project has moved beyond baseline CLI CRUD and now includes a governance-foc
 - advanced query/filter capability
 - approval performance analytics
 - budget variance reporting
+- budget consensus publication workflow
 - account lifecycle administration
 - audit export and chain-linked traceability
+- blockchain explorer and tamper diagnostics across five nodes
 
 This places ProcureChain in a strong final-defense state while remaining within the required procedural C++ course scope.

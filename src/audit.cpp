@@ -2,6 +2,7 @@
 
 #include "../include/auth.h"
 #include "../include/ui.h"
+#include "../include/verification.h"
 
 #include <cctype>
 #include <fstream>
@@ -24,6 +25,8 @@ struct AuditEntry {
     std::string target;
     std::string actor;
     std::string chainIndex;
+    std::string previousHash;
+    std::string currentHash;
 };
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
@@ -50,6 +53,20 @@ bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryP
     return file.is_open();
 }
 
+std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
+    std::ifstream primary(primaryPath);
+    if (primary.is_open()) {
+        return primaryPath;
+    }
+
+    std::ifstream fallback(fallbackPath);
+    if (fallback.is_open()) {
+        return fallbackPath;
+    }
+
+    return primaryPath;
+}
+
 std::string toLowerCopy(std::string value) {
     // ASCII-only lowercase conversion for case-insensitive filters.
     for (size_t i = 0; i < value.size(); ++i) {
@@ -58,6 +75,16 @@ std::string toLowerCopy(std::string value) {
         }
     }
     return value;
+}
+
+std::vector<std::string> splitPipe(const std::string& line) {
+    std::vector<std::string> tokens;
+    std::stringstream parser(line);
+    std::string token;
+    while (std::getline(parser, token, '|')) {
+        tokens.push_back(token);
+    }
+    return tokens;
 }
 
 bool containsCaseInsensitive(const std::string& text, const std::string& token) {
@@ -103,13 +130,15 @@ bool loadAuditEntries(std::vector<AuditEntry>& entries) {
             }
         }
 
-        std::stringstream parser(line);
+        std::vector<std::string> tokens = splitPipe(line);
         AuditEntry row;
-        std::getline(parser, row.timestamp, '|');
-        std::getline(parser, row.action, '|');
-        std::getline(parser, row.target, '|');
-        std::getline(parser, row.actor, '|');
-        std::getline(parser, row.chainIndex, '|');
+        row.timestamp = tokens.size() > 0 ? tokens[0] : "";
+        row.action = tokens.size() > 1 ? tokens[1] : "";
+        row.target = tokens.size() > 2 ? tokens[2] : "";
+        row.actor = tokens.size() > 3 ? tokens[3] : "";
+        row.chainIndex = tokens.size() > 4 ? tokens[4] : "";
+        row.previousHash = tokens.size() > 5 ? tokens[5] : "";
+        row.currentHash = tokens.size() > 6 ? tokens[6] : "";
 
         if (row.timestamp.empty() || row.action.empty()) {
             continue;
@@ -300,6 +329,31 @@ void printAuditFilterSuggestions(const std::vector<AuditEntry>& entries) {
     std::cout << "  " << ui::muted("Tip: leave filters blank to keep more rows.") << "\n";
 }
 
+std::string buildAuditHashPayload(const AuditEntry& row) {
+    return row.timestamp + "|" + row.action + "|" + row.target + "|" + row.actor + "|" + row.chainIndex + "|" + row.previousHash;
+}
+
+bool saveAuditEntries(const std::vector<AuditEntry>& rows) {
+    std::ofstream writer(resolveDataPath(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "timestamp|action|targetID|actor|chainIndex|previousHash|currentHash\n";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        writer << rows[i].timestamp << '|'
+               << rows[i].action << '|'
+               << rows[i].target << '|'
+               << rows[i].actor << '|'
+               << rows[i].chainIndex << '|'
+               << rows[i].previousHash << '|'
+               << rows[i].currentHash << '\n';
+    }
+
+    writer.flush();
+    return true;
+}
+
 void writeCsvRows(const std::string& outputPath, const std::vector<AuditEntry>& rows) {
     // Linear write pipeline: O(n) where n is exported row count.
     std::ofstream out(outputPath);
@@ -308,13 +362,15 @@ void writeCsvRows(const std::string& outputPath, const std::vector<AuditEntry>& 
         return;
     }
 
-    out << "timestamp,action,targetID,actor,chainIndex\n";
+    out << "timestamp,action,targetID,actor,chainIndex,previousHash,currentHash\n";
     for (size_t i = 0; i < rows.size(); ++i) {
         out << csvEscape(rows[i].timestamp) << ','
             << csvEscape(rows[i].action) << ','
             << csvEscape(rows[i].target) << ','
             << csvEscape(rows[i].actor) << ','
-            << csvEscape(rows[i].chainIndex) << '\n';
+            << csvEscape(rows[i].chainIndex) << ','
+            << csvEscape(rows[i].previousHash) << ','
+            << csvEscape(rows[i].currentHash) << '\n';
     }
     out.flush();
 }
@@ -331,25 +387,49 @@ std::string getCurrentTimestamp() {
     return std::string(buffer);
 }
 
-void logAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex) {
-    // Appends one normalized line so every module can emit traceable events.
-    std::ofstream file;
-    if (!openAppendFileWithFallback(file, AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK)) {
+void ensureAuditTrailHashChain() {
+    std::vector<AuditEntry> entries;
+    if (!loadAuditEntries(entries)) {
         return;
     }
 
-    // Chain index is optional so non-blockchain actions still reuse one unified audit schema.
-    file << getCurrentTimestamp() << '|'
-         << action << '|'
-         << targetId << '|'
-         << actor << '|';
-
-    if (chainIndex >= 0) {
-        file << chainIndex;
+    std::string previousHash = "0000";
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        entries[i].previousHash = previousHash;
+        entries[i].currentHash = computeSimpleHash(buildAuditHashPayload(entries[i]));
+        previousHash = entries[i].currentHash;
     }
 
-    file << '\n';
-    file.flush();
+    saveAuditEntries(entries);
+}
+
+void logAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex) {
+    std::vector<AuditEntry> entries;
+    if (!loadAuditEntries(entries)) {
+        return;
+    }
+
+    AuditEntry row;
+    row.timestamp = getCurrentTimestamp();
+    row.action = action;
+    row.target = targetId;
+    row.actor = actor;
+
+    if (chainIndex >= 0) {
+        row.chainIndex = std::to_string(chainIndex);
+    } else {
+        row.chainIndex = "";
+    }
+
+    row.previousHash = entries.empty() ? "0000" : entries.back().currentHash;
+    if (row.previousHash.empty()) {
+        row.previousHash = "0000";
+    }
+
+    row.currentHash = computeSimpleHash(buildAuditHashPayload(row));
+    entries.push_back(row);
+
+    saveAuditEntries(entries);
 }
 
 void exportAuditTrailCsv(const std::string& actor) {
@@ -520,13 +600,15 @@ void viewAuditTrail(const std::string& actor) {
         actionCounts[entries[i].action] += 1.0;
     }
 
-    const std::vector<std::string> headers = {"Timestamp", "Action", "Target", "Actor", "ChainIdx"};
-    const std::vector<int> widths = {19, 24, 14, 14, 8};
+    const std::vector<std::string> headers = {"Timestamp", "Action", "Target", "Actor", "ChainIdx", "PrevHash", "CurrHash"};
+    const std::vector<int> widths = {19, 20, 12, 12, 8, 14, 14};
 
     ui::printTableHeader(headers, widths);
     for (size_t i = 0; i < entries.size(); ++i) {
+        const std::string prevShort = entries[i].previousHash.size() > 14 ? entries[i].previousHash.substr(0, 14) : entries[i].previousHash;
+        const std::string currShort = entries[i].currentHash.size() > 14 ? entries[i].currentHash.substr(0, 14) : entries[i].currentHash;
         ui::printTableRow(
-            {entries[i].timestamp, entries[i].action, entries[i].target, entries[i].actor, entries[i].chainIndex},
+            {entries[i].timestamp, entries[i].action, entries[i].target, entries[i].actor, entries[i].chainIndex, prevShort, currShort},
             widths);
     }
     ui::printTableFooter(widths);

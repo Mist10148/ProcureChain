@@ -1,7 +1,7 @@
-docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount
-PR001|Office Supplies Purchase|Purchase Request|Procurement Office|2026-04-09|proc_admin|published|1B9814D1|Purchase Request|0.00
-PO002|Road Repair Contract|Purchase Order|Engineering Department|2026-04-09|proc_admin|published|D609BB2A|Purchase Order|0.00
-CA003|Clinic Equipment Acquisition|Contract|Health Office|2026-04-09|proc_admin|pending|1F506938|Contract|0.00
-D004|Matrix Test Document|Purchase Request|Procurement Office|2026-04-09|proc_admin|published|33DDB485|Purchase Request|0.00
-D005|Matrix Rejection Test|Contract|Health Office|2026-04-09|proc_admin|pending_approval|71419574|Contract|0.00
-D006|Matrix Rejection Test|Contract|Health Office|2026-04-09|proc_admin|rejected|EED9CC6C|Contract|0.00
+docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
+PR001|Office Supplies Purchase|Purchase Request||Procurement Office|2026-04-09|proc_admin|published|ae82496a5b0ff26fa22df854faa5baa68fae40e971fc297a9f95b4a6f4daa0b3|PR001.legacy|legacy||0|Purchase Request|0.00
+PO002|Road Repair Contract|Purchase Order||Engineering Department|2026-04-09|proc_admin|published|b81a3e680fc57bf059671280dc1d89c94ab73c11fed901a92a09f1bf0984e509|PO002.legacy|legacy||0|Purchase Order|0.00
+CA003|Clinic Equipment Acquisition|Contract||Health Office|2026-04-09|proc_admin|pending|ff31e652be79edde5bda0bcf551c27c958f15c3224d413678bbc9dcd7744c21d|CA003.legacy|legacy||0|Contract|0.00
+D004|Matrix Test Document|Purchase Request||Procurement Office|2026-04-09|proc_admin|published|a1a6229299bb958614308e75f86b8b48daf57518f9d6f3ee3bc2c683b6ea1b98|D004.legacy|legacy||0|Purchase Request|0.00
+D005|Matrix Rejection Test|Contract||Health Office|2026-04-09|proc_admin|pending_approval|5293158145e3dd5a64d7aee6ede56ae99f5bbb54a7ee27acfdbf7fed8031338d|D005.legacy|legacy||0|Contract|0.00
+D006|Matrix Rejection Test|Contract||Health Office|2026-04-09|proc_admin|rejected|55ee91c87a4590eb60ead0f17bf129973b44b06132ffb5b0477de8467fa4ef01|D006.legacy|legacy||0|Contract|0.00

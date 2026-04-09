@@ -8,7 +8,9 @@
 #include "../include/verification.h"
 
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -23,6 +25,17 @@ namespace {
 // searching, filtering, status transitions, and approval-request creation.
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
+const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
+const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
+const std::string DOCUMENT_UPLOAD_DIR_PRIMARY = "data/documents";
+const std::string DOCUMENT_UPLOAD_DIR_FALLBACK = "../data/documents";
+
+struct ApprovalChainRow {
+    std::string approverUsername;
+    std::string role;
+    std::string status;
+    std::string decidedAt;
+};
 
 struct DocumentFilter {
     // Optional fields used to build an in-memory filter pipeline.
@@ -129,36 +142,101 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
     doc.docId = tokens.size() > 0 ? tokens[0] : "";
     doc.title = tokens.size() > 1 ? tokens[1] : "";
     doc.category = tokens.size() > 2 ? tokens[2] : "";
-    doc.department = tokens.size() > 3 ? tokens[3] : "";
-    doc.dateUploaded = tokens.size() > 4 ? tokens[4] : "";
-    doc.uploader = tokens.size() > 5 ? tokens[5] : "";
-    doc.status = tokens.size() > 6 ? tokens[6] : "pending_approval";
-    doc.hashValue = tokens.size() > 7 ? tokens[7] : "";
-    doc.budgetCategory = tokens.size() > 8 ? tokens[8] : doc.category;
+    doc.description = "";
+    doc.department = "";
+    doc.dateUploaded = "";
+    doc.uploader = "";
+    doc.status = "pending_approval";
+    doc.hashValue = "";
+    doc.fileName = "";
+    doc.fileType = "";
+    doc.filePath = "";
+    doc.fileSizeBytes = 0;
+    doc.budgetCategory = doc.category;
     doc.amount = 0.0;
 
-    if (tokens.size() > 9) {
-        std::stringstream amountIn(tokens[9]);
+    if (tokens.size() >= 15) {
+        doc.description = tokens[3];
+        doc.department = tokens[4];
+        doc.dateUploaded = tokens[5];
+        doc.uploader = tokens[6];
+        doc.status = tokens[7];
+        doc.hashValue = tokens[8];
+        doc.fileName = tokens[9];
+        doc.fileType = tokens[10];
+        doc.filePath = tokens[11];
+
+        std::stringstream sizeIn(tokens[12]);
+        sizeIn >> doc.fileSizeBytes;
+
+        doc.budgetCategory = tokens[13];
+
+        std::stringstream amountIn(tokens[14]);
         amountIn >> doc.amount;
+    } else {
+        // Legacy schema fallback.
+        doc.department = tokens.size() > 3 ? tokens[3] : "";
+        doc.dateUploaded = tokens.size() > 4 ? tokens[4] : "";
+        doc.uploader = tokens.size() > 5 ? tokens[5] : "";
+        doc.status = tokens.size() > 6 ? tokens[6] : "pending_approval";
+        doc.hashValue = tokens.size() > 7 ? tokens[7] : "";
+        doc.budgetCategory = tokens.size() > 8 ? tokens[8] : doc.category;
+        doc.fileName = doc.docId + ".legacy";
+        doc.fileType = "legacy";
+        doc.filePath = "";
+
+        if (tokens.size() > 9) {
+            std::stringstream amountIn(tokens[9]);
+            amountIn >> doc.amount;
+        }
     }
 
     if (doc.budgetCategory.empty()) {
         doc.budgetCategory = doc.category;
     }
 
+    if (doc.department.empty()) {
+        doc.department = "General";
+    }
+
     return doc;
 }
 
+std::string computeDocumentRecordHash(const Document& doc) {
+    if (!doc.filePath.empty() && std::filesystem::exists(doc.filePath)) {
+        const std::string fileHash = computeFileHashSha256(doc.filePath);
+        if (!fileHash.empty()) {
+            return fileHash;
+        }
+    }
+
+    const std::string metadataSource = doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.description + "|" + doc.department + "|" +
+                                       doc.dateUploaded + "|" + doc.uploader;
+    return computeSimpleHash(metadataSource);
+}
+
 std::string serializeDocument(const Document& doc) {
-    // Hash source intentionally keeps original 7 fields to preserve compatibility with existing verification logic.
-    const std::string hashSource = doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.department + "|" +
-                                   doc.dateUploaded + "|" + doc.uploader + "|" + doc.status;
+    const std::string metadataSource = doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.description + "|" + doc.department + "|" +
+                                       doc.dateUploaded + "|" + doc.uploader;
+    const std::string hashValue = !doc.hashValue.empty() ? doc.hashValue : computeSimpleHash(metadataSource);
 
     std::ostringstream out;
-    out << hashSource << '|'
-        << computeSimpleHash(hashSource) << '|'
+    out << doc.docId << '|'
+        << doc.title << '|'
+        << doc.category << '|'
+        << doc.description << '|'
+        << doc.department << '|'
+        << doc.dateUploaded << '|'
+        << doc.uploader << '|'
+        << doc.status << '|'
+        << hashValue << '|'
+        << doc.fileName << '|'
+        << doc.fileType << '|'
+        << doc.filePath << '|'
+        << doc.fileSizeBytes << '|'
         << doc.budgetCategory << '|'
         << std::fixed << std::setprecision(2) << doc.amount;
+
     return out.str();
 }
 
@@ -203,7 +281,7 @@ bool saveDocuments(const std::vector<Document>& docs) {
         return false;
     }
 
-    writer << "docID|title|category|department|dateUploaded|uploader|status|hashValue|budgetCategory|amount\n";
+    writer << "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount\n";
     for (size_t i = 0; i < docs.size(); ++i) {
         writer << serializeDocument(docs[i]) << '\n';
     }
@@ -421,6 +499,177 @@ std::string defaultDocumentsExportFileName() {
     }
 
     return "documents_export_" + sanitizeFileToken(stamp) + ".txt";
+}
+
+bool isAllowedImportExtension(const std::string& extensionWithDot) {
+    const std::string ext = toLowerCopy(extensionWithDot);
+    return ext == ".pdf" || ext == ".docx" || ext == ".csv" || ext == ".txt";
+}
+
+std::string resolveUploadDirectory() {
+    std::error_code ec;
+    std::filesystem::create_directories(DOCUMENT_UPLOAD_DIR_PRIMARY, ec);
+    if (!ec) {
+        return DOCUMENT_UPLOAD_DIR_PRIMARY;
+    }
+
+    ec.clear();
+    std::filesystem::create_directories(DOCUMENT_UPLOAD_DIR_FALLBACK, ec);
+    if (!ec) {
+        return DOCUMENT_UPLOAD_DIR_FALLBACK;
+    }
+
+    return "";
+}
+
+bool copyImportedFileToStorage(const std::string& sourcePath,
+                               const std::string& targetDirectory,
+                               const std::string& documentId,
+                               std::string& outStoredFilePath,
+                               std::string& outStoredFileName,
+                               std::string& outFileType,
+                               long long& outFileSizeBytes) {
+    std::error_code ec;
+    std::filesystem::path source(sourcePath);
+
+    if (!std::filesystem::exists(source, ec) || ec) {
+        return false;
+    }
+
+    const std::string extension = toLowerCopy(source.extension().string());
+    if (!isAllowedImportExtension(extension)) {
+        return false;
+    }
+
+    const std::string outputName = documentId + extension;
+    const std::filesystem::path target = std::filesystem::path(targetDirectory) / outputName;
+
+    std::filesystem::copy_file(source, target, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+        return false;
+    }
+
+    const std::uintmax_t sizeValue = std::filesystem::file_size(target, ec);
+    if (ec) {
+        return false;
+    }
+
+    outStoredFilePath = target.string();
+    outStoredFileName = outputName;
+    outFileType = extension.empty() ? "unknown" : extension.substr(1);
+    outFileSizeBytes = static_cast<long long>(sizeValue);
+    return true;
+}
+
+std::vector<ApprovalChainRow> loadApprovalChainRows(const std::string& docId) {
+    std::vector<ApprovalChainRow> rows;
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK)) {
+        return rows;
+    }
+
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.size() < 4 || tokens[0] != docId) {
+            continue;
+        }
+
+        ApprovalChainRow row;
+        row.approverUsername = tokens[1];
+        row.role = tokens[2];
+        row.status = tokens[3];
+        row.decidedAt = tokens.size() > 5 ? tokens[5] : "";
+        rows.push_back(row);
+    }
+
+    return rows;
+}
+
+void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain) {
+    std::ostringstream amountOut;
+    amountOut << std::fixed << std::setprecision(2) << doc.amount;
+
+    std::ostringstream sizeOut;
+    sizeOut << doc.fileSizeBytes;
+
+    const std::vector<std::string> headers = {"Field", "Value"};
+    const std::vector<int> widths = {24, 66};
+    ui::printTableHeader(headers, widths);
+    ui::printTableRow({"Document ID", doc.docId}, widths);
+    ui::printTableRow({"Title", doc.title}, widths);
+    ui::printTableRow({"Category", doc.category}, widths);
+    ui::printTableRow({"Description", doc.description.empty() ? "(none)" : doc.description}, widths);
+    ui::printTableRow({"Department", doc.department}, widths);
+    ui::printTableRow({"Date Uploaded", doc.dateUploaded}, widths);
+    ui::printTableRow({"Uploader", doc.uploader}, widths);
+    ui::printTableRow({"Status", doc.status}, widths);
+    ui::printTableRow({"Hash", doc.hashValue}, widths);
+    ui::printTableRow({"File Name", doc.fileName.empty() ? "(legacy/no import)" : doc.fileName}, widths);
+    ui::printTableRow({"File Type", doc.fileType.empty() ? "(legacy/no import)" : doc.fileType}, widths);
+    ui::printTableRow({"File Path", doc.filePath.empty() ? "(legacy/no import)" : doc.filePath}, widths);
+    ui::printTableRow({"File Size (bytes)", sizeOut.str()}, widths);
+    ui::printTableRow({"Budget Category", doc.budgetCategory}, widths);
+    ui::printTableRow({"Allocated Amount", amountOut.str()}, widths);
+    ui::printTableFooter(widths);
+
+    if (!includeApprovalChain) {
+        return;
+    }
+
+    const std::vector<ApprovalChainRow> chainRows = loadApprovalChainRows(doc.docId);
+    if (chainRows.empty()) {
+        std::cout << "\n" << ui::warning("[!] No approval-chain entries found for this document.") << "\n";
+        return;
+    }
+
+    int approved = 0;
+    int pending = 0;
+    int rejected = 0;
+
+    std::cout << "\n" << ui::bold("Approval Chain") << "\n";
+    const std::vector<std::string> chainHeaders = {"Role", "Approver", "Status", "Decided At"};
+    const std::vector<int> chainWidths = {26, 18, 14, 19};
+    ui::printTableHeader(chainHeaders, chainWidths);
+
+    for (std::size_t i = 0; i < chainRows.size(); ++i) {
+        ui::printTableRow({chainRows[i].role, chainRows[i].approverUsername, chainRows[i].status, chainRows[i].decidedAt}, chainWidths);
+
+        const std::string normalized = toLowerCopy(chainRows[i].status);
+        if (normalized == "approved") {
+            approved++;
+        } else if (normalized == "pending") {
+            pending++;
+        } else if (normalized == "rejected") {
+            rejected++;
+        }
+    }
+    ui::printTableFooter(chainWidths);
+
+    std::ostringstream summary;
+    summary << "Approved: " << approved << " | Pending: " << pending << " | Rejected: " << rejected;
+    std::cout << "  " << summary.str() << "\n";
+
+    if (rejected > 0) {
+        std::cout << "  " << ui::consensusStatus("rejected") << " (publication blocked)\n";
+    } else if (pending > 0) {
+        std::cout << "  " << ui::consensusStatus("pending") << " (waiting unanimous approval)\n";
+    } else {
+        std::cout << "  " << ui::consensusStatus("published") << " (all required officials approved)\n";
+    }
 }
 
 std::string chooseDocumentsExportPath(const std::string& fileName) {
@@ -654,6 +903,9 @@ void ensureSampleDocumentsPresent() {
     }
 
     if (!docs.empty()) {
+        for (std::size_t i = 0; i < docs.size(); ++i) {
+            docs[i].hashValue = computeDocumentRecordHash(docs[i]);
+        }
         saveDocuments(docs);
         return;
     }
@@ -662,34 +914,52 @@ void ensureSampleDocumentsPresent() {
     row1.docId = "PR001";
     row1.title = "Office Supplies Purchase";
     row1.category = "Purchase Request";
+    row1.description = "Legacy seeded record";
     row1.department = "Procurement Office";
     row1.dateUploaded = "2026-04-09";
     row1.uploader = "proc_admin";
     row1.status = "published";
+    row1.fileName = "";
+    row1.fileType = "legacy";
+    row1.filePath = "";
+    row1.fileSizeBytes = 0;
     row1.budgetCategory = "Office Supplies";
     row1.amount = 5000.0;
+    row1.hashValue = computeDocumentRecordHash(row1);
 
     Document row2;
     row2.docId = "PO002";
     row2.title = "Road Repair Contract";
     row2.category = "Purchase Order";
+    row2.description = "Legacy seeded record";
     row2.department = "Engineering Department";
     row2.dateUploaded = "2026-04-09";
     row2.uploader = "proc_admin";
     row2.status = "published";
+    row2.fileName = "";
+    row2.fileType = "legacy";
+    row2.filePath = "";
+    row2.fileSizeBytes = 0;
     row2.budgetCategory = "Infrastructure Procurement";
     row2.amount = 45000.0;
+    row2.hashValue = computeDocumentRecordHash(row2);
 
     Document row3;
     row3.docId = "CA003";
     row3.title = "Clinic Equipment Acquisition";
     row3.category = "Contract";
+    row3.description = "Legacy seeded record";
     row3.department = "Health Office";
     row3.dateUploaded = "2026-04-09";
     row3.uploader = "proc_admin";
     row3.status = "pending_approval";
+    row3.fileName = "";
+    row3.fileType = "legacy";
+    row3.filePath = "";
+    row3.fileSizeBytes = 0;
     row3.budgetCategory = "Health Supplies";
     row3.amount = 25000.0;
+    row3.hashValue = computeDocumentRecordHash(row3);
 
     std::vector<Document> seedRows;
     seedRows.push_back(row1);
@@ -734,6 +1004,59 @@ void showPublishedDocuments(const std::string& actor) {
     waitForEnter();
 }
 
+void searchPublishedDocumentForCitizen(const std::string& actor) {
+    clearScreen();
+    ui::printSectionTitle("SEARCH PUBLISHED DOCUMENT");
+
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
+        logAuditAction("SEARCH_PUBLISHED_DOC_FAILED", "N/A", actor);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<Document> published;
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (toLowerCopy(docs[i].status) == "published") {
+            published.push_back(docs[i]);
+        }
+    }
+
+    if (published.empty()) {
+        std::cout << ui::warning("[!] No published documents are available.") << "\n";
+        logAuditAction("SEARCH_PUBLISHED_DOC_EMPTY", "N/A", actor);
+        waitForEnter();
+        return;
+    }
+
+    printRecentDocumentHints(published, 10);
+    clearInputBuffer();
+
+    std::string docId;
+    std::cout << "Enter published Document ID: ";
+    std::getline(std::cin, docId);
+
+    if (docId.empty()) {
+        std::cout << ui::error("[!] Document ID is required.") << "\n";
+        logAuditAction("SEARCH_PUBLISHED_DOC_INPUT_ERROR", "N/A", actor);
+        waitForEnter();
+        return;
+    }
+
+    Document found;
+    if (!findExactDocumentById(published, docId, found)) {
+        std::cout << ui::warning("[!] Published document not found.") << "\n";
+        logAuditAction("SEARCH_PUBLISHED_DOC_NOT_FOUND", docId, actor);
+        waitForEnter();
+        return;
+    }
+
+    printDocumentDetailPanel(found, true);
+    logAuditAction("SEARCH_PUBLISHED_DOC", found.docId, actor);
+    waitForEnter();
+}
+
 void uploadDocumentAsAdmin(const Admin& admin) {
     // Upload flow appends a new pending document, then creates approval rows,
     // then appends blockchain/audit events for traceability.
@@ -747,13 +1070,16 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::getline(std::cin, doc.title);
     std::cout << "Category   : ";
     std::getline(std::cin, doc.category);
-    std::cout << "Department : ";
-    std::getline(std::cin, doc.department);
+    std::cout << "Description: ";
+    std::getline(std::cin, doc.description);
+    std::cout << "Source file path (.pdf/.docx/.csv/.txt): ";
+    std::string sourceFilePath;
+    std::getline(std::cin, sourceFilePath);
     std::cout << "Budget Category (blank = same as Category): ";
     std::getline(std::cin, doc.budgetCategory);
 
-    if (doc.title.empty() || doc.category.empty() || doc.department.empty()) {
-        std::cout << ui::error("[!] Title, category, and department are required.") << "\n";
+    if (doc.title.empty() || doc.category.empty() || doc.description.empty() || sourceFilePath.empty()) {
+        std::cout << ui::error("[!] Title, category, description, and source file path are required.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
@@ -778,23 +1104,60 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     doc.dateUploaded = getCurrentTimestamp().substr(0, 10);
     doc.uploader = admin.username;
     doc.status = "pending_approval";
+    doc.department = "General";
 
-    std::ofstream file;
-    if (!openAppendFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+    const std::string uploadDirectory = resolveUploadDirectory();
+    if (uploadDirectory.empty()) {
+        std::cout << ui::error("[!] Unable to prepare document storage folder.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!copyImportedFileToStorage(sourceFilePath,
+                                   uploadDirectory,
+                                   doc.docId,
+                                   doc.filePath,
+                                   doc.fileName,
+                                   doc.fileType,
+                                   doc.fileSizeBytes)) {
+        std::cout << ui::error("[!] File import failed. Ensure the path exists and extension is one of: pdf, docx, csv, txt.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    doc.hashValue = computeFileHashSha256(doc.filePath);
+    if (doc.hashValue.empty()) {
+        std::cout << ui::error("[!] Unable to compute SHA-256 hash for the imported file.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
+        docs.clear();
+    }
+
+    docs.push_back(doc);
+    if (!saveDocuments(docs)) {
         std::cout << ui::error("[!] Unable to save document record.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
         waitForEnter();
         return;
     }
 
-    file << serializeDocument(doc) << '\n';
-    file.flush();
-
     createApprovalRequestsForDocument(doc.docId, admin.username);
-    const int chainIndex = appendBlockchainAction("UPLOAD", doc.docId, admin.username);
+    const int chainIndex = appendBlockchainAction("UPLOAD_HASH:" + doc.hashValue, doc.docId, admin.username);
 
     logAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex);
-    std::cout << ui::success("[+] Document uploaded successfully with ID ") << doc.docId << ".\n";
+    std::cout << "\n" << ui::success("[+] Document uploaded successfully.") << "\n";
+    std::cout << "  Document ID : " << doc.docId << "\n";
+    std::cout << "  File Name   : " << doc.fileName << "\n";
+    std::cout << "  File Type   : " << doc.fileType << "\n";
+    std::cout << "  File Size   : " << doc.fileSizeBytes << " bytes\n";
+    std::cout << "  SHA-256 Hash: " << doc.hashValue << "\n";
     waitForEnter();
 }
 
@@ -863,7 +1226,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 
     Document exact;
     if (findExactDocumentById(docs, query, exact)) {
-        printDocumentsTable(std::vector<Document>(1, exact), true);
+        printDocumentDetailPanel(exact, true);
         logAuditAction("SEARCH_DOC", exact.docId, admin.username);
         waitForEnter();
         return;
@@ -892,7 +1255,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 
     Document selected;
     if (findExactDocumentById(suggestions, selectedDocId, selected)) {
-        printDocumentsTable(std::vector<Document>(1, selected), true);
+        printDocumentDetailPanel(selected, true);
         logAuditAction("SEARCH_DOC", selected.docId, admin.username);
         waitForEnter();
         return;
