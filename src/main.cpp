@@ -4,6 +4,7 @@
 #include "../include/blockchain.h"
 #include "../include/documents.h"
 #include "../include/approvals.h"
+#include "../include/analytics.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -127,28 +128,257 @@ void printCitizenMenu(const User& citizen) {
 }
 
 void printAdminMenu(const Admin& admin) {
-    // Admin dashboard exposes all actions; authorization is enforced at runtime
-    // in the dispatcher, not by hiding menu options.
-    ui::printSectionTitle("ADMIN DASHBOARD");
+    ui::printSectionTitle("ADMIN COMMAND CENTER");
+    ui::printBreadcrumb({"ADMIN", "COMMAND CENTER"});
     std::cout << "  Logged in as: " << admin.fullName << " (" << admin.adminId << ")\n";
     std::cout << "  Role        : " << ui::roleLabel(admin.role) << "\n\n";
-    std::cout << "  " << ui::info("[1]") << " Upload Document\n";
-    std::cout << "  " << ui::info("[2]") << " View All Documents\n";
-    std::cout << "  " << ui::info("[3]") << " Search Document by ID\n";
-    std::cout << "  " << ui::info("[4]") << " View Pending Approvals\n";
-    std::cout << "  " << ui::info("[5]") << " Approve Document\n";
-    std::cout << "  " << ui::info("[6]") << " Reject Document\n";
-    std::cout << "  " << ui::info("[7]") << " Update Document Status (Manual Override)\n";
-    std::cout << "  " << ui::info("[8]") << " Manage Budgets\n";
-    std::cout << "  " << ui::info("[9]") << " View Audit Trail\n";
-    std::cout << "  " << ui::info("[10]") << " Validate Blockchain\n";
-    std::cout << "  " << ui::info("[11]") << " Verify Document Integrity\n";
-    std::cout << "  " << ui::info("[12]") << " Advanced Document Filters\n";
-    std::cout << "  " << ui::info("[13]") << " Approval Analytics Dashboard\n";
-    std::cout << "  " << ui::info("[14]") << " Account Lifecycle Management\n";
+    std::cout << "  " << ui::info("[1]") << " Overview Dashboard\n";
+    std::cout << "  " << ui::info("[2]") << " Documents Workspace\n";
+    std::cout << "  " << ui::info("[3]") << " Approvals Workspace\n";
+    std::cout << "  " << ui::info("[4]") << " Budget Workspace\n";
+    std::cout << "  " << ui::info("[5]") << " Audit and Integrity\n";
+    std::cout << "  " << ui::info("[6]") << " Account Administration\n";
     std::cout << "  " << ui::info("[0]") << " Logout\n";
     std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
+}
+
+void runDocumentsWorkspace(const Admin& admin) {
+    int choice = -1;
+
+    do {
+        clearScreen();
+        ui::printSectionTitle("DOCUMENTS WORKSPACE");
+        ui::printBreadcrumb({"ADMIN", "WORKSPACES", "DOCUMENTS"});
+        std::cout << "  " << ui::info("[1]") << " Upload Document\n";
+        std::cout << "  " << ui::info("[2]") << " View All Documents\n";
+        std::cout << "  " << ui::info("[3]") << " Search Document by ID\n";
+        std::cout << "  " << ui::info("[4]") << " Advanced Document Filters\n";
+        std::cout << "  " << ui::info("[5]") << " Update Document Status (Manual Override)\n";
+        std::cout << "  " << ui::info("[0]") << " Back\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        if (!readBoundedMenuChoice(choice, 0, 5)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        switch (choice) {
+            case 1:
+                if (!canUploadDocuments(admin)) {
+                    denyAdminAction(admin, "UPLOAD");
+                    break;
+                }
+                uploadDocumentAsAdmin(admin);
+                break;
+            case 2:
+                viewAllDocumentsForAdmin(admin);
+                break;
+            case 3:
+                searchDocumentByIdForAdmin(admin);
+                break;
+            case 4:
+                filterDocumentsForAdmin(admin);
+                break;
+            case 5:
+                if (!canManualOverrideStatus(admin)) {
+                    denyAdminAction(admin, "STATUS_OVERRIDE");
+                    break;
+                }
+                updateDocumentStatusForAdmin(admin);
+                break;
+            case 0:
+                break;
+            default:
+                break;
+        }
+    } while (choice != 0);
+}
+
+void runApprovalsWorkspace(const Admin& admin) {
+    int choice = -1;
+
+    do {
+        clearScreen();
+        ui::printSectionTitle("APPROVALS WORKSPACE");
+        ui::printBreadcrumb({"ADMIN", "WORKSPACES", "APPROVALS"});
+        std::cout << "  " << ui::info("[1]") << " View Pending Approvals\n";
+        std::cout << "  " << ui::info("[2]") << " Approve Document\n";
+        std::cout << "  " << ui::info("[3]") << " Reject Document\n";
+        std::cout << "  " << ui::info("[4]") << " Approval Analytics Dashboard (Detailed)\n";
+        std::cout << "  " << ui::info("[0]") << " Back\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        if (!readBoundedMenuChoice(choice, 0, 4)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        switch (choice) {
+            case 1:
+                if (!canViewPendingApprovals(admin)) {
+                    denyAdminAction(admin, "VIEW_PENDING_APPROVALS");
+                    break;
+                }
+                viewPendingApprovalsForAdmin(admin);
+                break;
+            case 2:
+                if (!canApproveOrReject(admin)) {
+                    denyAdminAction(admin, "APPROVE");
+                    break;
+                }
+                approveDocumentAsAdmin(admin);
+                break;
+            case 3:
+                if (!canApproveOrReject(admin)) {
+                    denyAdminAction(admin, "REJECT");
+                    break;
+                }
+                rejectDocumentAsAdmin(admin);
+                break;
+            case 4:
+                if (!canViewApprovalAnalytics(admin)) {
+                    denyAdminAction(admin, "VIEW_APPROVAL_ANALYTICS");
+                    break;
+                }
+                viewApprovalAnalyticsDashboard(admin);
+                break;
+            case 0:
+                break;
+            default:
+                break;
+        }
+    } while (choice != 0);
+}
+
+void runBudgetWorkspace(const Admin& admin) {
+    int choice = -1;
+
+    do {
+        clearScreen();
+        ui::printSectionTitle("BUDGET WORKSPACE");
+        ui::printBreadcrumb({"ADMIN", "WORKSPACES", "BUDGETS"});
+        std::cout << "  " << ui::info("[1]") << " View Budget Allocations\n";
+        std::cout << "  " << ui::info("[2]") << " View Budget Variance\n";
+        std::cout << "  " << ui::info("[3]") << " Manage Budgets\n";
+        std::cout << "  " << ui::info("[0]") << " Back\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        if (!readBoundedMenuChoice(choice, 0, 3)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        switch (choice) {
+            case 1:
+                viewBudgetAllocations(admin.username);
+                break;
+            case 2:
+                viewBudgetVarianceReport(admin.username);
+                break;
+            case 3:
+                if (!canManageBudgets(admin)) {
+                    denyAdminAction(admin, "BUDGET_MANAGE");
+                    break;
+                }
+                manageBudgetsForAdmin(admin);
+                break;
+            case 0:
+                break;
+            default:
+                break;
+        }
+    } while (choice != 0);
+}
+
+void runAuditIntegrityWorkspace(const Admin& admin) {
+    int choice = -1;
+
+    do {
+        clearScreen();
+        ui::printSectionTitle("AUDIT AND INTEGRITY WORKSPACE");
+        ui::printBreadcrumb({"ADMIN", "WORKSPACES", "AUDIT + INTEGRITY"});
+        std::cout << "  " << ui::info("[1]") << " View Audit Trail\n";
+        std::cout << "  " << ui::info("[2]") << " Validate Blockchain\n";
+        std::cout << "  " << ui::info("[3]") << " Verify Document Integrity\n";
+        std::cout << "  " << ui::info("[4]") << " Integrity Snapshot (Visual)\n";
+        std::cout << "  " << ui::info("[0]") << " Back\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        if (!readBoundedMenuChoice(choice, 0, 4)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        switch (choice) {
+            case 1:
+                viewAuditTrail(admin.username);
+                break;
+            case 2:
+                if (!canValidateBlockchain(admin)) {
+                    denyAdminAction(admin, "BLOCKCHAIN_VALIDATE");
+                    break;
+                }
+                validateBlockchainNodes(admin.username);
+                break;
+            case 3:
+                if (!canVerifyDocumentIntegrity(admin)) {
+                    denyAdminAction(admin, "VERIFY_DOCUMENT");
+                    break;
+                }
+                verifyDocumentIntegrity(admin.username);
+                break;
+            case 4:
+                viewIntegritySnapshot(admin);
+                break;
+            case 0:
+                break;
+            default:
+                break;
+        }
+    } while (choice != 0);
+}
+
+void runAccountAdministrationWorkspace(const Admin& admin) {
+    int choice = -1;
+
+    do {
+        clearScreen();
+        ui::printSectionTitle("ACCOUNT ADMINISTRATION");
+        ui::printBreadcrumb({"ADMIN", "WORKSPACES", "ACCOUNT ADMIN"});
+        std::cout << "  " << ui::info("[1]") << " Account Lifecycle Management\n";
+        std::cout << "  " << ui::info("[0]") << " Back\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        if (!readBoundedMenuChoice(choice, 0, 1)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        switch (choice) {
+            case 1:
+                if (!canManageAccounts(admin)) {
+                    denyAdminAction(admin, "ACCOUNT_LIFECYCLE");
+                    break;
+                }
+                manageAccountLifecycleForAdmin(admin);
+                break;
+            case 0:
+                break;
+            default:
+                break;
+        }
+    } while (choice != 0);
 }
 
 void runCitizenDashboard(const User& citizen) {
@@ -187,102 +417,36 @@ void runCitizenDashboard(const User& citizen) {
 }
 
 void runAdminDashboard(const Admin& admin) {
-    // Event loop for admin actions. Each case applies an access gate before
-    // executing side effects so authorization remains centralized and explicit.
+    // Multi-level admin command center with grouped workspaces and analytics hub.
     int adminChoice = -1;
 
     do {
-        // Access gates are enforced at action time to protect every entry path consistently.
         clearScreen();
         printAdminMenu(admin);
 
-        if (!readBoundedMenuChoice(adminChoice, 0, 14)) {
+        if (!readBoundedMenuChoice(adminChoice, 0, 6)) {
             std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
 
         switch (adminChoice) {
             case 1:
-                if (!canUploadDocuments(admin)) {
-                    denyAdminAction(admin, "UPLOAD");
-                    break;
-                }
-                uploadDocumentAsAdmin(admin);
+                viewAdminOverviewDashboard(admin);
                 break;
             case 2:
-                viewAllDocumentsForAdmin(admin);
+                runDocumentsWorkspace(admin);
                 break;
             case 3:
-                searchDocumentByIdForAdmin(admin);
+                runApprovalsWorkspace(admin);
                 break;
             case 4:
-                if (!canViewPendingApprovals(admin)) {
-                    denyAdminAction(admin, "VIEW_PENDING_APPROVALS");
-                    break;
-                }
-                viewPendingApprovalsForAdmin(admin);
+                runBudgetWorkspace(admin);
                 break;
             case 5:
-                if (!canApproveOrReject(admin)) {
-                    denyAdminAction(admin, "APPROVE");
-                    break;
-                }
-                approveDocumentAsAdmin(admin);
+                runAuditIntegrityWorkspace(admin);
                 break;
             case 6:
-                if (!canApproveOrReject(admin)) {
-                    denyAdminAction(admin, "REJECT");
-                    break;
-                }
-                rejectDocumentAsAdmin(admin);
-                break;
-            case 7:
-                if (!canManualOverrideStatus(admin)) {
-                    denyAdminAction(admin, "STATUS_OVERRIDE");
-                    break;
-                }
-                updateDocumentStatusForAdmin(admin);
-                break;
-            case 8:
-                if (!canManageBudgets(admin)) {
-                    denyAdminAction(admin, "BUDGET_MANAGE");
-                    break;
-                }
-                manageBudgetsForAdmin(admin);
-                break;
-            case 9:
-                viewAuditTrail(admin.username);
-                break;
-            case 10:
-                if (!canValidateBlockchain(admin)) {
-                    denyAdminAction(admin, "BLOCKCHAIN_VALIDATE");
-                    break;
-                }
-                validateBlockchainNodes(admin.username);
-                break;
-            case 11:
-                if (!canVerifyDocumentIntegrity(admin)) {
-                    denyAdminAction(admin, "VERIFY_DOCUMENT");
-                    break;
-                }
-                verifyDocumentIntegrity(admin.username);
-                break;
-            case 12:
-                filterDocumentsForAdmin(admin);
-                break;
-            case 13:
-                if (!canViewApprovalAnalytics(admin)) {
-                    denyAdminAction(admin, "VIEW_APPROVAL_ANALYTICS");
-                    break;
-                }
-                viewApprovalAnalyticsDashboard(admin);
-                break;
-            case 14:
-                if (!canManageAccounts(admin)) {
-                    denyAdminAction(admin, "ACCOUNT_LIFECYCLE");
-                    break;
-                }
-                manageAccountLifecycleForAdmin(admin);
+                runAccountAdministrationWorkspace(admin);
                 break;
             case 0:
                 logAuditAction("ADMIN_LOGOUT", admin.adminId, admin.username);

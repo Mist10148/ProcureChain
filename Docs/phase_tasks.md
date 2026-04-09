@@ -168,6 +168,16 @@ Implemented metrics:
 - average decision time (hours)
 - throughput by role
 
+Latest expansion under analytics hub:
+
+- approval funnel and throughput trends
+- budget utilization comparisons
+- audit activity timeline and action frequency
+- integrity status cards and risk indicators
+- executive snapshot
+- compact/full layout mode toggle
+- optional paged detail table flow
+
 Data dependency:
 
 - approvals rows now include createdAt and decidedAt timestamps
@@ -199,6 +209,15 @@ Implemented modes:
 
 - export all rows
 - export filtered rows (date/action/actor/target)
+- export input validation for date range bounds and filename safety
+
+#### 6.7 Admin Navigation Restructure
+
+Implemented architecture:
+
+- top-level admin command center
+- grouped workspaces (documents, approvals, budget, audit/integrity, account admin)
+- overview dashboard as entry to analytics hub and integrity snapshot
 
 #### 6.6 Audit-to-Blockchain Linkage
 
@@ -247,6 +266,7 @@ Completed now:
 - compile success after feature integration
 - smoke launch/exit run
 - role-based command paths validated through audit/data updates
+- scripted admin walkthrough validated overview dashboard, analytics hub, layout toggles, and executive snapshot flow
 
 Still to execute before final defense:
 

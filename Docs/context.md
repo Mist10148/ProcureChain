@@ -6,7 +6,7 @@ Current implemented baseline:
 
 - citizen and admin auth flows exist (signup/login)
 - citizen dashboard is active
-- admin dashboard supports document upload/view/search, pending approvals, approve/reject decisions, manual status update, audit trail viewing, and blockchain validation
+- admin command center supports grouped workspaces for documents, approvals, budgets, audit/integrity, and account administration
 - admin budget management is implemented (view/add/update)
 - published documents, verification, budget view, and audit logging are integrated
 - codebase is modularized by feature using src and include modules
@@ -24,6 +24,15 @@ Newly implemented governance/reporting slice:
 - budget variance report (allocated vs actual, variance, utilization)
 - account lifecycle admin controls (deactivate/reactivate/reset password)
 - audit-to-blockchain linking via chain index
+
+Latest analytics and UX updates:
+
+- overview dashboard as top-level admin entry
+- analytics hub with approval, budget, audit, integrity, and executive screens
+- compact/full layout mode toggle for analytics rendering
+- optional paged detail table flow inside analytics reports
+- adaptive chart and bar sizing based on selected layout mode
+- hardened audit export input checks for date range and filename safety
 
 ## Development Constraints
 
@@ -177,7 +186,7 @@ Audit captures key actions and supports:
 
 ### 9. Simulated Blockchain
 
-Three ledger files represent node copies.
+Five ledger files represent node copies.
 
 Each block stores:
 
@@ -332,21 +341,22 @@ Can:
 - View Audit Trail
 - Logout
 
-### Admin Menu
+### Admin Command Center
 
-- Upload Document
-- View All Documents
-- Search Document by ID
-- View Pending Approvals
-- Approve/Reject Document
-- Update Document Status
-- Manage Budgets
-- View Audit Trail
-- Validate Blockchain
-- Verify Document Integrity
-- Advanced Document Filters
-- Approval Analytics Dashboard
-- Account Lifecycle Management
+- Overview Dashboard
+    - open analytics hub
+    - quick integrity snapshot
+    - toggle compact/full layout mode
+- Documents Workspace
+    - upload, view, search, advanced filters, manual status update
+- Approvals Workspace
+    - pending queue, approve, reject, detailed approval analytics
+- Budget Workspace
+    - budget summary, variance report, budget management
+- Audit and Integrity Workspace
+    - audit trail, blockchain validation, integrity verification, integrity snapshot
+- Account Administration Workspace
+    - account lifecycle management
 - Logout
 
 ## Important Boundaries

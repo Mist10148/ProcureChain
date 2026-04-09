@@ -11,6 +11,8 @@ It is designed for classroom-level procedural programming and focuses on:
 - Audit trail logging and CSV export
 - Simulated blockchain consistency checks
 - Governance reporting and account lifecycle administration
+- Admin Command Center with grouped workspaces and analytics hub
+- Compact and full analytics layout modes with optional paged detail tables
 
 The system stores records in text files under the data folder and keeps the implementation modular through separate source files per feature.
 
@@ -27,7 +29,8 @@ High-level process:
 5. Citizens can view published documents.
 6. Every important action is written to an audit log.
 7. Key events are appended to five blockchain node files and can be validated for consistency.
-8. Governance dashboards provide approval analytics and budget variance reporting.
+8. Governance dashboards provide approval, budget, audit, integrity, and executive analytics.
+9. Admin navigation is grouped into overview plus role-gated workspaces.
 
 ## Main Features
 
@@ -45,12 +48,21 @@ High-level process:
   - rejection rate
   - average decision time
   - throughput by role
+- Admin overview dashboard and analytics hub
+  - approval funnel and throughput trends
+  - budget utilization comparisons
+  - audit activity timeline and action frequency
+  - integrity status cards and risk indicators
+  - executive snapshot
+  - compact/full layout toggle
+  - optional paged detail tables
 - Budget summary and admin budget management
 - Budget variance report (allocated vs actual)
 - Timestamped audit trail with chain index references
 - CSV export for audit logs
   - export all
   - export filtered
+  - validated date range and safe filename checks
 - Simulated blockchain append and validation across 5 node files
 - Audit-to-blockchain linking for blockchain-backed actions
 
@@ -69,13 +81,13 @@ Optional check:
 
 Open PowerShell in the project folder and run:
 
-    g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp -o procurechain.exe
+    g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp src/analytics.cpp -o procurechain.exe
     .\procurechain.exe
 
 ### Option B: Run from src folder
 
     cd src
-    g++ -std=c++17 main.cpp auth.cpp documents.cpp verification.cpp budget.cpp audit.cpp approvals.cpp blockchain.cpp ui.cpp -o ..\procurechain.exe
+    g++ -std=c++17 main.cpp auth.cpp documents.cpp verification.cpp budget.cpp audit.cpp approvals.cpp blockchain.cpp ui.cpp analytics.cpp -o ..\procurechain.exe
     cd ..
     .\procurechain.exe
 
@@ -145,22 +157,23 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 - View Audit Trail (with export)
 - Logout
 
-### Admin Dashboard
+### Admin Command Center
 
-- Upload Document
-- View All Documents
-- Search Document by ID
-- View Pending Approvals
-- Approve Document
-- Reject Document
-- Update Document Status (Manual Override)
-- Manage Budgets
-- View Audit Trail
-- Validate Blockchain
-- Verify Document Integrity
-- Advanced Document Filters
-- Approval Analytics Dashboard
-- Account Lifecycle Management
+- Overview Dashboard
+  - open Analytics Hub
+  - quick Integrity Snapshot
+  - refresh overview
+  - toggle layout mode
+- Documents Workspace
+  - upload, view, search, filter, manual status update
+- Approvals Workspace
+  - view pending, approve, reject, detailed approval analytics
+- Budget Workspace
+  - view allocations, variance report, manage budgets
+- Audit and Integrity Workspace
+  - view audit trail, validate blockchain, verify document integrity, integrity snapshot
+- Account Administration Workspace
+  - account lifecycle management
 - Logout
 
 Role gates are enforced per action.
@@ -189,6 +202,21 @@ Dashboard computes and displays:
 - rejection rate
 - average decision hours (rows with complete timing)
 - throughput chart by approver role
+
+### Analytics Hub Views
+
+The analytics hub provides dashboard screens for:
+
+- approval funnel and throughput trends
+- budget utilization comparisons
+- audit activity timeline and action frequency
+- integrity status cards and risk indicators
+- executive snapshot
+
+It also supports:
+
+- compact/full layout mode toggle
+- optional paged detail tables from analytics views
 
 ### Budget Variance Report
 

@@ -150,11 +150,63 @@ bool isWithinDateRange(const std::string& timestamp, const std::string& fromDate
     return true;
 }
 
+bool isDateTextValid(const std::string& value) {
+    if (value.empty()) {
+        return true;
+    }
+
+    if (value.size() != 10) {
+        return false;
+    }
+
+    return std::isdigit(static_cast<unsigned char>(value[0])) &&
+           std::isdigit(static_cast<unsigned char>(value[1])) &&
+           std::isdigit(static_cast<unsigned char>(value[2])) &&
+           std::isdigit(static_cast<unsigned char>(value[3])) &&
+           value[4] == '-' &&
+           std::isdigit(static_cast<unsigned char>(value[5])) &&
+           std::isdigit(static_cast<unsigned char>(value[6])) &&
+           value[7] == '-' &&
+           std::isdigit(static_cast<unsigned char>(value[8])) &&
+           std::isdigit(static_cast<unsigned char>(value[9]));
+}
+
+std::string trimCopy(const std::string& value) {
+    const std::string whitespace = " \t\r\n";
+    const size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+bool isSafeExportFileName(const std::string& fileName) {
+    if (fileName.empty() || fileName.size() > 80) {
+        return false;
+    }
+
+    if (fileName.find("..") != std::string::npos) {
+        return false;
+    }
+
+    for (size_t i = 0; i < fileName.size(); ++i) {
+        const char c = fileName[i];
+        const bool safe = std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '-' || c == '.';
+        if (!safe) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 std::string sanitizeFileToken(std::string token) {
     // Restricts generated export filenames to a safe character subset.
     for (size_t i = 0; i < token.size(); ++i) {
         const char c = token[i];
-        const bool safe = std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '-';
+        const bool safe = std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '-' || c == '.';
         if (!safe) {
             token[i] = '_';
         }
@@ -303,6 +355,21 @@ void exportAuditTrailCsv(const std::string& actor) {
         std::cout << "Target contains (optional): ";
         std::getline(std::cin, targetFilter);
 
+        fromDate = trimCopy(fromDate);
+        toDate = trimCopy(toDate);
+
+        if (!isDateTextValid(fromDate) || !isDateTextValid(toDate)) {
+            std::cout << ui::error("[!] Invalid date format. Use YYYY-MM-DD.") << "\n";
+            waitForEnter();
+            return;
+        }
+
+        if (!fromDate.empty() && !toDate.empty() && fromDate > toDate) {
+            std::cout << ui::error("[!] Invalid date range: fromDate is after toDate.") << "\n";
+            waitForEnter();
+            return;
+        }
+
         std::vector<AuditEntry> result;
         // Filter pipeline keeps each criterion optional so one prompt can handle ad hoc audits.
         for (size_t i = 0; i < filtered.size(); ++i) {
@@ -340,11 +407,17 @@ void exportAuditTrailCsv(const std::string& actor) {
     std::cout << "Output filename (.csv, blank for default): ";
     std::getline(std::cin, fileName);
 
+    fileName = trimCopy(fileName);
+
     if (fileName.empty()) {
         fileName = defaultExportFileName();
+    } else if (!isSafeExportFileName(fileName)) {
+        std::cout << ui::error("[!] Invalid filename. Use letters, numbers, '_', '-', and '.'.") << "\n";
+        waitForEnter();
+        return;
     }
 
-    if (fileName.find(".csv") == std::string::npos) {
+    if (fileName.size() < 4 || fileName.substr(fileName.size() - 4) != ".csv") {
         fileName += ".csv";
     }
 

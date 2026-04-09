@@ -16,9 +16,12 @@ Implemented in code right now:
 - citizen signup/login and admin signup/login
 - menu routing with citizen and admin dashboards
 - admin document management (upload/view/search/update status)
+- admin command center with grouped workspaces and overview dashboard
 - advanced document filters (status, date/date range, category, department, uploader)
 - approvals module (request creation + pending view + approve/reject with document status transitions)
-- approval analytics dashboard with role throughput and timing/rejection metrics
+- analytics hub with approval, budget, audit, integrity, and executive views
+- compact/full layout mode toggle for analytics rendering
+- optional paged detail table flow in analytics reports
 - budget module (view/add/update) and variance reporting
 - blockchain module (node file setup + chain validation and node consistency checking)
 - blockchain append hooks on key actions (upload/approve/reject/manual status/budget updates)
@@ -26,6 +29,7 @@ Implemented in code right now:
 - document integrity verification (simple classroom hash)
 - audit logging for core auth/citizen/admin actions
 - audit CSV export (all rows and filtered rows)
+- audit export input hardening (date range and filename validation)
 - audit-to-blockchain linking through chain index values
 - user account lifecycle administration for Super Admin
   - list accounts
@@ -232,6 +236,9 @@ Acceptance Criteria:
 - Rejection rate is computed from decided rows
 - Average decision time is computed from rows with complete timestamps
 - Throughput by role displayed as chart
+- Dashboard is reachable via overview-driven analytics hub navigation
+- Layout mode toggle updates chart and table density
+- Optional paged detail table can be opened for deeper row inspection
 
 ### Feature 7: Procurement Budget Summary and Variance
 
@@ -263,6 +270,8 @@ Acceptance Criteria:
 - Audit view renders table and action-frequency chart
 - CSV export supports all rows
 - CSV export supports filtered rows (date/action/actor/target)
+- Export validates date range bounds before file write
+- Export validates filename safety before file write
 - Export action is itself logged
 
 ### Feature 9: Simulated Blockchain Ledger
@@ -311,22 +320,23 @@ Acceptance Criteria:
 - View Audit Trail
 - Logout
 
-### Admin Menu
+### Admin Command Center
 
-- Upload Document
-- View All Documents
-- Search Document by ID
-- View Pending Approvals
-- Approve Document
-- Reject Document
-- Update Document Status (Manual Override)
-- Manage Budgets
-- View Audit Trail
-- Validate Blockchain
-- Verify Document Integrity
-- Advanced Document Filters
-- Approval Analytics Dashboard
-- Account Lifecycle Management
+- Overview Dashboard
+  - open analytics hub
+  - quick integrity snapshot
+  - refresh overview
+  - toggle compact/full layout
+- Documents Workspace
+  - upload, view, search, filter, manual status update
+- Approvals Workspace
+  - pending approvals, approve/reject, detailed approval analytics
+- Budget Workspace
+  - view allocations, variance report, manage budgets
+- Audit and Integrity Workspace
+  - audit trail, blockchain validation, document integrity verification, integrity snapshot
+- Account Administration Workspace
+  - lifecycle controls
 - Logout
 
 ## 9. Data Storage Design

@@ -22,7 +22,8 @@ Validation Date: 2026-04-09
 
 Evidence notes:
 
-- compile and smoke-run previously executed successfully during implementation pass.
+- compile and smoke-run executed successfully after dashboard analytics updates.
+- scripted admin walkthrough reached overview, analytics hub, layout toggles, and executive snapshot.
 
 ---
 
@@ -100,6 +101,14 @@ Evidence notes:
 - [x] Average decision time computed from valid timestamp pairs.
 - [x] Throughput by role displayed.
 
+### 4.3 Analytics Hub and Dashboard UX
+
+- [x] Admin command center routes to overview dashboard.
+- [x] Analytics hub provides approval/budget/audit/integrity/executive screens.
+- [x] Layout mode toggle (compact/full) works from overview and analytics hub.
+- [x] Analytics charts and bars adapt to selected layout mode.
+- [x] Optional paged detail table flow is available from analytics reports.
+
 ### 4.3 Timestamp Completeness
 
 - [x] createdAt captured for generated approval rows.
@@ -137,6 +146,7 @@ Evidence notes:
 - [x] Export all audit rows to CSV.
 - [x] Export filtered audit rows to CSV.
 - [x] Filters for export include date/action/actor/target matching.
+- [x] Export input rejects invalid date ranges and unsafe filenames.
 
 ### 6.3 Traceability Enhancements
 
@@ -200,6 +210,10 @@ Evidence notes:
 - [ ] Demonstrate one blockchain validation pass during defense.
 - [ ] Run one integrity verification example in demo flow.
 - [ ] Polish wording/labels in menus where needed for presentation clarity.
+
+Progress note:
+
+- one scripted admin walkthrough has already been completed successfully; remaining walkthroughs are per-role coverage.
 
 ---
 
