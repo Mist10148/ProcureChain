@@ -1,0 +1,6 @@
+PROCURECHAIN DUMMY DOCUMENT
+Document ID: NOA003
+Title: Public Health Cold-Chain Equipment
+Category: Notice of Award
+Deliverables: Vaccine refrigerator and freezer units
+Deployment: Rural health stations

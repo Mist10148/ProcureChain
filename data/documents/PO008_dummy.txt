@@ -1,0 +1,5 @@
+PROCURECHAIN DUMMY DOCUMENT
+Document ID: PO008
+Title: Citizen Service Center Renovation
+Category: Purchase Order
+Package: Queueing system and fit-out works

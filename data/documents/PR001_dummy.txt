@@ -1,0 +1,7 @@
+PROCURECHAIN DUMMY DOCUMENT
+Document ID: PR001
+Title: Office Supplies Q1 Framework
+Category: Purchase Request
+Items: Bond paper, toner cartridges, file folders
+Approved budget linkage: Office Operations
+Prepared by: Procurement Office

@@ -1,0 +1,5 @@
+PROCURECHAIN DUMMY DOCUMENT
+Document ID: RFQ004
+Title: Community Wi-Fi Expansion Lots 1-3
+Category: RFQ
+Status note: Rejected due to evaluation findings

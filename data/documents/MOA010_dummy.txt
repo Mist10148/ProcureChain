@@ -1,0 +1,5 @@
+PROCURECHAIN DUMMY DOCUMENT
+Document ID: MOA010
+Title: Solar Streetlight Pilot
+Category: Memorandum of Agreement
+Status note: Rejected after review
