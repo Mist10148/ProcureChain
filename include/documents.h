@@ -24,6 +24,7 @@ void uploadDocumentAsAdmin(const Admin& admin);
 void viewAllDocumentsForAdmin(const Admin& admin);
 void searchDocumentByIdForAdmin(const Admin& admin);
 void filterDocumentsForAdmin(const Admin& admin);
+void exportDocumentsToTxt(const Admin& admin);
 bool updateDocumentStatusBySystem(const std::string& docId, const std::string& newStatus);
 void updateDocumentStatusForAdmin(const Admin& admin);
 

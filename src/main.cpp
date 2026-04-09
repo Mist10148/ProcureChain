@@ -174,6 +174,8 @@ void runDocumentsWorkspace(const Admin& admin) {
     actionLabels.push_back("Search Document by ID");
     actionCodes.push_back(4);
     actionLabels.push_back("Advanced Document Filters");
+    actionCodes.push_back(6);
+    actionLabels.push_back("Export Documents to TXT");
     if (canManualOverrideStatus(admin)) {
         actionCodes.push_back(5);
         actionLabels.push_back("Update Document Status (Manual Override)");
@@ -211,6 +213,9 @@ void runDocumentsWorkspace(const Admin& admin) {
                 break;
             case 4:
                 filterDocumentsForAdmin(admin);
+                break;
+            case 6:
+                exportDocumentsToTxt(admin);
                 break;
             case 5:
                 updateDocumentStatusForAdmin(admin);
