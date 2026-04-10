@@ -19,7 +19,8 @@ Current implemented baseline:
 
 Newly implemented governance/reporting slice:
 
-- advanced document filters (status, exact date, date range, category, department, uploader)
+- advanced document filters (status, exact date, date range, category, tags, department, uploader)
+- advanced document filters (status, exact date, date range, category, tags, department, uploader)
 - audit CSV export (all rows and filtered rows)
 - approval analytics dashboard (rejection rate, average decision time, throughput by role)
 - budget variance report (allocated vs actual, variance, utilization)
@@ -28,6 +29,10 @@ Newly implemented governance/reporting slice:
 - super-admin escalation queue for overdue approvals
 - approval rule management with per-category SLA day thresholds
 - document amendment lineage (versionNumber + previousDocId)
+- document tagging with normalized comma-separated tags
+- ranked full-text search by ID/title/description/category/tags for admin and citizen published flows
+- request-for-comment thread with persistent approval comment history
+- analytics hub additions: department workload report and compliance audit report
 
 Latest integrity and consensus implementation updates:
 
@@ -173,6 +178,7 @@ Document fields currently stored:
 - amount
 - version number
 - previous document ID (for amendment lineage)
+- tags
 
 Input behavior note:
 
@@ -186,6 +192,7 @@ Admin filters support:
 - exact date
 - date range (from/to)
 - category (contains)
+- tags (contains)
 - department (contains)
 - uploader (contains)
 
@@ -218,6 +225,11 @@ Analytics dashboard computes:
 - overdue pending count based on per-category SLA days
 - pending SLA compliance rate
 - role bottleneck table (pending, overdue, average age, worst overdue)
+
+Additional analytics hub reports:
+
+- department workload report (approval load, decision latency, publication coverage by department)
+- compliance audit report (rule-based checks, PASS/REVIEW status, and violation table)
 
 ### 7. Budget Viewing and Variance
 
@@ -310,7 +322,7 @@ Stores procurement document metadata and budget mapping.
 
 Format:
 
-    docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId
+    docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags
 
 ### approval_rules.txt
 
@@ -327,6 +339,14 @@ Stores approval state per document and approver.
 Format:
 
     docID|approverUsername|role|status|createdAt|decidedAt|note
+
+### approval_comments.txt
+
+Stores request-for-comment thread entries for approvals.
+
+Format:
+
+    docID|commenterUsername|commenterRole|createdAt|commentText
 
 ### budgets.txt
 
@@ -428,7 +448,7 @@ Can:
 - sign up
 - log in
 - view published documents
-- search published document by ID
+- search published document by ID or keyword
 - verify published document hash and blockchain presence
 - view budgets
 - view audit trail and export CSV
@@ -448,7 +468,7 @@ Can:
 - View Published Documents
 - View Budget Summary
 - View Audit Trail
-- Search Published Document by ID
+- Search Published Document by ID or Keyword
 - Verify Published Document Hash
 - Notification Inbox
 - Help
@@ -461,9 +481,9 @@ Can:
     - quick integrity snapshot
     - toggle compact/full layout mode
 - Documents Workspace
-    - upload with file import, view, search, advanced filters, manual status update
+    - upload with file import and optional tags, view, search, advanced filters, manual status update
 - Approvals Workspace
-    - pending queue, approve, reject, detailed approval analytics
+    - pending queue, request-for-comment thread, approve, reject, detailed approval analytics
     - escalation queue for overdue approvals (Super Admin)
     - approval rule management (Super Admin)
     - delegation management (Budget Officer, Municipal Administrator)

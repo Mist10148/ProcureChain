@@ -38,6 +38,11 @@ struct ApprovalChainRow {
     std::string note;
 };
 
+struct SearchMatch {
+    Document doc;
+    int score;
+};
+
 struct DocumentFilter {
     // Optional fields used to build an in-memory filter pipeline.
     std::string status;
@@ -45,6 +50,7 @@ struct DocumentFilter {
     std::string fromDate;
     std::string toDate;
     std::string category;
+    std::string tags;
     std::string department;
     std::string uploader;
 };
@@ -117,6 +123,95 @@ bool containsCaseInsensitive(const std::string& text, const std::string& token) 
     return toLowerCopy(text).find(toLowerCopy(token)) != std::string::npos;
 }
 
+std::string trimTagToken(const std::string& value) {
+    const std::string whitespace = " \t\r\n";
+    const size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+std::string sanitizeTagToken(const std::string& value) {
+    const std::string input = toLowerCopy(trimTagToken(value));
+    std::string cleaned;
+    bool previousSpace = false;
+
+    for (size_t i = 0; i < input.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(input[i]);
+        const bool allowed = std::isalnum(ch) != 0 || input[i] == ' ' || input[i] == '-' || input[i] == '_' || input[i] == '/';
+        if (!allowed) {
+            continue;
+        }
+
+        if (input[i] == ' ') {
+            if (previousSpace) {
+                continue;
+            }
+            previousSpace = true;
+        } else {
+            previousSpace = false;
+        }
+
+        cleaned.push_back(input[i]);
+    }
+
+    return trimTagToken(cleaned);
+}
+
+std::vector<std::string> splitNormalizedTags(const std::string& csvTags) {
+    std::vector<std::string> tags;
+    std::stringstream parser(csvTags);
+    std::string token;
+
+    while (std::getline(parser, token, ',')) {
+        const std::string normalized = sanitizeTagToken(token);
+        if (normalized.empty()) {
+            continue;
+        }
+
+        bool alreadyExists = false;
+        for (size_t i = 0; i < tags.size(); ++i) {
+            if (tags[i] == normalized) {
+                alreadyExists = true;
+                break;
+            }
+        }
+
+        if (!alreadyExists) {
+            tags.push_back(normalized);
+        }
+    }
+
+    return tags;
+}
+
+std::string normalizeTagsForStorage(const std::string& csvTags) {
+    const std::vector<std::string> tags = splitNormalizedTags(csvTags);
+    if (tags.empty()) {
+        return "";
+    }
+
+    std::ostringstream out;
+    for (size_t i = 0; i < tags.size(); ++i) {
+        if (i > 0) {
+            out << ", ";
+        }
+        out << tags[i];
+    }
+
+    return out.str();
+}
+
+void appendTagCounts(const std::string& csvTags, std::map<std::string, int>& counts) {
+    const std::vector<std::string> tags = splitNormalizedTags(csvTags);
+    for (size_t i = 0; i < tags.size(); ++i) {
+        counts[tags[i]] += 1;
+    }
+}
+
 bool isDateTextValid(const std::string& value) {
     // Validates strict YYYY-MM-DD text shape used by date filters.
     if (value.empty()) {
@@ -143,6 +238,7 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
     doc.docId = tokens.size() > 0 ? tokens[0] : "";
     doc.title = tokens.size() > 1 ? tokens[1] : "";
     doc.category = tokens.size() > 2 ? tokens[2] : "";
+    doc.tags = "";
     doc.description = "";
     doc.department = "";
     doc.dateUploaded = "";
@@ -186,6 +282,7 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
         }
 
         doc.previousDocId = tokens.size() > 16 ? tokens[16] : "";
+        doc.tags = tokens.size() > 17 ? normalizeTagsForStorage(tokens[17]) : "";
     } else {
         // Legacy schema fallback.
         doc.department = tokens.size() > 3 ? tokens[3] : "";
@@ -227,13 +324,13 @@ std::string computeDocumentRecordHash(const Document& doc) {
     }
 
     const std::string metadataSource = doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.description + "|" + doc.department + "|" +
-                                       doc.dateUploaded + "|" + doc.uploader;
+                                       doc.dateUploaded + "|" + doc.uploader + "|" + doc.tags;
     return computeSimpleHash(metadataSource);
 }
 
 std::string serializeDocument(const Document& doc) {
     const std::string metadataSource = doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.description + "|" + doc.department + "|" +
-                                       doc.dateUploaded + "|" + doc.uploader;
+                                       doc.dateUploaded + "|" + doc.uploader + "|" + doc.tags;
     const std::string hashValue = !doc.hashValue.empty() ? doc.hashValue : computeSimpleHash(metadataSource);
 
     std::ostringstream out;
@@ -253,7 +350,8 @@ std::string serializeDocument(const Document& doc) {
         << doc.budgetCategory << '|'
         << std::fixed << std::setprecision(2) << doc.amount << '|'
         << doc.versionNumber << '|'
-        << doc.previousDocId;
+        << doc.previousDocId << '|'
+        << doc.tags;
 
     return out.str();
 }
@@ -299,7 +397,7 @@ bool saveDocuments(const std::vector<Document>& docs) {
         return false;
     }
 
-    writer << "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId\n";
+    writer << "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags\n";
     for (size_t i = 0; i < docs.size(); ++i) {
         writer << serializeDocument(docs[i]) << '\n';
     }
@@ -385,6 +483,7 @@ void printRecentDocumentHints(const std::vector<Document>& docs, std::size_t lim
 void printFilterSuggestions(const std::vector<Document>& docs) {
     std::map<std::string, int> statuses;
     std::map<std::string, int> categories;
+    std::map<std::string, int> tags;
     std::map<std::string, int> departments;
     std::map<std::string, int> uploaders;
     std::map<std::string, int> dates;
@@ -392,6 +491,7 @@ void printFilterSuggestions(const std::vector<Document>& docs) {
     for (std::size_t i = 0; i < docs.size(); ++i) {
         statuses[docs[i].status] += 1;
         categories[docs[i].category] += 1;
+        appendTagCounts(docs[i].tags, tags);
         departments[docs[i].department] += 1;
         uploaders[docs[i].uploader] += 1;
         dates[docs[i].dateUploaded] += 1;
@@ -400,6 +500,7 @@ void printFilterSuggestions(const std::vector<Document>& docs) {
     std::cout << "\n" << ui::bold("Filter Suggestions") << "\n";
     std::cout << "  Status values    : " << joinTopKeys(statuses, 8) << "\n";
     std::cout << "  Category values  : " << joinTopKeys(categories, 8) << "\n";
+    std::cout << "  Common tags      : " << joinTopKeys(tags, 8) << "\n";
     std::cout << "  Department values: " << joinTopKeys(departments, 8) << "\n";
     std::cout << "  Uploader values  : " << joinTopKeys(uploaders, 8) << "\n";
 
@@ -425,33 +526,172 @@ bool findExactDocumentById(const std::vector<Document>& docs, const std::string&
     return false;
 }
 
-std::vector<Document> findDocumentSuggestions(const std::vector<Document>& docs, const std::string& token) {
-    std::vector<Document> suggestions;
-    const std::string normalizedToken = toLowerCopy(token);
+std::vector<std::string> tokenizeSearchQuery(const std::string& query) {
+    std::vector<std::string> terms;
+    const std::string normalized = toLowerCopy(query);
+    std::string current;
 
-    for (std::size_t i = 0; i < docs.size(); ++i) {
-        const std::string id = toLowerCopy(docs[i].docId);
-        const std::string title = toLowerCopy(docs[i].title);
-        const std::string category = toLowerCopy(docs[i].category);
+    for (size_t i = 0; i < normalized.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(normalized[i]);
+        if (std::isalnum(ch) != 0 || normalized[i] == '_' || normalized[i] == '-') {
+            current.push_back(normalized[i]);
+            continue;
+        }
 
-        const bool idStartsWith = id.find(normalizedToken) == 0;
-        const bool idContains = id.find(normalizedToken) != std::string::npos;
-        const bool titleContains = title.find(normalizedToken) != std::string::npos;
-        const bool categoryContains = category.find(normalizedToken) != std::string::npos;
-
-        if (idStartsWith || idContains || titleContains || categoryContains) {
-            suggestions.push_back(docs[i]);
+        if (!current.empty()) {
+            terms.push_back(current);
+            current.clear();
         }
     }
 
-    std::sort(suggestions.begin(), suggestions.end(), [](const Document& a, const Document& b) {
-        if (a.dateUploaded != b.dateUploaded) {
-            return a.dateUploaded > b.dateUploaded;
+    if (!current.empty()) {
+        terms.push_back(current);
+    }
+
+    std::vector<std::string> uniqueTerms;
+    for (size_t i = 0; i < terms.size(); ++i) {
+        bool exists = false;
+        for (size_t j = 0; j < uniqueTerms.size(); ++j) {
+            if (uniqueTerms[j] == terms[i]) {
+                exists = true;
+                break;
+            }
         }
-        return a.docId < b.docId;
+        if (!exists) {
+            uniqueTerms.push_back(terms[i]);
+        }
+    }
+
+    return uniqueTerms;
+}
+
+int scoreTermMatches(const std::string& text, const std::vector<std::string>& terms, int perTermWeight) {
+    int score = 0;
+    for (size_t i = 0; i < terms.size(); ++i) {
+        if (!terms[i].empty() && text.find(terms[i]) != std::string::npos) {
+            score += perTermWeight;
+        }
+    }
+    return score;
+}
+
+int computeDocumentSearchScore(const Document& doc, const std::string& query) {
+    const std::string normalizedQuery = toLowerCopy(trimTagToken(query));
+    if (normalizedQuery.empty()) {
+        return 0;
+    }
+
+    const std::vector<std::string> terms = tokenizeSearchQuery(normalizedQuery);
+
+    const std::string id = toLowerCopy(doc.docId);
+    const std::string title = toLowerCopy(doc.title);
+    const std::string category = toLowerCopy(doc.category);
+    const std::string description = toLowerCopy(doc.description);
+    const std::string tags = toLowerCopy(doc.tags);
+
+    int score = 0;
+
+    if (id == normalizedQuery) {
+        score += 1200;
+    } else if (id.find(normalizedQuery) == 0) {
+        score += 700;
+    } else if (id.find(normalizedQuery) != std::string::npos) {
+        score += 350;
+    }
+
+    if (title.find(normalizedQuery) != std::string::npos) {
+        score += 240;
+    }
+    if (description.find(normalizedQuery) != std::string::npos) {
+        score += 170;
+    }
+    if (tags.find(normalizedQuery) != std::string::npos) {
+        score += 160;
+    }
+    if (category.find(normalizedQuery) != std::string::npos) {
+        score += 130;
+    }
+
+    score += scoreTermMatches(id, terms, 120);
+    score += scoreTermMatches(title, terms, 90);
+    score += scoreTermMatches(tags, terms, 80);
+    score += scoreTermMatches(description, terms, 60);
+    score += scoreTermMatches(category, terms, 50);
+
+    return score;
+}
+
+std::vector<SearchMatch> findRankedDocumentSuggestions(const std::vector<Document>& docs,
+                                                       const std::string& token,
+                                                       std::size_t maxResults) {
+    std::vector<SearchMatch> suggestions;
+    const std::string normalizedToken = toLowerCopy(trimTagToken(token));
+
+    if (normalizedToken.empty()) {
+        return suggestions;
+    }
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        const int score = computeDocumentSearchScore(docs[i], normalizedToken);
+        if (score > 0) {
+            SearchMatch match;
+            match.doc = docs[i];
+            match.score = score;
+            suggestions.push_back(match);
+        }
+    }
+
+    std::sort(suggestions.begin(), suggestions.end(), [](const SearchMatch& a, const SearchMatch& b) {
+        if (a.score != b.score) {
+            return a.score > b.score;
+        }
+
+        if (a.doc.dateUploaded != b.doc.dateUploaded) {
+            return a.doc.dateUploaded > b.doc.dateUploaded;
+        }
+
+        return a.doc.docId < b.doc.docId;
     });
 
+    if (suggestions.size() > maxResults) {
+        suggestions.resize(maxResults);
+    }
+
     return suggestions;
+}
+
+void printRankedSearchMatches(const std::vector<SearchMatch>& matches) {
+    const std::vector<std::string> headers = {"Score", "ID", "Ver", "Title", "Category", "Status", "Tags"};
+    const std::vector<int> widths = {7, 6, 5, 18, 12, 14, 16};
+    ui::printTableHeader(headers, widths);
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        ui::printTableRow({std::to_string(matches[i].score),
+                           matches[i].doc.docId,
+                           std::to_string(matches[i].doc.versionNumber),
+                           matches[i].doc.title,
+                           matches[i].doc.category,
+                           matches[i].doc.status,
+                           matches[i].doc.tags.empty() ? "(none)" : matches[i].doc.tags},
+                          widths);
+    }
+
+    ui::printTableFooter(widths);
+}
+
+bool findDocumentInMatchesById(const std::vector<SearchMatch>& matches,
+                               const std::string& targetDocId,
+                               Document& foundDoc) {
+    const std::string normalizedTarget = toLowerCopy(targetDocId);
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        if (toLowerCopy(matches[i].doc.docId) == normalizedTarget) {
+            foundDoc = matches[i].doc;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 std::string findRootDocumentId(const std::vector<Document>& docs, const Document& startDoc) {
@@ -736,6 +976,7 @@ void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, co
     ui::printTableRow({"Document ID", doc.docId}, widths);
     ui::printTableRow({"Title", doc.title}, widths);
     ui::printTableRow({"Category", doc.category}, widths);
+    ui::printTableRow({"Tags", doc.tags.empty() ? "(none)" : doc.tags}, widths);
     ui::printTableRow({"Description", doc.description.empty() ? "(none)" : doc.description}, widths);
     ui::printTableRow({"Department", doc.department}, widths);
     ui::printTableRow({"Date Uploaded", doc.dateUploaded}, widths);
@@ -852,6 +1093,7 @@ bool writeDocumentsTxtReport(const std::string& outputPath,
         writeAppliedFilterLine(out, "From Date", filter->fromDate, wroteAny);
         writeAppliedFilterLine(out, "To Date", filter->toDate, wroteAny);
         writeAppliedFilterLine(out, "Category Contains", filter->category, wroteAny);
+        writeAppliedFilterLine(out, "Tags Contains", filter->tags, wroteAny);
         writeAppliedFilterLine(out, "Department Contains", filter->department, wroteAny);
         writeAppliedFilterLine(out, "Uploader Contains", filter->uploader, wroteAny);
 
@@ -870,6 +1112,7 @@ bool writeDocumentsTxtReport(const std::string& outputPath,
         out << "  Document ID     : " << rows[i].docId << "\n";
         out << "  Title           : " << rows[i].title << "\n";
         out << "  Category        : " << rows[i].category << "\n";
+        out << "  Tags            : " << (rows[i].tags.empty() ? "(none)" : rows[i].tags) << "\n";
         out << "  Department      : " << rows[i].department << "\n";
         out << "  Date Uploaded   : " << rows[i].dateUploaded << "\n";
         out << "  Uploader        : " << rows[i].uploader << "\n";
@@ -890,11 +1133,11 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
     std::vector<std::string> headers;
 
     if (includeHashValue) {
-        headers = {"ID", "Ver", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash"};
-        widths = {6, 5, 18, 14, 14, 10, 10, 14, 10};
+        headers = {"ID", "Ver", "Title", "Category", "Department", "Date", "Uploader", "Status", "Tags", "Hash"};
+        widths = {6, 5, 16, 12, 12, 10, 10, 12, 16, 10};
     } else {
-        headers = {"ID", "Ver", "Title", "Category", "Department", "Date", "Uploader", "Status"};
-        widths = {6, 5, 20, 14, 14, 10, 10, 14};
+        headers = {"ID", "Ver", "Title", "Category", "Department", "Date", "Uploader", "Status", "Tags"};
+        widths = {6, 5, 18, 12, 12, 10, 10, 12, 16};
     }
 
     ui::printTableHeader(headers, widths);
@@ -908,6 +1151,7 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
                                docs[i].dateUploaded,
                                docs[i].uploader,
                                docs[i].status,
+                               docs[i].tags,
                                docs[i].hashValue},
                               widths);
         } else {
@@ -918,7 +1162,8 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
                                docs[i].department,
                                docs[i].dateUploaded,
                                docs[i].uploader,
-                               docs[i].status},
+                               docs[i].status,
+                               docs[i].tags},
                               widths);
         }
     }
@@ -972,6 +1217,13 @@ bool matchesFilter(const Document& doc, const DocumentFilter& filter) {
 
     if (!containsCaseInsensitive(doc.category, filter.category)) {
         return false;
+    }
+
+    const std::vector<std::string> requestedTags = splitNormalizedTags(filter.tags);
+    for (size_t i = 0; i < requestedTags.size(); ++i) {
+        if (!containsCaseInsensitive(doc.tags, requestedTags[i])) {
+            return false;
+        }
     }
 
     if (!containsCaseInsensitive(doc.department, filter.department)) {
@@ -1073,7 +1325,7 @@ void showPublishedDocuments(const std::string& actor) {
 
 void searchPublishedDocumentForCitizen(const std::string& actor) {
     clearScreen();
-    ui::printSectionTitle("SEARCH PUBLISHED DOCUMENT");
+    ui::printSectionTitle("SEARCH PUBLISHED DOCUMENT (ID OR KEYWORD)");
 
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
@@ -1100,27 +1352,62 @@ void searchPublishedDocumentForCitizen(const std::string& actor) {
     printRecentDocumentHints(published, 10);
     clearInputBuffer();
 
-    std::string docId;
-    std::cout << "Enter published Document ID: ";
-    std::getline(std::cin, docId);
+    std::cout << "\n" << ui::bold("Search Suggestions") << "\n";
+    std::cout << "  - Exact ID (example: PR001)\n";
+    std::cout << "  - Title keyword (example: contract)\n";
+    std::cout << "  - Description keyword (example: renovation)\n";
+    std::cout << "  - Tag keyword (example: urgent)\n";
 
-    if (docId.empty()) {
-        std::cout << ui::error("[!] Document ID is required.") << "\n";
+    std::string query;
+    std::cout << "Enter search value: ";
+    std::getline(std::cin, query);
+
+    if (query.empty()) {
+        std::cout << ui::error("[!] Search value is required.") << "\n";
         logAuditAction("SEARCH_PUBLISHED_DOC_INPUT_ERROR", "N/A", actor);
         waitForEnter();
         return;
     }
 
     Document found;
-    if (!findExactDocumentById(published, docId, found)) {
-        std::cout << ui::warning("[!] Published document not found.") << "\n";
-        logAuditAction("SEARCH_PUBLISHED_DOC_NOT_FOUND", docId, actor);
+    if (findExactDocumentById(published, query, found)) {
+        printDocumentDetailPanel(found, true, &published);
+        logAuditAction("SEARCH_PUBLISHED_DOC", found.docId, actor);
         waitForEnter();
         return;
     }
 
-    printDocumentDetailPanel(found, true, &published);
-    logAuditAction("SEARCH_PUBLISHED_DOC", found.docId, actor);
+    const std::vector<SearchMatch> matches = findRankedDocumentSuggestions(published, query, 12);
+    if (matches.empty()) {
+        std::cout << ui::warning("[!] No matching published documents found.") << "\n";
+        logAuditAction("SEARCH_PUBLISHED_DOC_NOT_FOUND", query, actor);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << "\n" << ui::info("[i] Showing ranked matches:") << "\n";
+    printRankedSearchMatches(matches);
+
+    std::string selectedDocId;
+    std::cout << "\nEnter exact Document ID from results (blank to cancel): ";
+    std::getline(std::cin, selectedDocId);
+
+    if (selectedDocId.empty()) {
+        logAuditAction("SEARCH_PUBLISHED_DOC_SUGGESTIONS_VIEW", query, actor);
+        waitForEnter();
+        return;
+    }
+
+    Document selected;
+    if (findDocumentInMatchesById(matches, selectedDocId, selected)) {
+        printDocumentDetailPanel(selected, true, &published);
+        logAuditAction("SEARCH_PUBLISHED_DOC", selected.docId, actor);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << "\n" << ui::warning("[!] Selected Document ID is not in the ranked results.") << "\n";
+    logAuditAction("SEARCH_PUBLISHED_DOC_NOT_FOUND", selectedDocId, actor);
     waitForEnter();
 }
 
@@ -1132,6 +1419,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 
     std::cout << ui::bold("Mini Guide") << "\n";
     std::cout << "  1) Enter title/category/description.\n";
+    std::cout << "  1.1) Optional: add comma-separated tags (e.g., urgent, legal, q2).\n";
     std::cout << "  2) Optionally provide a source file path (.pdf/.docx/.csv/.txt).\n";
     std::cout << "  3) The system copies the file into data/documents using the new document ID.\n";
     std::cout << "  4) It computes SHA-256 from the file (or metadata if no file) and stores it.\n";
@@ -1151,6 +1439,9 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     }
     std::cout << "Description: ";
     std::getline(std::cin, doc.description);
+    std::cout << "Tags (comma-separated, optional): ";
+    std::string tagInput;
+    std::getline(std::cin, tagInput);
     std::cout << "Source file path (optional): ";
     std::string sourceFilePath;
     std::getline(std::cin, sourceFilePath);
@@ -1164,6 +1455,8 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         waitForEnter();
         return;
     }
+
+    doc.tags = normalizeTagsForStorage(tagInput);
 
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
@@ -1282,6 +1575,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         std::cout << " (amends " << doc.previousDocId << ")";
     }
     std::cout << "\n";
+    std::cout << "  Tags        : " << (doc.tags.empty() ? "(none)" : doc.tags) << "\n";
     if (doc.fileType == "manual") {
         std::cout << "  File Import : skipped (metadata-only upload)\n";
     } else {
@@ -1321,7 +1615,7 @@ void viewAllDocumentsForAdmin(const Admin& admin) {
 void searchDocumentByIdForAdmin(const Admin& admin) {
     // Linear search over loaded rows: O(n) worst-case.
     clearScreen();
-    ui::printSectionTitle("SEARCH DOCUMENT BY ID");
+    ui::printSectionTitle("SEARCH DOCUMENT (ID OR KEYWORD)");
 
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
@@ -1343,6 +1637,8 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
     std::cout << "  - Exact ID (example: D006)\n";
     std::cout << "  - ID prefix (example: D00)\n";
     std::cout << "  - Title keyword (example: Contract)\n";
+    std::cout << "  - Description keyword (example: rehabilitation)\n";
+    std::cout << "  - Tag keyword (example: urgent)\n";
 
     clearInputBuffer();
     std::string query;
@@ -1364,16 +1660,16 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
         return;
     }
 
-    std::vector<Document> suggestions = findDocumentSuggestions(docs, query);
-    if (suggestions.empty()) {
+    std::vector<SearchMatch> matches = findRankedDocumentSuggestions(docs, query, 15);
+    if (matches.empty()) {
         std::cout << "\n" << ui::warning("[!] No matching documents found.") << "\n";
         logAuditAction("SEARCH_DOC_NOT_FOUND", query, admin.username);
         waitForEnter();
         return;
     }
 
-    std::cout << "\n" << ui::info("[i] No exact ID match. Showing related results:") << "\n";
-    printDocumentsTable(suggestions, false);
+    std::cout << "\n" << ui::info("[i] No exact ID match. Showing ranked results:") << "\n";
+    printRankedSearchMatches(matches);
 
     std::string selectedDocId;
     std::cout << "\nEnter exact Document ID from results (blank to cancel): ";
@@ -1386,7 +1682,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
     }
 
     Document selected;
-    if (findExactDocumentById(suggestions, selectedDocId, selected)) {
+    if (findDocumentInMatchesById(matches, selectedDocId, selected)) {
         printDocumentDetailPanel(selected, true, &docs);
         logAuditAction("SEARCH_DOC", selected.docId, admin.username);
         waitForEnter();
@@ -1432,10 +1728,14 @@ void filterDocumentsForAdmin(const Admin& admin) {
     std::getline(std::cin, filter.toDate);
     std::cout << "Category contains (optional): ";
     std::getline(std::cin, filter.category);
+    std::cout << "Tags contains (optional): ";
+    std::getline(std::cin, filter.tags);
     std::cout << "Department contains (optional): ";
     std::getline(std::cin, filter.department);
     std::cout << "Uploader contains (optional): ";
     std::getline(std::cin, filter.uploader);
+
+    filter.tags = trimCopy(filter.tags);
 
     if (!isDateTextValid(filter.exactDate) || !isDateTextValid(filter.fromDate) || !isDateTextValid(filter.toDate)) {
         std::cout << ui::error("[!] Invalid date format. Use YYYY-MM-DD.") << "\n";
@@ -1537,6 +1837,8 @@ void exportDocumentsToTxt(const Admin& admin) {
         std::getline(std::cin, filter.toDate);
         std::cout << "Category contains (optional): ";
         std::getline(std::cin, filter.category);
+        std::cout << "Tags contains (optional): ";
+        std::getline(std::cin, filter.tags);
         std::cout << "Department contains (optional): ";
         std::getline(std::cin, filter.department);
         std::cout << "Uploader contains (optional): ";
@@ -1547,6 +1849,7 @@ void exportDocumentsToTxt(const Admin& admin) {
         filter.fromDate = trimCopy(filter.fromDate);
         filter.toDate = trimCopy(filter.toDate);
         filter.category = trimCopy(filter.category);
+        filter.tags = normalizeTagsForStorage(filter.tags);
         filter.department = trimCopy(filter.department);
         filter.uploader = trimCopy(filter.uploader);
 

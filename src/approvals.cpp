@@ -25,6 +25,8 @@ const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
 const std::string APPROVAL_RULES_FILE_PATH_PRIMARY = "data/approval_rules.txt";
 const std::string APPROVAL_RULES_FILE_PATH_FALLBACK = "../data/approval_rules.txt";
+const std::string APPROVAL_COMMENTS_FILE_PATH_PRIMARY = "data/approval_comments.txt";
+const std::string APPROVAL_COMMENTS_FILE_PATH_FALLBACK = "../data/approval_comments.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
@@ -46,6 +48,14 @@ struct PendingApprovalSlaRow {
     int pendingDays;
     int slaDays;
     int overdueDays;
+};
+
+struct ApprovalComment {
+    std::string docId;
+    std::string commenterUsername;
+    std::string commenterRole;
+    std::string createdAt;
+    std::string commentText;
 };
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
@@ -102,6 +112,18 @@ std::string toLowerCopy(std::string value) {
         value[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(value[i])));
     }
     return value;
+}
+
+std::string sanitizeCommentText(const std::string& value) {
+    std::string cleaned = trimCopy(value);
+
+    for (std::size_t i = 0; i < cleaned.size(); ++i) {
+        if (cleaned[i] == '|' || cleaned[i] == '\n' || cleaned[i] == '\r') {
+            cleaned[i] = ' ';
+        }
+    }
+
+    return trimCopy(cleaned);
 }
 
 std::vector<std::string> defaultRequiredRoles() {
@@ -333,6 +355,109 @@ bool saveApprovals(const std::vector<Approval>& rows) {
     return true;
 }
 
+ApprovalComment parseApprovalCommentTokens(const std::vector<std::string>& tokens) {
+    ApprovalComment row;
+    row.docId = tokens.size() > 0 ? tokens[0] : "";
+    row.commenterUsername = tokens.size() > 1 ? tokens[1] : "";
+    row.commenterRole = tokens.size() > 2 ? tokens[2] : "";
+    row.createdAt = tokens.size() > 3 ? tokens[3] : getCurrentTimestamp();
+    row.commentText = tokens.size() > 4 ? tokens[4] : "";
+    return row;
+}
+
+std::string serializeApprovalComment(const ApprovalComment& row) {
+    return row.docId + "|" + row.commenterUsername + "|" + row.commenterRole + "|" + row.createdAt + "|" + row.commentText;
+}
+
+bool loadApprovalComments(std::vector<ApprovalComment>& rows) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, APPROVAL_COMMENTS_FILE_PATH_PRIMARY, APPROVAL_COMMENTS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    rows.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        ApprovalComment parsed = parseApprovalCommentTokens(splitPipe(line));
+        if (parsed.docId.empty() || parsed.commenterUsername.empty()) {
+            continue;
+        }
+
+        rows.push_back(parsed);
+    }
+
+    return true;
+}
+
+bool saveApprovalComments(const std::vector<ApprovalComment>& rows) {
+    std::ofstream writer(resolveDataPath(APPROVAL_COMMENTS_FILE_PATH_PRIMARY, APPROVAL_COMMENTS_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "docID|commenterUsername|commenterRole|createdAt|commentText\n";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        writer << serializeApprovalComment(rows[i]) << '\n';
+    }
+    writer.flush();
+    return true;
+}
+
+bool appendApprovalComment(const std::string& docId,
+                           const std::string& commenterUsername,
+                           const std::string& commenterRole,
+                           const std::string& commentText) {
+    std::vector<ApprovalComment> rows;
+    loadApprovalComments(rows);
+
+    ApprovalComment newRow;
+    newRow.docId = docId;
+    newRow.commenterUsername = commenterUsername;
+    newRow.commenterRole = commenterRole;
+    newRow.createdAt = getCurrentTimestamp();
+    newRow.commentText = sanitizeCommentText(commentText);
+
+    if (newRow.commentText.empty()) {
+        return false;
+    }
+
+    rows.push_back(newRow);
+    return saveApprovalComments(rows);
+}
+
+void ensureApprovalCommentsDataFileExists() {
+    std::ifstream checkFile;
+    if (!openInputFileWithFallback(checkFile, APPROVAL_COMMENTS_FILE_PATH_PRIMARY, APPROVAL_COMMENTS_FILE_PATH_FALLBACK)) {
+        std::ofstream createFile(APPROVAL_COMMENTS_FILE_PATH_PRIMARY);
+        if (!createFile.is_open()) {
+            createFile.clear();
+            createFile.open(APPROVAL_COMMENTS_FILE_PATH_FALLBACK);
+        }
+
+        if (createFile.is_open()) {
+            createFile << "docID|commenterUsername|commenterRole|createdAt|commentText\n";
+        }
+    }
+
+    std::vector<ApprovalComment> existing;
+    if (loadApprovalComments(existing)) {
+        saveApprovalComments(existing);
+    }
+}
+
 void seedApprovalsIfEmpty() {
     // Mock approval scenarios are maintained in data/approvals.txt.
     // When empty, keep the file normalized and let runtime operations populate it.
@@ -394,6 +519,124 @@ bool printPendingDecisionHints(const std::vector<Approval>& rows, const std::str
 
     ui::printTableFooter(widths);
     std::cout << "  " << ui::muted("Tip: enter one of the listed Document IDs.") << "\n";
+    return true;
+}
+
+bool resolvePendingDecisionOwner(const std::vector<Approval>& rows,
+                                const std::string& approverUsername,
+                                const std::string& targetDocId,
+                                std::string& ownerUsername) {
+    ownerUsername.clear();
+
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].docId == targetDocId && rows[i].approverUsername == approverUsername && rows[i].status == "pending") {
+            ownerUsername = approverUsername;
+            return true;
+        }
+    }
+
+    const std::vector<Delegation> delegations = getActiveDelegationsFor(approverUsername);
+    for (std::size_t d = 0; d < delegations.size(); ++d) {
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].docId == targetDocId &&
+                rows[i].approverUsername == delegations[d].delegatorUsername &&
+                rows[i].status == "pending") {
+                ownerUsername = delegations[d].delegatorUsername;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+void printApprovalCommentThread(const std::string& docId) {
+    std::vector<ApprovalComment> comments;
+    if (!loadApprovalComments(comments)) {
+        std::cout << "\n" << ui::warning("[!] Comment thread file unavailable.") << "\n";
+        return;
+    }
+
+    std::vector<ApprovalComment> thread;
+    for (std::size_t i = 0; i < comments.size(); ++i) {
+        if (comments[i].docId == docId) {
+            thread.push_back(comments[i]);
+        }
+    }
+
+    std::sort(thread.begin(), thread.end(), [](const ApprovalComment& left, const ApprovalComment& right) {
+        if (left.createdAt != right.createdAt) {
+            return left.createdAt < right.createdAt;
+        }
+
+        if (left.commenterUsername != right.commenterUsername) {
+            return left.commenterUsername < right.commenterUsername;
+        }
+
+        return left.commentText < right.commentText;
+    });
+
+    std::cout << "\n" << ui::bold("Approval Comment Thread") << "\n";
+    if (thread.empty()) {
+        std::cout << "  " << ui::muted("(no comments yet)") << "\n";
+        return;
+    }
+
+    const std::vector<std::string> headers = {"Time", "User", "Role", "Comment"};
+    const std::vector<int> widths = {19, 16, 24, 40};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < thread.size(); ++i) {
+        ui::printTableRow({thread[i].createdAt,
+                           thread[i].commenterUsername,
+                           thread[i].commenterRole,
+                           thread[i].commentText},
+                          widths);
+    }
+
+    ui::printTableFooter(widths);
+}
+
+bool promptAndStoreCommentForDecision(const Admin& admin,
+                                      const std::string& targetDocId,
+                                      const std::string& actingOnBehalfOf) {
+    printApprovalCommentThread(targetDocId);
+    std::cout << "\nAdd a discussion comment before decision? (y/N): ";
+
+    std::string answer;
+    std::getline(std::cin, answer);
+    answer = toLowerCopy(trimCopy(answer));
+
+    if (answer != "y" && answer != "yes") {
+        return false;
+    }
+
+    std::string commentText;
+    std::cout << "Comment (max 220 chars): ";
+    std::getline(std::cin, commentText);
+    commentText = sanitizeCommentText(commentText);
+
+    if (commentText.empty()) {
+        std::cout << ui::warning("[!] Empty comment skipped.") << "\n";
+        return false;
+    }
+
+    if (commentText.size() > 220) {
+        commentText = commentText.substr(0, 220);
+    }
+
+    std::string roleLabel = admin.role;
+    if (!actingOnBehalfOf.empty()) {
+        roleLabel += " (delegate for " + actingOnBehalfOf + ")";
+    }
+
+    if (!appendApprovalComment(targetDocId, admin.username, roleLabel, commentText)) {
+        std::cout << ui::warning("[!] Comment could not be saved.") << "\n";
+        return false;
+    }
+
+    logAuditAction("APPROVAL_COMMENT_ADD", targetDocId, admin.username);
+    std::cout << ui::success("[+] Comment added to thread.") << "\n";
     return true;
 }
 
@@ -553,48 +796,36 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
+    std::string ownerUsername;
+    if (!resolvePendingDecisionOwner(rows, admin.username, targetDocId, ownerUsername)) {
+        std::cout << ui::error("[!] No pending approval record found for this document and account.") << "\n";
+        logAuditAction("APPROVAL_NOT_FOUND", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::string actingOnBehalfOf;
+    if (ownerUsername != admin.username) {
+        actingOnBehalfOf = ownerUsername;
+    }
+
+    promptAndStoreCommentForDecision(admin, targetDocId, actingOnBehalfOf);
+
     bool updated = false;
     const std::string now = getCurrentTimestamp();
 
     for (size_t i = 0; i < rows.size(); ++i) {
-        if (rows[i].docId == targetDocId && rows[i].approverUsername == admin.username && rows[i].status == "pending") {
+        if (rows[i].docId == targetDocId && rows[i].approverUsername == ownerUsername && rows[i].status == "pending") {
             rows[i].status = approve ? "approved" : "rejected";
             rows[i].decidedAt = now;
 
             std::string note;
             std::cout << "  Add a note (optional, press Enter to skip): ";
             std::getline(std::cin, note);
-            rows[i].note = note;
+            rows[i].note = sanitizeCommentText(note);
 
             updated = true;
             break;
-        }
-    }
-
-    // If no direct match, check for delegated authority
-    std::string actingOnBehalfOf;
-    if (!updated) {
-        std::vector<Delegation> delegations = getActiveDelegationsFor(admin.username);
-        for (size_t d = 0; d < delegations.size() && !updated; ++d) {
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (rows[i].docId == targetDocId &&
-                    rows[i].approverUsername == delegations[d].delegatorUsername &&
-                    rows[i].status == "pending") {
-                    rows[i].status = approve ? "approved" : "rejected";
-                    rows[i].decidedAt = now;
-
-                    std::string note;
-                    std::cout << "  Add a note (optional, press Enter to skip): ";
-                    std::getline(std::cin, note);
-                    std::string delegateNote = "(delegated by " + admin.username + ")";
-                    if (!note.empty()) { delegateNote = note + " " + delegateNote; }
-                    rows[i].note = delegateNote;
-
-                    actingOnBehalfOf = delegations[d].delegatorUsername;
-                    updated = true;
-                    break;
-                }
-            }
         }
     }
 
@@ -690,6 +921,7 @@ void ensureApprovalsDataFileExists() {
 
     seedApprovalsIfEmpty();
     ensureApprovalRulesDataFileExists();
+    ensureApprovalCommentsDataFileExists();
 }
 
 void ensureApprovalRulesDataFileExists() {
@@ -829,24 +1061,54 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
         }
     }
 
-    if (pendingRows.empty()) {
+    std::vector<Delegation> delegations = getActiveDelegationsFor(admin.username);
+    std::vector<Approval> delegatedRows;
+    for (std::size_t d = 0; d < delegations.size(); ++d) {
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].approverUsername == delegations[d].delegatorUsername && rows[i].status == "pending") {
+                delegatedRows.push_back(rows[i]);
+            }
+        }
+    }
+
+    if (pendingRows.empty() && delegatedRows.empty()) {
         std::cout << ui::warning("[!] No pending approvals for your account.") << "\n";
         logAuditAction("VIEW_PENDING_APPROVALS_EMPTY", "N/A", admin.username);
     } else {
-        const std::vector<std::string> headers = {"Document ID", "Role", "Status", "Created"};
-        const std::vector<int> widths = {12, 24, 12, 19};
+        const std::vector<std::string> headers = {"Document ID", "Role", "Status", "Created", "Via"};
+        const std::vector<int> widths = {12, 24, 12, 19, 12};
         ui::printTableHeader(headers, widths);
         for (size_t i = 0; i < pendingRows.size(); ++i) {
-            ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].status, pendingRows[i].createdAt}, widths);
+            ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].status, pendingRows[i].createdAt, "Direct"}, widths);
+        }
+        for (size_t i = 0; i < delegatedRows.size(); ++i) {
+            ui::printTableRow({delegatedRows[i].docId, delegatedRows[i].role, delegatedRows[i].status, delegatedRows[i].createdAt, "Delegated"}, widths);
         }
         ui::printTableFooter(widths);
 
         std::cout << "\n" << ui::bold("Pending Load Chart") << "\n";
+        const std::size_t totalPending = pendingRows.size() + delegatedRows.size();
         ui::printBar("Pending approvals",
-                     static_cast<double>(pendingRows.size()),
-                     static_cast<double>(pendingRows.size()),
+                     static_cast<double>(totalPending),
+                     static_cast<double>(totalPending),
                      24,
                      ui::consensusColorCode("pending"));
+
+        clearInputBuffer();
+        std::string threadDocId;
+        std::cout << "\nEnter Document ID to view comment thread (blank to skip): ";
+        std::getline(std::cin, threadDocId);
+        threadDocId = trimCopy(threadDocId);
+
+        if (!threadDocId.empty()) {
+            std::string ownerUsername;
+            if (!resolvePendingDecisionOwner(rows, admin.username, threadDocId, ownerUsername)) {
+                std::cout << ui::warning("[!] You do not have pending access to that document.") << "\n";
+            } else {
+                printApprovalCommentThread(threadDocId);
+            }
+        }
+
         logAuditAction("VIEW_PENDING_APPROVALS", "MULTI", admin.username);
     }
 
@@ -1123,6 +1385,86 @@ void approveDocumentAsAdmin(const Admin& admin) {
 
 void rejectDocumentAsAdmin(const Admin& admin) {
     applyApprovalDecision(admin, false);
+}
+
+void addApprovalCommentAsAdmin(const Admin& admin) {
+    clearScreen();
+    ui::printSectionTitle("REQUEST-FOR-COMMENT THREAD");
+
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
+        std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
+        logAuditAction("APPROVAL_COMMENT_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!printPendingDecisionHints(rows, admin.username)) {
+        logAuditAction("APPROVAL_COMMENT_NO_PENDING", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    clearInputBuffer();
+    std::string targetDocId;
+    std::cout << "Enter Document ID for comment thread: ";
+    std::getline(std::cin, targetDocId);
+    targetDocId = trimCopy(targetDocId);
+
+    if (targetDocId.empty()) {
+        std::cout << ui::error("[!] Document ID is required.") << "\n";
+        logAuditAction("APPROVAL_COMMENT_INPUT_ERROR", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::string ownerUsername;
+    if (!resolvePendingDecisionOwner(rows, admin.username, targetDocId, ownerUsername)) {
+        std::cout << ui::error("[!] No pending approval access for this document.") << "\n";
+        logAuditAction("APPROVAL_COMMENT_ACCESS_DENIED", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::string actingOnBehalfOf;
+    if (ownerUsername != admin.username) {
+        actingOnBehalfOf = ownerUsername;
+    }
+
+    printApprovalCommentThread(targetDocId);
+
+    std::string commentText;
+    std::cout << "\nComment text (required, max 220 chars): ";
+    std::getline(std::cin, commentText);
+    commentText = sanitizeCommentText(commentText);
+
+    if (commentText.empty()) {
+        std::cout << ui::error("[!] Comment text is required.") << "\n";
+        logAuditAction("APPROVAL_COMMENT_INPUT_ERROR", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (commentText.size() > 220) {
+        commentText = commentText.substr(0, 220);
+    }
+
+    std::string roleLabel = admin.role;
+    if (!actingOnBehalfOf.empty()) {
+        roleLabel += " (delegate for " + actingOnBehalfOf + ")";
+    }
+
+    if (!appendApprovalComment(targetDocId, admin.username, roleLabel, commentText)) {
+        std::cout << ui::error("[!] Unable to save comment.") << "\n";
+        logAuditAction("APPROVAL_COMMENT_FAILED", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    logAuditAction("APPROVAL_COMMENT_ADD", targetDocId, admin.username);
+    std::cout << "\n" << ui::success("[+] Comment added successfully.") << "\n";
+    printApprovalCommentThread(targetDocId);
+    waitForEnter();
 }
 
 void manageApprovalRulesForAdmin(const Admin& admin) {

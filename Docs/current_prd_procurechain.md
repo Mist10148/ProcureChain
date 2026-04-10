@@ -1,624 +1,369 @@
-# ProcureChain: Municipal Procurement Document Tracking System
+﻿# ProcureChain: Municipal Procurement Document Tracking System
 ## Product Requirements Document (PRD)
 
-## 1. Project Overview
+## 1. Overview
 
 Project Type: CC 203 Finals Project  
-Platform: C++ CLI (Command-Line Interface)  
-Project Level: Beginner-friendly, procedural C++  
-Course Scope: File handling, arrays, vectors, functions, and structs  
-Excluded Scope: OOP redesign, databases, web development, networking, external blockchain platforms
+Platform: C++ CLI  
+Architecture Style: Procedural (functions, structs, vectors, file handling)  
+Out of Scope: OOP redesign, web stack, DBMS, networking, external blockchain services
 
-### Current Build Status (2026-04-10)
+ProcureChain is a CLI system that tracks municipal procurement records with role-based controls, consensus approvals, audit traceability, and simulated blockchain integrity checks.
 
-Implemented in code right now:
+## 2. Current Implementation Status (2026-04-10)
 
-- citizen signup/login and admin signup/login
-- menu routing with citizen and admin dashboards
-- admin document management (upload/view/search/update status)
-- document import upload flow with file metadata capture (pdf/docx/csv/txt)
-- admin command center with grouped workspaces and overview dashboard
-- advanced document filters (status, date/date range, category, department, uploader)
-- guided search/filter suggestions with recent available records shown before input
-- approvals module (request creation + pending view + approve/reject with document status transitions)
-- configurable approval rules (category -> required roles + max decision days)
-- super-admin escalation queue for overdue pending approvals
-- citizen published-document search and verification flow
-- analytics hub with approval, budget, audit, integrity, and executive views
-- compact/full layout mode toggle for analytics rendering
-- optional paged detail table flow in analytics reports
-- budget consensus module (submit/view pending/approve/reject/publish) and variance reporting
-- blockchain module (node file setup + chain validation and node consistency checking)
-- blockchain explorer with per-node mismatch and per-block consensus diagnostics
-- blockchain append hooks on key actions (upload/approve/reject/manual status/budget updates)
-- published document viewing (published-only)
-- document integrity verification with SHA-256 hash recomputation and blockchain checks
-- audit logging for core auth/citizen/admin actions
-- audit CSV export (all rows and filtered rows)
-- audit export input hardening (date range and filename validation)
-- audit-to-blockchain linking through chain index values
-- audit hash-linking through previousHash/currentHash fields
-- user account lifecycle administration for Super Admin
-  - list accounts
-  - deactivate/reactivate account
-  - reset password with generated temporary password
-- modular folder-aligned source/header split is in place
-- admin sub-role permission enforcement is active in dashboard actions
-- admin menus are role-visible (users only see actions/workspaces available to their role)
-- document amendment/version lineage (rejected base -> amended next version)
-- SHA-256 password hashing at rest with automatic plaintext migration on startup
-- forced password change after Super Admin password reset
-- optional approval/rejection notes on document and budget approval decisions
-- notification inbox on login (pending approvals and overdue items for admins, recently published documents for citizens)
-- in-app role-specific help system with key concept explanations
-- data backup and restore workspace (Super Admin, timestamped backup folders)
-- delegated approval authority for Budget Officer and Municipal Administrator with date-range control
-- delegation management workspace (create, view, revoke)
-- all delegation and backup/restore actions are audited
+Implemented in code:
 
-## 2. Product Name
+- Citizen and admin signup/login
+- Role-visible command center and workspaces
+- Document upload/view/search/filter/export flows
+- Optional source-file import (`pdf`, `docx`, `csv`, `txt`) with SHA-256 hash capture
+- Optional normalized document tags (comma-separated)
+- Ranked full-text search (`ID`, title, description, category, tags)
+- Advanced document filters (status, exact date, date range, category, tags, department, uploader)
+- Amendment lineage (`versionNumber`, `previousDocId`)
+- Category-rule approvals with `DEFAULT` fallback and SLA thresholds
+- Pending approval queue with direct + delegated access
+- Request-for-comment thread for approvals (persistent per-document discussion)
+- Approval analytics dashboard
+- Escalation queue for overdue pending approvals (Super Admin)
+- Budget entry consensus workflow and publication gate
+- Budget variance reporting
+- Audit trail table, action frequency, CSV export (all/filtered)
+- Audit hash-linking (`previousHash`, `currentHash`) and optional `chainIndex`
+- Blockchain append/validate/explorer across 5 node files
+- Analytics hub with: approval funnel, budget utilization, audit activity, integrity status, executive snapshot, department workload, compliance audit
+- Account lifecycle admin tools (Super Admin)
+- SHA-256 password-at-rest + plaintext migration on startup
+- Forced password change after admin reset
+- Notification inbox and in-app help
+- Backup/restore workspace (Super Admin)
+- Delegation management for Budget Officer and Municipal Administrator
 
-Product Name: ProcureChain
+## 3. Target Users
 
-Full Title: ProcureChain: A Municipal Procurement Document Tracking System
-
-Tagline: Secure procurement document tracking, approval, and verification for accountable local governance.
-
-## 3. Background and Context
-
-Municipal procurement involves sensitive and important records such as purchase requests, purchase orders, contracts, notices of award, and acceptance documents. These records must be managed carefully to reduce tampering, improve transparency, and ensure that no single official can unilaterally approve and publish procurement records.
-
-For this finals project, the system is adapted into a CLI-based procurement tracking system that uses:
-
-- layered admin roles
-- citizen account access
-- text-file storage
-- audit logging
-- unanimous approval workflow
-- simulated blockchain validation using multiple ledger files
-- governance-focused reporting extensions
-
-## 4. Problem Statement
-
-Without a structured process:
-
-- document authenticity may be difficult to verify
-- approval history can become unclear
-- budget allocations may not be visible to users
-- records may be altered without easy detection
-- accountability may weaken when controls are fragmented
-
-There is a need for a beginner-friendly procurement document tracking system that can simulate secure handling, multi-official approval, and transparent record monitoring using only C++ CLI and file handling.
-
-## 5. Proposed Solution
-
-ProcureChain is a C++ CLI-based municipal procurement document tracking system that allows authorized officials to upload and manage procurement documents while requiring unanimous approval from designated approvers before publication.
-
-The system allows registered citizens to:
-
-- sign up and log in
-- view published procurement records
-- view procurement budget summaries
-- inspect and export audit records
-
-The system allows governance and compliance actions for admins to:
-
-- run advanced document filtering
-- review approval analytics
-- review budget variance reports
-- manage account lifecycle (Super Admin)
-- validate blockchain integrity and cross-node consistency
-
-## 6. Target Users
-
-### 6.1 System Administrators
-
-#### Super Admin
+### 3.1 Citizen
 
 Can:
 
-- access all records and dashboards
-- validate blockchain consistency
-- verify document integrity
-- run full account lifecycle controls
+- View published documents
+- Search published documents by ID or keyword
+- Verify document hash and blockchain presence
+- View procurement budgets
+- View/export audit trail
+- Open notification inbox and help
 
-#### Procurement Officer
-
-Can:
-
-- upload procurement documents
-- view/search/filter document records
-
-#### Approving Officers
-
-Examples:
-
-- Budget Officer
-- Municipal Administrator
+### 3.2 Super Admin
 
 Can:
 
-- review pending procurement documents
-- approve or reject submitted records
-- view approval analytics dashboard
+- Access all dashboards/workspaces
+- Manage account lifecycle and password resets
+- Manage approval rules and monitor escalation queue
+- Validate blockchain and verify document integrity
+- Run backup and restore
 
-### 6.2 Registered Citizens
+### 3.3 Procurement Officer
 
 Can:
 
-- sign up
-- log in
-- view published procurement documents
-- view procurement budget summaries
-- view and export the audit trail
-
-## 7. Core Features and Acceptance Criteria
-
-### Feature 1: Account-Based Access
-
-Priority: Critical
-
-Description:
-
-The system requires authentication before access and displays role-specific dashboards.
-
-Acceptance Criteria:
-
-- Main menu includes Login, Sign Up, Exit
-- Citizens can create accounts in users.txt
-- Admins can create and use admin accounts in admins.txt
-- System routes users to role-correct menu
-- Role-visible menus hide inaccessible admin actions in normal navigation flows
-
-### Feature 2: User Account Lifecycle Administration
-
-Priority: High
-
-Description:
-
-Super Admin can manage account operational state and credentials.
-
-Acceptance Criteria:
-
-- Super Admin can list users/admins with status and last update timestamp
-- Super Admin can deactivate/reactivate accounts
-- Inactive accounts cannot log in
-- Super Admin can reset password with generated temporary password
-- Password reset forces the target account to change password on next login
-- Lifecycle actions are logged in audit trail
-
-### Feature 3: Procurement Document Management and Verification
-
-Priority: Critical
-
-Description:
-
-The system stores procurement records and supports integrity verification.
-
-Acceptance Criteria:
-
-- Document upload requires title, category, and description
-- Source file upload path is optional (metadata-only uploads are allowed)
-- Source file import accepts pdf/docx/csv/txt and copies files into local storage
-- Category selection uses guided choices with Other for custom category input
-- Document records store ID/title/category/description/department/date/uploader/status/hash/file metadata/budget fields
-- Document records include versionNumber and previousDocId for lineage tracking
-- Upload can be linked to a rejected base document to create amendment versions
-- Document upload does not collect budget allocation inputs; budget allocation is handled in Budget Workspace
-- Verification compares recomputed SHA-256 hash with stored hash
-- Citizen verification checks whether hash evidence is present in blockchain records
-- System displays VALID/POTENTIALLY TAMPERED/CHAIN-MISSING outcomes
-- Published records are visible to citizen accounts
-
-### Feature 4: Advanced Document Filters
-
-Priority: High
-
-Description:
-
-Admins can query document records using combined filters.
-
-Acceptance Criteria:
-
-- Filter supports status, exact date, from/to range, category, department, uploader
-- Multiple filters can be combined in one query
-- Range validation rejects fromDate greater than toDate
-- Empty result set displays clear no-match message
-- Filter actions are logged in audit trail
-- Filter/search screens show recent available values/suggestions before input
-
-### Feature 5: Unanimous Consensus Approval Protocol
-
-Priority: Critical
-
-Description:
-
-Documents become published only after all required approvers decide and none reject.
-
-Acceptance Criteria:
-
-- Approval records stored per approver in approvals.txt
-- Required approver roles are configured by category in approval_rules.txt
-- DEFAULT rule is used when a category-specific rule does not exist
-- Any rejection marks the document rejected
-- Complete non-rejected decisions publish document
-- Approve/reject actions update both approvals and document status
-- Citizens can only verify and inspect published documents
-
-### Feature 6: Approval Analytics Dashboard
-
-Priority: High
-
-Description:
-
-Dashboard summarizes approval performance and bottlenecks.
-
-Acceptance Criteria:
-
-- approvals.txt stores createdAt and decidedAt
-- Dashboard shows decided/pending/approved/rejected counts
-- Rejection rate is computed from decided rows
-- Average decision time is computed from rows with complete timestamps
-- Throughput by role displayed as chart
-- Overdue pending approvals are computed from rule maxDecisionDays
-- Pending SLA compliance percentage is displayed
-- Role bottleneck table shows pending count, overdue count, average pending age, and worst overdue days
-- Dashboard is reachable via overview-driven analytics hub navigation
-- Layout mode toggle updates chart and table density
-- Optional paged detail table can be opened for deeper row inspection
-
-### Feature 7: Procurement Budget Consensus and Variance
-
-Priority: High
-
-Description:
-
-Budget module supports consensus-governed budget publication and variance analysis.
-
-Acceptance Criteria:
-
-- budget_entries.txt stores submitted budget entries
-- budget_approvals.txt stores unanimous approval workflow per entry
-- budget category selection supports guided choices and custom Other input
-- Budget Officer and Municipal Administrator can approve/reject pending entries
-- Any rejection blocks publication
-- Full non-rejected decisions publish the budget entry into budgets.txt
-- Variance report compares allocated vs actual totals
-- Actual totals derive from approved/published documents by budget category
-- Report shows variance amount and utilization percentage
-
-### Feature 8: Audit Trail and CSV Export
-
-Priority: Critical
-
-Description:
-
-System keeps a readable audit history and supports CSV output for demos/compliance.
-
-Acceptance Criteria:
-
-- Major actions append to audit_log.txt with timestamp/action/target/actor/chainIndex/previousHash/currentHash
-- Audit view renders table and action-frequency chart
-- CSV export supports all rows
-- CSV export supports filtered rows (date/action/actor/target)
-- Export validates date range bounds before file write
-- Export validates filename safety before file write
-- Export action is itself logged
-- Audit rows are hash-linked with previousHash and currentHash values
-
-### Feature 9: Simulated Blockchain Ledger
-
-Priority: High
-
-Description:
-
-System simulates blockchain behavior using 5 synchronized node files.
-
-Acceptance Criteria:
-
-- Block format includes index/timestamp/action/documentID/actor/previousHash/currentHash
-- Key actions append to all node files
-- Validation checks chain linkage in each node
-- Validation checks full-node content consistency
-- Validation result logged in audit trail
-- Explorer screen shows node-level integrity, first mismatch, per-block agreement counts, and tamper alerts
-
-### Feature 10: Audit-to-Blockchain Linking
-
-Priority: High
-
-Description:
-
-Blockchain-backed actions expose chain index to audit rows for stronger traceability.
-
-Acceptance Criteria:
-
-- appendBlockchainAction returns block index
-- audit writer accepts optional chain index argument
-- blockchain-backed actions pass chain index to logAuditAction
-- audit table displays chain index when present
-
-### Feature 11: SHA-256 Password Hashing
-
-Priority: High
-
-Description:
-
-All stored passwords are hashed with SHA-256. Plaintext passwords are auto-migrated on startup.
-
-Acceptance Criteria:
-
-- Signup hashes password before writing to file
-- Login compares hashed input against stored hash
-- Password reset stores hashed temporary password
-- Startup migration detects plaintext passwords (length != 64) and hashes them in place
-
-### Feature 12: Forced Password Change After Reset
-
-Priority: High
-
-Description:
-
-When Super Admin resets a password, the target account must change their password on next login.
-
-Acceptance Criteria:
-
-- Password reset sets flag in password_flags.txt
-- Login checks flag and forces password change before dashboard access
-- New password is validated (minimum length, confirmation match)
-- Flag is cleared after successful change
-- Action logged as FORCED_PASSWORD_CHANGE
-
-### Feature 13: Approval Notes
-
-Priority: Medium
-
-Description:
-
-Approvers can attach optional notes when approving or rejecting documents and budget entries.
-
-Acceptance Criteria:
-
-- Approval decision prompts for optional note
-- Budget approval decision prompts for optional note
-- Note persisted as 7th column in approvals.txt and budget_approvals.txt
-- Note displayed in document detail approval chain table
-- Backward compatible: missing note defaults to empty string
-- Delegated decisions automatically include delegation attribution in note
-
-### Feature 14: Notification Inbox
-
-Priority: Medium
-
-Description:
-
-On login, users see a summary of pending actions or recent activity.
-
-Acceptance Criteria:
-
-- Admin inbox shows pending document approval count
-- Admin inbox shows pending budget approval count
-- Admin inbox shows overdue counts
-- Citizen inbox shows recently published documents (last 7 days)
-- Inbox displayed automatically after login
-- Inbox accessible as a menu option from dashboard
-
-### Feature 15: In-App Help System
-
-Priority: Medium
-
-Description:
-
-Role-specific help is accessible from both citizen and admin dashboards.
-
-Acceptance Criteria:
-
-- Help menu accessible from citizen dashboard
-- Help menu accessible from admin command center
-- Content is role-specific (different guidance per role)
-- Key concepts section covers approval flow, budget consensus, blockchain, audit, delegation
-
-### Feature 16: Data Backup and Restore
-
-Priority: High
-
-Description:
-
-Super Admin can create timestamped backups and restore from them.
-
-Acceptance Criteria:
-
-- Backup copies all data files and blockchain nodes to data/backups/YYYY-MM-DD_HHMMSS/
-- Restore lists available backups, requires confirmation before overwrite
-- Both backup and restore actions are audited
-- Only Super Admin can access this workspace
-
-### Feature 17: Delegated Approvals
-
-Priority: High
-
-Description:
-
-Budget Officer and Municipal Administrator can delegate their approval authority to another admin for a date range.
-
-Acceptance Criteria:
-
-- Delegation specifies delegatee admin username, start date, and end date
-- Delegatee can approve/reject on behalf of delegator within the active date range
-- Delegated decisions include delegation attribution in the approval note
-- Delegated pending items appear in delegatee's approval hints
-- Delegations can be viewed and revoked from Delegation Management
-- All delegation actions are audited
-- Delegation file is created at startup if missing
-
-## 8. System Flow
-
-### Main Menu
+- Upload documents (with optional tags)
+- View/search/filter/export document records
+- Track status and lineage
+
+### 3.4 Budget Officer and Municipal Administrator
+
+Can:
+
+- View pending approvals
+- Approve/reject documents and budget entries
+- Use request-for-comment thread
+- View approval analytics
+- Use delegation management
+
+## 4. Core Functional Requirements
+
+1. Account-based access with role routing and role-visible menus.
+2. Super Admin lifecycle controls: list, deactivate, reactivate, reset password.
+3. Document management with metadata, optional import file, and hash persistence.
+4. Document tagging with normalized storage and display support.
+5. Ranked search for admin and citizen published flows.
+6. Multi-criteria document filtering including tags.
+7. Rule-driven unanimous approval protocol with category + `DEFAULT` fallback.
+8. Request-for-comment thread for pending approvals with persistent history.
+9. Approval analytics with SLA and bottleneck insights.
+10. Budget consensus publication and variance reporting.
+11. Audit trail with CSV export and hash-linked rows.
+12. Simulated blockchain append + validation + explorer diagnostics.
+13. Audit-to-blockchain linkage through `chainIndex`.
+14. Password hashing and forced password change on reset.
+15. Notification inbox and role-specific help.
+16. Backup/restore operations for Super Admin.
+17. Delegated approval authority with date-range control.
+
+## 5. System Flow
+
+### 5.1 Main Menu
 
 - Login
 - Sign Up
 - Exit
 
-### Citizen Menu
+### 5.2 Citizen Dashboard
 
 - View Published Documents
-- View Budget Summary
+- View Procurement Budgets
 - View Audit Trail
-- Search Published Document by ID
+- Search Published Document (ID or Keyword)
 - Verify Published Document Hash
 - Notification Inbox
 - Help
 - Logout
 
-### Admin Command Center
+### 5.3 Admin Command Center
 
 - Overview Dashboard
-  - open analytics hub
-  - quick integrity snapshot
-  - refresh overview
-  - toggle compact/full layout
 - Documents Workspace
-  - upload, view, search, filter, manual status update
+  - Upload Document
+  - View All Documents
+  - Search Document (ID or Keyword)
+  - Advanced Document Filters
+  - Export Documents to TXT
+  - Update Document Status (manual override, role-gated)
 - Approvals Workspace
-  - pending approvals, approve/reject, detailed approval analytics
-  - escalation queue for overdue approvals (Super Admin)
-  - approval rule management (Super Admin)
-  - delegation management (Budget Officer, Municipal Administrator)
+  - View Pending Approvals
+  - Request-for-Comment Thread
+  - Approve Document
+  - Reject Document
+  - Approval Analytics Dashboard
+  - Escalation Queue (Super Admin)
+  - Manage Approval Rules (Super Admin)
+  - Delegation Management
 - Budget Workspace
-  - view published allocations, submit budget entries, approve/reject budget entries, variance report
 - Audit and Integrity Workspace
-  - audit trail, blockchain validation, document integrity verification, integrity snapshot, blockchain explorer
-- Account Administration Workspace
-  - lifecycle controls
-  - data backup and restore (Super Admin)
+- Account Administration (Super Admin)
 - Notification Inbox
 - Help
 - Logout
 
-Note:
+## 6. Data Storage Design
 
-- workspace and action menus are role-visible; unauthorized choices are hidden.
+### 6.1 Core Files
 
-## 9. Data Storage Design
+- data/users.txt: userID|fullName|username|password|status|updatedAt
+- data/admins.txt: adminID|fullName|username|password|role|status|updatedAt
+- data/documents.txt: docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags
+- data/approval_rules.txt: category|requiredRoles|maxDecisionDays
+- data/approvals.txt: docID|approverUsername|role|status|createdAt|decidedAt|note
+- data/approval_comments.txt: docID|commenterUsername|commenterRole|createdAt|commentText
+- data/budgets.txt: category|amount
+- data/budget_entries.txt: entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
+- data/budget_approvals.txt: entryID|approverUsername|role|status|createdAt|decidedAt|note
+- data/password_flags.txt: username|mustChangePassword
+- data/delegations.txt: delegatorUsername|delegateeUsername|startDate|endDate|status
+- data/audit_log.txt: timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
 
-### admins.txt
+### 6.2 Blockchain Files
 
-adminID|fullName|username|password|role|status|updatedAt
+- data/blockchain/node1_chain.txt
+- data/blockchain/node2_chain.txt
+- data/blockchain/node3_chain.txt
+- data/blockchain/node4_chain.txt
+- data/blockchain/node5_chain.txt
 
-### users.txt
+Node row format: index|timestamp|action|documentID|actor|previousHash|currentHash
 
-userID|fullName|username|password|status|updatedAt
+## 7. Non-Functional Requirements
 
-### documents.txt
+- Keep logic defense-friendly and procedural.
+- Preserve backward-compatible loading for older rows.
+- Keep CLI prompts clear and deterministic.
+- Maintain auditability for governance actions.
 
-docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId
+## 8. Success Criteria
 
-### approval_rules.txt
+Project is successful when demo can show:
 
-category|requiredRoles|maxDecisionDays
+- Role-based login and role-visible workspaces
+- End-to-end document flow with approval outcomes
+- Tag-aware ranked search and multi-filter queries
+- Request-for-comment thread usage before decisioning
+- Approval/budget/compliance analytics reporting
+- Budget publication and variance checks
+- Audit export and blockchain integrity diagnostics
+- Account lifecycle controls, backup/restore, delegation, and forced password-change path
 
-### approvals.txt
+## 9. Detailed Implementation Scope (Expanded)
 
-docID|approverUsername|role|status|createdAt|decidedAt|note
+This section preserves the concise PRD above while adding the fuller implementation detail used for final defense prep.
 
-### budgets.txt
+### 9.1 Document Lifecycle and Search
 
-category|amount
+- Upload requires title, category, and description.
+- Category input uses guided choices with an Other option for custom category text.
+- Source file path is optional; metadata-only document rows are supported.
+- Supported import extensions: pdf, docx, csv, txt.
+- Imported files are copied into local storage and hashed with SHA-256.
+- Upload supports optional comma-separated tags, normalized before save.
+- Document schema persists lineage fields: versionNumber and previousDocId.
+- Amendment flow supports creating revised versions from rejected base documents.
+- Admin search supports ID and ranked keyword retrieval across title, description, category, and tags.
+- Citizen search runs on published documents and supports ID or keyword input.
+- Advanced filter criteria supports status, exact date, date range, category, tags, department, and uploader.
+- Filter and search screens show available value hints before input.
+- Documents workspace supports TXT export of all/filtered records.
 
-### budget_entries.txt
+### 9.2 Approval Governance
 
-entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
+- Approval routing is driven by approval_rules data with category-specific rules and DEFAULT fallback.
+- Required approver rows are created with createdAt timestamps.
+- Decision outcomes store decidedAt and optional notes.
+- Any reject transitions document to rejected.
+- Unanimous non-rejected decisions transition document to published.
+- Pending approvals view includes direct and delegated pending items.
+- Request-for-comment thread is available before decisioning and persists per document.
+- Approval comments persist in data/approval_comments.txt with commenter role and timestamp.
+- Delegated decisions preserve actor context and governance traceability.
 
-### budget_approvals.txt
+### 9.3 Budget Consensus
 
-entryID|approverUsername|role|status|createdAt|decidedAt|note
+- Budget entries capture fiscal year, category, allocated amount, description, and creator metadata.
+- Budget approval rows are generated for required approver roles.
+- Rejection blocks publication.
+- Unanimous non-rejected decisions publish entries into budget allocations.
+- Variance reporting compares allocated totals with approved/published document totals by category.
 
-### password_flags.txt
+### 9.4 Audit, Integrity, and Blockchain
 
-username|mustChangePassword
+- Core actions append to audit_log with action metadata.
+- Audit rows maintain hash-linked continuity using previousHash/currentHash.
+- Blockchain-backed actions can store chainIndex in audit rows.
+- Audit screen supports CSV export for all rows and filtered rows.
+- Filtered export validates date-range bounds and filename safety.
+- Blockchain writes are replicated across five node files.
+- Validation checks both per-node linkage integrity and cross-node consistency.
+- Explorer view surfaces first mismatch index and per-block consensus diagnostics.
 
-### delegations.txt
+### 9.5 Security and Access Controls
 
-delegatorUsername|delegateeUsername|startDate|endDate|status
+- Passwords are stored as SHA-256 hashes.
+- Startup migration hashes legacy plaintext credentials.
+- Super Admin reset enforces forced password change before dashboard access.
+- Account lifecycle controls support deactivate/reactivate/reset.
+- Role-visible menus hide unauthorized actions from navigation.
 
-### audit_log.txt
+### 9.6 UX and Operations
 
-timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
+- Notification inbox is shown on login and available from dashboards.
+- In-app help provides role-specific guidance.
+- Data backup and restore is available in Account Administration for Super Admin.
+- Delegation management (create/view/revoke) is available for Budget Officer and Municipal Administrator.
+- Analytics layout supports compact/full toggle and optional paged detail tables.
 
-### blockchain node files
+## 10. Analytics and Reporting Coverage
 
-index|timestamp|action|documentID|actor|previousHash|currentHash
+### 10.1 Overview and Analytics Hub Views
 
-## 10. Technical Constraints
+- Approval Funnel and Throughput Trends
+- Budget Utilization Comparisons
+- Audit Activity Timeline and Frequency
+- Integrity Status Cards
+- Executive Snapshot
+- Department Workload Report
+- Compliance Audit Report
 
-Because this is a beginner-level finals project, implementation remains within:
+### 10.2 Approval Analytics Metrics
 
-- functions
-- arrays
-- vectors
-- structs
-- file handling
-- procedural logic
-- menu-based navigation
+- Total approval rows
+- Decided rows
+- Pending rows
+- Approved rows
+- Rejected rows
+- Rejection rate
+- Average decision time
+- Throughput by role
+- Overdue pending count (SLA-based)
+- Pending SLA compliance rate
+- Per-role bottleneck indicators
 
-The system does not rely on:
+### 10.3 Department Workload Report Scope
 
-- OOP class architecture
-- external databases
-- frameworks
-- web technologies
-- real blockchain infrastructure
+- Department-level request volume
+- Pending and decided workload distribution
+- Time-to-decision indicators by department
+- Publication/rejection mix by department context
 
-## 11. Non-Functional Requirements
+### 10.4 Compliance Audit Report Scope
 
-Simplicity:
-- code and outputs must be explainable during defense
+- Rule-based compliance checks
+- PASS/REVIEW REQUIRED summary
+- Violation listing with sortable severity context
+- Operational audit entry for compliance report generation
 
-Readability:
-- menus, logs, and reports should remain text-clean and understandable
+## 11. Expanded Data Dictionary
 
-Maintainability:
-- modules are separated by concern in src and include
+### 11.1 High-Change Files and Notes
 
-Reliability:
-- system should safely load legacy rows and persist expanded schema rows
+- data/documents.txt
+  - includes tags and lineage fields for searchability and amendment traceability
+- data/approvals.txt
+  - includes timing fields and optional note for governance context
+- data/approval_comments.txt
+  - stores request-for-comment thread history
+- data/audit_log.txt
+  - supports chainIndex plus hash-linked row continuity
+- data/delegations.txt
+  - stores delegator/delegatee with active date range and status
+- data/password_flags.txt
+  - stores forced password-change requirement after reset
 
-Demo Readiness:
-- when seed files are empty, realistic mock datasets are auto-generated for analytics and consensus walkthroughs
+### 11.2 Current Schema Lines
 
-## 12. Success Criteria
+- data/users.txt: userID|fullName|username|password|status|updatedAt
+- data/admins.txt: adminID|fullName|username|password|role|status|updatedAt
+- data/documents.txt: docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags
+- data/approval_rules.txt: category|requiredRoles|maxDecisionDays
+- data/approvals.txt: docID|approverUsername|role|status|createdAt|decidedAt|note
+- data/approval_comments.txt: docID|commenterUsername|commenterRole|createdAt|commentText
+- data/budgets.txt: category|amount
+- data/budget_entries.txt: entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
+- data/budget_approvals.txt: entryID|approverUsername|role|status|createdAt|decidedAt|note
+- data/password_flags.txt: username|mustChangePassword
+- data/delegations.txt: delegatorUsername|delegateeUsername|startDate|endDate|status
+- data/audit_log.txt: timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
+- data/blockchain/nodeX_chain.txt: index|timestamp|action|documentID|actor|previousHash|currentHash
 
-The project is successful if it can demonstrate:
+## 12. Role Capability Snapshot
 
-- login and sign-up flow
-- layered role-based access
-- procurement document storage and advanced filtering
-- unanimous approval workflow
-- approval analytics
-- budget summary and variance reporting
-- audit trail logging and CSV export
-- simulated blockchain validation with linked audit evidence
-- SHA-256 password hashing at rest
-- forced password change after admin reset
-- approval/rejection notes
-- notification inbox
-- in-app help system
-- data backup and restore
-- delegated approval authority
+### 12.1 Citizen
 
-Integrity note:
+- published documents view/search
+- published hash verification
+- budget view
+- audit view/export
+- notifications and help
 
-- Hash computation now uses SHA-256 in the project verification module.
+### 12.2 Super Admin
 
-## 13. Scope Summary
+- full overview and analytics access
+- account lifecycle administration
+- escalation queue and approval rule management
+- blockchain validation and integrity verification
+- backup and restore
 
-ProcureChain is a beginner-friendly C++ CLI municipal procurement document tracking system. It uses file handling, vectors, arrays, functions, and structs to implement:
+### 12.3 Procurement Officer
 
-- role-based access
-- citizen sign-up/login
-- procurement document management
-- unanimous approval before publication
-- governance reporting
-- budget visibility and variance
-- audit logs and exports
-- a simulated blockchain using 5 text-based ledger files
+- document upload (with tags)
+- document view/search/filter/export
+- status monitoring and amendment preparation
+
+### 12.4 Budget Officer and Municipal Administrator
+
+- approve/reject documents and budget entries
+- request-for-comment participation
+- approval analytics access
+- delegation management
+
+## 13. Defense-Ready Boundary Statement
+
+ProcureChain remains intentionally scoped as a classroom procedural CLI project. The system demonstrates governance and traceability concepts using text-file persistence and simulated blockchain behavior, while explicitly avoiding enterprise infrastructure concerns such as distributed networking, external ledgers, and relational database integration.

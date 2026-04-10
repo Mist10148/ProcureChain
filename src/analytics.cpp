@@ -24,6 +24,8 @@ const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
+const std::string APPROVAL_RULES_FILE_PATH_PRIMARY = "data/approval_rules.txt";
+const std::string APPROVAL_RULES_FILE_PATH_FALLBACK = "../data/approval_rules.txt";
 const std::string BUDGETS_FILE_PATH_PRIMARY = "data/budgets.txt";
 const std::string BUDGETS_FILE_PATH_FALLBACK = "../data/budgets.txt";
 const std::string AUDIT_FILE_PATH_PRIMARY = "data/audit_log.txt";
@@ -47,14 +49,44 @@ struct DocumentRow {
     std::string status;
     std::string dateUploaded;
     std::string category;
+    std::string department;
     std::string budgetCategory;
     double amount;
 };
 
 struct ApprovalRow {
+    std::string docId;
+    std::string role;
     std::string status;
     std::string createdAt;
     std::string decidedAt;
+};
+
+struct ApprovalRuleRow {
+    std::string category;
+    std::vector<std::string> requiredRoles;
+    int maxDecisionDays;
+};
+
+struct ComplianceCheckResult {
+    std::string checkName;
+    bool passed;
+    std::string detail;
+};
+
+struct ComplianceViolationRow {
+    std::string type;
+    std::string docId;
+    std::string detail;
+};
+
+struct DepartmentWorkloadMetric {
+    int pendingApprovals;
+    int overduePendingApprovals;
+    int decisionsInWindow;
+    int uploadsInWindow;
+    double decisionDaysTotal;
+    int decisionDaysCount;
 };
 
 struct AuditRow {
@@ -97,6 +129,42 @@ std::vector<std::string> splitPipe(const std::string& line) {
     return tokens;
 }
 
+std::string trimCopy(const std::string& value) {
+    const std::string whitespace = " \t\r\n";
+    const size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+std::vector<std::string> splitRolesCsv(const std::string& text) {
+    std::vector<std::string> roles;
+    std::stringstream parser(text);
+    std::string token;
+
+    while (std::getline(parser, token, ',')) {
+        token = trimCopy(token);
+        if (!token.empty()) {
+            roles.push_back(token);
+        }
+    }
+
+    return roles;
+}
+
+bool roleExistsInList(const std::vector<std::string>& roles, const std::string& targetRole) {
+    for (std::size_t i = 0; i < roles.size(); ++i) {
+        if (roles[i] == targetRole) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 std::string toLowerCopy(std::string value) {
     for (std::size_t i = 0; i < value.size(); ++i) {
         if (value[i] >= 'A' && value[i] <= 'Z') {
@@ -137,6 +205,12 @@ bool parseDateText(const std::string& dateText, std::tm& tmValue) {
     return !parser.fail();
 }
 
+bool parseDateTimeText(const std::string& dateTimeText, std::tm& tmValue) {
+    std::stringstream parser(dateTimeText);
+    parser >> std::get_time(&tmValue, "%Y-%m-%d %H:%M:%S");
+    return !parser.fail();
+}
+
 std::string formatDate(std::tm tmValue) {
     char buffer[11];
     std::strftime(buffer, sizeof(buffer), "%Y-%m-%d", &tmValue);
@@ -170,6 +244,51 @@ std::string extractDate(const std::string& text) {
         return text.substr(0, 10);
     }
     return "";
+}
+
+int daysBetweenDates(const std::string& fromDate, const std::string& toDate) {
+    std::tm fromTm = {};
+    std::tm toTm = {};
+    if (!parseDateText(fromDate, fromTm) || !parseDateText(toDate, toTm)) {
+        return 0;
+    }
+
+    std::time_t fromTime = std::mktime(&fromTm);
+    std::time_t toTime = std::mktime(&toTm);
+    if (fromTime == static_cast<std::time_t>(-1) || toTime == static_cast<std::time_t>(-1)) {
+        return 0;
+    }
+
+    const double deltaSeconds = std::difftime(toTime, fromTime);
+    return static_cast<int>(deltaSeconds / (24.0 * 60.0 * 60.0));
+}
+
+bool computeDecisionDurationDays(const ApprovalRow& row, int& outDays) {
+    outDays = 0;
+
+    std::tm createdTm = {};
+    std::tm decidedTm = {};
+    if (parseDateTimeText(row.createdAt, createdTm) && parseDateTimeText(row.decidedAt, decidedTm)) {
+        std::time_t createdTime = std::mktime(&createdTm);
+        std::time_t decidedTime = std::mktime(&decidedTm);
+        if (createdTime != static_cast<std::time_t>(-1) && decidedTime != static_cast<std::time_t>(-1) && decidedTime >= createdTime) {
+            const double deltaSeconds = std::difftime(decidedTime, createdTime);
+            outDays = static_cast<int>(deltaSeconds / (24.0 * 60.0 * 60.0));
+            return true;
+        }
+    }
+
+    const std::string createdDate = extractDate(row.createdAt);
+    const std::string decidedDate = extractDate(row.decidedAt);
+    if (!createdDate.empty() && !decidedDate.empty()) {
+        const int deltaDays = daysBetweenDates(createdDate, decidedDate);
+        if (deltaDays >= 0) {
+            outDays = deltaDays;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool matchesWindow(const std::string& dateText, const AnalyticsWindow& window) {
@@ -215,13 +334,19 @@ bool loadDocuments(std::vector<DocumentRow>& rows) {
         row.docId = tokens.size() > 0 ? tokens[0] : "";
         row.category = tokens.size() > 2 ? tokens[2] : "";
         if (tokens.size() >= 15) {
+            row.department = tokens[4];
             row.dateUploaded = tokens[5];
             row.status = tokens[7];
             row.budgetCategory = tokens[13].empty() ? row.category : tokens[13];
         } else {
+            row.department = tokens.size() > 3 ? tokens[3] : "General";
             row.dateUploaded = tokens.size() > 4 ? tokens[4] : "";
             row.status = tokens.size() > 6 ? tokens[6] : "";
             row.budgetCategory = tokens.size() > 8 && !tokens[8].empty() ? tokens[8] : row.category;
+        }
+
+        if (row.department.empty()) {
+            row.department = "General";
         }
         row.amount = 0.0;
 
@@ -269,10 +394,14 @@ bool loadApprovals(std::vector<ApprovalRow>& rows) {
         }
 
         ApprovalRow row;
+        row.docId = tokens.size() > 0 ? tokens[0] : "";
+        row.role = tokens.size() > 2 ? tokens[2] : "";
         row.status = tokens.size() > 3 ? tokens[3] : "pending";
         row.createdAt = tokens.size() > 4 ? tokens[4] : "";
         row.decidedAt = tokens.size() > 5 ? tokens[5] : "";
-        rows.push_back(row);
+        if (!row.docId.empty()) {
+            rows.push_back(row);
+        }
     }
 
     return true;
@@ -356,6 +485,90 @@ bool loadBudgetRows(std::vector<BudgetRow>& rows) {
     }
 
     return true;
+}
+
+ApprovalRuleRow buildDefaultApprovalRule() {
+    ApprovalRuleRow rule;
+    rule.category = "DEFAULT";
+    rule.requiredRoles.push_back("Budget Officer");
+    rule.requiredRoles.push_back("Municipal Administrator");
+    rule.maxDecisionDays = 7;
+    return rule;
+}
+
+bool loadApprovalRules(std::vector<ApprovalRuleRow>& rows) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, APPROVAL_RULES_FILE_PATH_PRIMARY, APPROVAL_RULES_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    rows.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("category|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.empty()) {
+            continue;
+        }
+
+        ApprovalRuleRow row = buildDefaultApprovalRule();
+        row.category = trimCopy(tokens[0]);
+        if (row.category.empty()) {
+            row.category = "DEFAULT";
+        }
+
+        if (tokens.size() > 1) {
+            const std::vector<std::string> parsedRoles = splitRolesCsv(tokens[1]);
+            if (!parsedRoles.empty()) {
+                row.requiredRoles = parsedRoles;
+            }
+        }
+
+        if (tokens.size() > 2) {
+            std::stringstream in(tokens[2]);
+            int parsedDays = 0;
+            in >> parsedDays;
+            if (!in.fail() && parsedDays > 0) {
+                row.maxDecisionDays = parsedDays;
+            }
+        }
+
+        rows.push_back(row);
+    }
+
+    return true;
+}
+
+ApprovalRuleRow resolveApprovalRuleForCategory(const std::vector<ApprovalRuleRow>& rules, const std::string& category) {
+    ApprovalRuleRow fallback = buildDefaultApprovalRule();
+    const std::string key = toLowerCopy(trimCopy(category));
+
+    for (std::size_t i = 0; i < rules.size(); ++i) {
+        if (toLowerCopy(trimCopy(rules[i].category)) == "default") {
+            fallback = rules[i];
+            break;
+        }
+    }
+
+    for (std::size_t i = 0; i < rules.size(); ++i) {
+        if (toLowerCopy(trimCopy(rules[i].category)) == key) {
+            return rules[i];
+        }
+    }
+
+    return fallback;
 }
 
 std::vector<std::string> buildDateRange(const std::string& fromDate, const std::string& toDate, std::size_t maxDays) {
@@ -538,8 +751,9 @@ int countDocumentHashMismatches() {
             if (!filePath.empty() && std::filesystem::exists(filePath)) {
                 computed = computeFileHashSha256(filePath);
             } else {
+                const std::string tags = tokens.size() > 17 ? tokens[17] : "";
                 const std::string metadataSource = tokens[0] + "|" + tokens[1] + "|" + tokens[2] + "|" + tokens[3] + "|" +
-                                                   tokens[4] + "|" + tokens[5] + "|" + tokens[6];
+                                                   tokens[4] + "|" + tokens[5] + "|" + tokens[6] + "|" + tags;
                 computed = computeSimpleHash(metadataSource);
             }
         } else {
@@ -782,6 +996,520 @@ void renderApprovalFunnelAndTrend(const Admin& admin, const AnalyticsWindow& win
     }
 
     logAuditAction("ANALYTICS_APPROVAL_FUNNEL", window.label, admin.username);
+    waitForEnter();
+}
+
+void renderDepartmentWorkload(const Admin& admin, const AnalyticsWindow& window) {
+    clearScreen();
+    ui::printSectionTitle("ANALYTICS - DEPARTMENT WORKLOAD");
+    ui::printBreadcrumb({"ADMIN", "ANALYTICS HUB", "DEPARTMENT WORKLOAD"});
+    printWindowLabel(window);
+
+    std::vector<DocumentRow> docs;
+    std::vector<ApprovalRow> approvals;
+    if (!loadDocuments(docs) || !loadApprovals(approvals)) {
+        std::cout << "\n" << ui::error("[!] Unable to load analytics datasets.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    std::map<std::string, std::string> docDepartment;
+    std::map<std::string, DepartmentWorkloadMetric> metrics;
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        const std::string department = docs[i].department.empty() ? "General" : docs[i].department;
+        docDepartment[docs[i].docId] = department;
+
+        if (metrics.find(department) == metrics.end()) {
+            metrics[department] = DepartmentWorkloadMetric();
+        }
+
+        if (matchesWindow(docs[i].dateUploaded, window)) {
+            metrics[department].uploadsInWindow += 1;
+        }
+    }
+
+    const std::string today = todayDate();
+    for (std::size_t i = 0; i < approvals.size(); ++i) {
+        std::map<std::string, std::string>::const_iterator docFound = docDepartment.find(approvals[i].docId);
+        const std::string department = (docFound != docDepartment.end()) ? docFound->second : "General";
+
+        if (metrics.find(department) == metrics.end()) {
+            metrics[department] = DepartmentWorkloadMetric();
+        }
+
+        DepartmentWorkloadMetric& metric = metrics[department];
+        const std::string status = toLowerCopy(approvals[i].status);
+
+        if (status == "pending") {
+            metric.pendingApprovals += 1;
+
+            const std::string createdDate = extractDate(approvals[i].createdAt);
+            if (!createdDate.empty() && daysBetweenDates(createdDate, today) > 7) {
+                metric.overduePendingApprovals += 1;
+            }
+            continue;
+        }
+
+        if (status == "approved" || status == "rejected") {
+            if (!matchesWindow(extractDate(approvals[i].decidedAt), window)) {
+                continue;
+            }
+
+            metric.decisionsInWindow += 1;
+
+            int decisionDays = 0;
+            if (computeDecisionDurationDays(approvals[i], decisionDays)) {
+                metric.decisionDaysTotal += static_cast<double>(decisionDays);
+                metric.decisionDaysCount += 1;
+            }
+        }
+    }
+
+    std::vector<std::pair<std::string, DepartmentWorkloadMetric>> ordered;
+    for (std::map<std::string, DepartmentWorkloadMetric>::const_iterator it = metrics.begin(); it != metrics.end(); ++it) {
+        const DepartmentWorkloadMetric& metric = it->second;
+        if (metric.pendingApprovals == 0 &&
+            metric.overduePendingApprovals == 0 &&
+            metric.decisionsInWindow == 0 &&
+            metric.uploadsInWindow == 0) {
+            continue;
+        }
+
+        ordered.push_back(std::make_pair(it->first, metric));
+    }
+
+    if (ordered.empty()) {
+        std::cout << "\n" << ui::warning("[!] No department workload rows in selected context.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    std::sort(ordered.begin(), ordered.end(), [](const std::pair<std::string, DepartmentWorkloadMetric>& left,
+                                                 const std::pair<std::string, DepartmentWorkloadMetric>& right) {
+        if (left.second.pendingApprovals != right.second.pendingApprovals) {
+            return left.second.pendingApprovals > right.second.pendingApprovals;
+        }
+
+        if (left.second.decisionsInWindow != right.second.decisionsInWindow) {
+            return left.second.decisionsInWindow > right.second.decisionsInWindow;
+        }
+
+        return left.first < right.first;
+    });
+
+    int totalPending = 0;
+    int totalOverdue = 0;
+    int totalDecisions = 0;
+    int totalUploads = 0;
+    double totalDecisionDays = 0.0;
+    int totalDecisionCount = 0;
+
+    for (std::size_t i = 0; i < ordered.size(); ++i) {
+        totalPending += ordered[i].second.pendingApprovals;
+        totalOverdue += ordered[i].second.overduePendingApprovals;
+        totalDecisions += ordered[i].second.decisionsInWindow;
+        totalUploads += ordered[i].second.uploadsInWindow;
+        totalDecisionDays += ordered[i].second.decisionDaysTotal;
+        totalDecisionCount += ordered[i].second.decisionDaysCount;
+    }
+
+    std::ostringstream avgOverallOut;
+    const double avgOverall = totalDecisionCount > 0 ? (totalDecisionDays / static_cast<double>(totalDecisionCount)) : 0.0;
+    avgOverallOut << std::fixed << std::setprecision(1) << avgOverall;
+
+    ui::printKpiTiles({
+        std::make_pair("Departments tracked", std::to_string(ordered.size())),
+        std::make_pair("Pending approvals", std::to_string(totalPending)),
+        std::make_pair("Overdue pending (>7d)", std::to_string(totalOverdue)),
+        std::make_pair("Throughput (decisions)", std::to_string(totalDecisions)),
+        std::make_pair("Avg decision days", avgOverallOut.str()),
+        std::make_pair("Docs uploaded in window", std::to_string(totalUploads))
+    });
+
+    const std::vector<std::string> headers = {"Department", "Pending", "Overdue", "Decisions", "Avg Days", "Uploads"};
+    const std::vector<int> widths = ui::isCompactLayout() ? std::vector<int>{18, 8, 8, 9, 9, 8}
+                                                           : std::vector<int>{24, 10, 10, 12, 10, 10};
+    ui::printTableHeader(headers, widths);
+
+    std::vector<std::vector<std::string>> tableRows;
+    double maxPending = 1.0;
+    std::vector<std::string> deptLabels;
+    std::vector<double> throughputSeries;
+
+    for (std::size_t i = 0; i < ordered.size(); ++i) {
+        const DepartmentWorkloadMetric& metric = ordered[i].second;
+
+        if (metric.pendingApprovals > maxPending) {
+            maxPending = static_cast<double>(metric.pendingApprovals);
+        }
+
+        std::ostringstream avgOut;
+        const double avgDays = metric.decisionDaysCount > 0
+            ? (metric.decisionDaysTotal / static_cast<double>(metric.decisionDaysCount))
+            : 0.0;
+        avgOut << std::fixed << std::setprecision(1) << avgDays;
+
+        std::vector<std::string> row = {
+            ordered[i].first,
+            std::to_string(metric.pendingApprovals),
+            std::to_string(metric.overduePendingApprovals),
+            std::to_string(metric.decisionsInWindow),
+            avgOut.str(),
+            std::to_string(metric.uploadsInWindow)
+        };
+
+        ui::printTableRow(row, widths);
+        tableRows.push_back(row);
+
+        deptLabels.push_back(ordered[i].first);
+        throughputSeries.push_back(static_cast<double>(metric.decisionsInWindow));
+    }
+
+    ui::printTableFooter(widths);
+
+    std::cout << "\n" << ui::bold("Pending Approval Load By Department") << "\n";
+    for (std::size_t i = 0; i < ordered.size(); ++i) {
+        ui::printBar(ordered[i].first,
+                     static_cast<double>(ordered[i].second.pendingApprovals),
+                     maxPending,
+                     ui::preferredBarWidth(),
+                     "36");
+    }
+
+    if (!deptLabels.empty()) {
+        ui::printLineChart("Department Throughput Profile", deptLabels, throughputSeries,
+                           ui::preferredChartHeight(), ui::preferredChartWidth());
+    }
+
+    if (tableRows.size() > static_cast<std::size_t>(ui::tablePageSize()) && promptPagedDetails("Department Workload")) {
+        clearInputBuffer();
+        runPagedTableView("DEPARTMENT WORKLOAD - PAGED DETAIL",
+                          {"ADMIN", "ANALYTICS HUB", "DEPARTMENT WORKLOAD", "PAGED DETAIL"},
+                          headers,
+                          widths,
+                          tableRows);
+    }
+
+    logAuditAction("ANALYTICS_DEPARTMENT_WORKLOAD", window.label, admin.username);
+    waitForEnter();
+}
+
+void renderComplianceAuditReport(const Admin& admin, const AnalyticsWindow& window) {
+    clearScreen();
+    ui::printSectionTitle("ANALYTICS - COMPLIANCE AUDIT REPORT");
+    ui::printBreadcrumb({"ADMIN", "ANALYTICS HUB", "COMPLIANCE"});
+    printWindowLabel(window);
+
+    std::vector<DocumentRow> docs;
+    std::vector<ApprovalRow> approvals;
+    std::vector<ApprovalRuleRow> rules;
+    std::vector<BudgetRow> budgets;
+
+    if (!loadDocuments(docs) || !loadApprovals(approvals) || !loadBudgetRows(budgets)) {
+        std::cout << "\n" << ui::error("[!] Unable to load compliance datasets.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    if (!loadApprovalRules(rules) || rules.empty()) {
+        rules.push_back(buildDefaultApprovalRule());
+    }
+
+    std::vector<DocumentRow> scopedDocs;
+    std::map<std::string, DocumentRow> docById;
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (!matchesWindow(docs[i].dateUploaded, window)) {
+            continue;
+        }
+
+        scopedDocs.push_back(docs[i]);
+        docById[docs[i].docId] = docs[i];
+    }
+
+    if (scopedDocs.empty()) {
+        std::cout << "\n" << ui::warning("[!] No documents found in selected window.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    std::map<std::string, std::vector<ApprovalRow>> approvalsByDoc;
+    for (std::size_t i = 0; i < approvals.size(); ++i) {
+        approvalsByDoc[approvals[i].docId].push_back(approvals[i]);
+    }
+
+    std::vector<ComplianceViolationRow> violations;
+
+    int finalizedDocs = 0;
+    int publishedDocs = 0;
+    int approvalRowsCheckedForSla = 0;
+
+    int consensusViolations = 0;
+    int publicationViolations = 0;
+    int slaViolations = 0;
+
+    for (std::size_t i = 0; i < scopedDocs.size(); ++i) {
+        const DocumentRow& doc = scopedDocs[i];
+        const std::string docStatus = toLowerCopy(doc.status);
+        const std::vector<ApprovalRow>& docApprovals = approvalsByDoc[doc.docId];
+        const ApprovalRuleRow rule = resolveApprovalRuleForCategory(rules, doc.category);
+
+        if (docStatus == "published" || docStatus == "approved") {
+            finalizedDocs++;
+
+            for (std::size_t r = 0; r < rule.requiredRoles.size(); ++r) {
+                bool hasApprovedForRole = false;
+                for (std::size_t a = 0; a < docApprovals.size(); ++a) {
+                    const std::string status = toLowerCopy(docApprovals[a].status);
+                    if (docApprovals[a].role == rule.requiredRoles[r] && status == "approved") {
+                        hasApprovedForRole = true;
+                        break;
+                    }
+                }
+
+                if (!hasApprovedForRole) {
+                    ComplianceViolationRow row;
+                    row.type = "Unanimous Approval";
+                    row.docId = doc.docId;
+                    row.detail = "Missing required approval from role: " + rule.requiredRoles[r];
+                    violations.push_back(row);
+                    consensusViolations++;
+                }
+            }
+
+            for (std::size_t a = 0; a < docApprovals.size(); ++a) {
+                if (toLowerCopy(docApprovals[a].status) == "rejected") {
+                    ComplianceViolationRow row;
+                    row.type = "Unanimous Approval";
+                    row.docId = doc.docId;
+                    row.detail = "Finalized document still has rejected approval row.";
+                    violations.push_back(row);
+                    consensusViolations++;
+                    break;
+                }
+            }
+        }
+
+        if (docStatus == "published") {
+            publishedDocs++;
+
+            for (std::size_t a = 0; a < docApprovals.size(); ++a) {
+                if (toLowerCopy(docApprovals[a].status) == "rejected") {
+                    ComplianceViolationRow row;
+                    row.type = "Published Safety";
+                    row.docId = doc.docId;
+                    row.detail = "Published document has a rejected approval decision.";
+                    violations.push_back(row);
+                    publicationViolations++;
+                    break;
+                }
+            }
+        }
+
+        for (std::size_t a = 0; a < docApprovals.size(); ++a) {
+            const std::string status = toLowerCopy(docApprovals[a].status);
+            if (status == "approved" || status == "rejected") {
+                if (!matchesWindow(extractDate(docApprovals[a].decidedAt), window)) {
+                    continue;
+                }
+
+                int days = 0;
+                if (computeDecisionDurationDays(docApprovals[a], days)) {
+                    approvalRowsCheckedForSla++;
+                    if (days > rule.maxDecisionDays) {
+                        ComplianceViolationRow row;
+                        row.type = "SLA Breach";
+                        row.docId = doc.docId;
+                        row.detail = "Decision time " + std::to_string(days) + "d exceeded SLA " + std::to_string(rule.maxDecisionDays) + "d.";
+                        violations.push_back(row);
+                        slaViolations++;
+                    }
+                }
+                continue;
+            }
+
+            if (status == "pending") {
+                const std::string createdDate = extractDate(docApprovals[a].createdAt);
+                if (createdDate.empty()) {
+                    continue;
+                }
+
+                const int ageDays = daysBetweenDates(createdDate, todayDate());
+                if (ageDays < 0) {
+                    continue;
+                }
+
+                approvalRowsCheckedForSla++;
+                if (ageDays > rule.maxDecisionDays) {
+                    ComplianceViolationRow row;
+                    row.type = "SLA Breach";
+                    row.docId = doc.docId;
+                    row.detail = "Pending age " + std::to_string(ageDays) + "d exceeded SLA " + std::to_string(rule.maxDecisionDays) + "d.";
+                    violations.push_back(row);
+                    slaViolations++;
+                }
+            }
+        }
+    }
+
+    std::map<std::string, double> allocatedByCategory;
+    for (std::size_t i = 0; i < budgets.size(); ++i) {
+        allocatedByCategory[budgets[i].category] = budgets[i].amount;
+    }
+
+    std::map<std::string, double> actualByCategory;
+    for (std::size_t i = 0; i < scopedDocs.size(); ++i) {
+        const std::string status = toLowerCopy(scopedDocs[i].status);
+        if (status != "approved" && status != "published") {
+            continue;
+        }
+
+        actualByCategory[scopedDocs[i].budgetCategory] += scopedDocs[i].amount;
+    }
+
+    int budgetViolations = 0;
+    double totalAllocated = 0.0;
+    double totalActual = 0.0;
+
+    for (std::map<std::string, double>::const_iterator it = allocatedByCategory.begin(); it != allocatedByCategory.end(); ++it) {
+        totalAllocated += it->second;
+    }
+
+    for (std::map<std::string, double>::const_iterator it = actualByCategory.begin(); it != actualByCategory.end(); ++it) {
+        totalActual += it->second;
+
+        const double allocated = allocatedByCategory.find(it->first) != allocatedByCategory.end()
+            ? allocatedByCategory[it->first]
+            : 0.0;
+
+        if (it->second > allocated + 0.005) {
+            ComplianceViolationRow row;
+            row.type = "Budget Overspend";
+            row.docId = "N/A";
+
+            std::ostringstream detail;
+            detail << it->first << " actual=" << std::fixed << std::setprecision(2) << it->second
+                   << " exceeds allocated=" << allocated;
+            row.detail = detail.str();
+
+            violations.push_back(row);
+            budgetViolations++;
+        }
+    }
+
+    if (totalActual > totalAllocated + 0.005) {
+        ComplianceViolationRow row;
+        row.type = "Budget Overspend";
+        row.docId = "N/A";
+
+        std::ostringstream detail;
+        detail << "Overall actual=" << std::fixed << std::setprecision(2) << totalActual
+               << " exceeds allocated=" << totalAllocated;
+        row.detail = detail.str();
+
+        violations.push_back(row);
+        budgetViolations++;
+    }
+
+    std::vector<ComplianceCheckResult> checks;
+
+    ComplianceCheckResult c1;
+    c1.checkName = "Unanimous approvals enforced";
+    c1.passed = consensusViolations == 0;
+    c1.detail = std::to_string(finalizedDocs) + " finalized docs checked; violations=" + std::to_string(consensusViolations);
+    checks.push_back(c1);
+
+    ComplianceCheckResult c2;
+    c2.checkName = "Rejected docs not published";
+    c2.passed = publicationViolations == 0;
+    c2.detail = std::to_string(publishedDocs) + " published docs checked; violations=" + std::to_string(publicationViolations);
+    checks.push_back(c2);
+
+    ComplianceCheckResult c3;
+    c3.checkName = "Approval SLA compliance";
+    c3.passed = slaViolations == 0;
+    c3.detail = std::to_string(approvalRowsCheckedForSla) + " rows checked; violations=" + std::to_string(slaViolations);
+    checks.push_back(c3);
+
+    ComplianceCheckResult c4;
+    c4.checkName = "Budget balance maintained";
+    c4.passed = budgetViolations == 0;
+    c4.detail = "allocated=" + std::to_string(totalAllocated) + ", actual=" + std::to_string(totalActual) + ", violations=" + std::to_string(budgetViolations);
+    checks.push_back(c4);
+
+    int passedChecks = 0;
+    for (std::size_t i = 0; i < checks.size(); ++i) {
+        if (checks[i].passed) {
+            passedChecks++;
+        }
+    }
+
+    std::set<std::string> affectedDocs;
+    for (std::size_t i = 0; i < violations.size(); ++i) {
+        if (!violations[i].docId.empty() && violations[i].docId != "N/A") {
+            affectedDocs.insert(violations[i].docId);
+        }
+    }
+
+    ui::printKpiTiles({
+        std::make_pair("Checks passed", std::to_string(passedChecks) + "/" + std::to_string(checks.size())),
+        std::make_pair("Total violations", std::to_string(violations.size())),
+        std::make_pair("Affected documents", std::to_string(affectedDocs.size())),
+        std::make_pair("Compliance status", passedChecks == static_cast<int>(checks.size()) ? "PASS" : "REVIEW REQUIRED")
+    });
+
+    const std::vector<std::string> checkHeaders = {"Check", "Result", "Detail"};
+    const std::vector<int> checkWidths = ui::isCompactLayout() ? std::vector<int>{22, 8, 22}
+                                                                : std::vector<int>{34, 10, 40};
+    ui::printTableHeader(checkHeaders, checkWidths);
+    for (std::size_t i = 0; i < checks.size(); ++i) {
+        ui::printTableRow({checks[i].checkName,
+                           checks[i].passed ? "PASS" : "FAIL",
+                           checks[i].detail},
+                          checkWidths);
+    }
+    ui::printTableFooter(checkWidths);
+
+    if (!violations.empty()) {
+        std::sort(violations.begin(), violations.end(), [](const ComplianceViolationRow& left, const ComplianceViolationRow& right) {
+            if (left.type != right.type) {
+                return left.type < right.type;
+            }
+
+            if (left.docId != right.docId) {
+                return left.docId < right.docId;
+            }
+
+            return left.detail < right.detail;
+        });
+
+        std::cout << "\n" << ui::bold("Compliance Violations") << "\n";
+        const std::vector<std::string> violationHeaders = {"Type", "Doc ID", "Detail"};
+        const std::vector<int> violationWidths = ui::isCompactLayout() ? std::vector<int>{16, 10, 28}
+                                                                        : std::vector<int>{20, 12, 52};
+        ui::printTableHeader(violationHeaders, violationWidths);
+
+        std::vector<std::vector<std::string>> violationRows;
+        for (std::size_t i = 0; i < violations.size(); ++i) {
+            std::vector<std::string> row = {violations[i].type, violations[i].docId, violations[i].detail};
+            ui::printTableRow(row, violationWidths);
+            violationRows.push_back(row);
+        }
+        ui::printTableFooter(violationWidths);
+
+        if (violationRows.size() > static_cast<std::size_t>(ui::tablePageSize()) && promptPagedDetails("Compliance Violations")) {
+            clearInputBuffer();
+            runPagedTableView("COMPLIANCE VIOLATIONS - PAGED DETAIL",
+                              {"ADMIN", "ANALYTICS HUB", "COMPLIANCE", "PAGED DETAIL"},
+                              violationHeaders,
+                              violationWidths,
+                              violationRows);
+        }
+    } else {
+        std::cout << "\n" << ui::success("[+] No compliance violations detected in selected window.") << "\n";
+    }
+
+    logAuditAction("ANALYTICS_COMPLIANCE_AUDIT", window.label, admin.username);
     waitForEnter();
 }
 
@@ -1391,7 +2119,9 @@ void runAnalyticsHub(const Admin& admin) {
         std::cout << "  " << ui::info("[3]") << " Audit Activity Timeline/Frequency\n";
         std::cout << "  " << ui::info("[4]") << " Integrity Status Cards\n";
         std::cout << "  " << ui::info("[5]") << " Executive Snapshot\n";
-        std::cout << "  " << ui::info("[6]") << " Toggle Layout Mode (Current: " << ui::layoutModeLabel() << ")\n";
+        std::cout << "  " << ui::info("[6]") << " Department Workload Report\n";
+        std::cout << "  " << ui::info("[7]") << " Compliance Audit Report\n";
+        std::cout << "  " << ui::info("[8]") << " Toggle Layout Mode (Current: " << ui::layoutModeLabel() << ")\n";
         std::cout << "  " << ui::info("[0]") << " Back to Overview\n";
         std::cout << ui::muted("--------------------------------------------------------------") << "\n";
         std::cout << "  Enter your choice: ";
@@ -1409,7 +2139,7 @@ void runAnalyticsHub(const Admin& admin) {
             break;
         }
 
-        if (choice == 6) {
+        if (choice == 8) {
             ui::toggleCompactLayout();
             logAuditAction("ANALYTICS_LAYOUT_TOGGLE", ui::layoutModeLabel(), admin.username);
             continue;
@@ -1435,6 +2165,12 @@ void runAnalyticsHub(const Admin& admin) {
                 break;
             case 5:
                 renderExecutiveSnapshot(admin, window);
+                break;
+            case 6:
+                renderDepartmentWorkload(admin, window);
+                break;
+            case 7:
+                renderComplianceAuditReport(admin, window);
                 break;
             default:
                 std::cout << "\n" << ui::warning("[!] Invalid menu choice.") << "\n";

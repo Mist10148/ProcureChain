@@ -64,10 +64,12 @@ Evidence notes:
 - [x] Upload success output shows SHA-256 hash.
 - [x] View all documents (admin).
 - [x] Search document by ID.
+- [x] Search document by ID or keyword.
 - [x] Search screen shows recent/available document hints before input.
 - [x] Search supports guided matching (exact ID, ID prefix, title/category keyword).
+- [x] Search supports description and tag keyword ranking.
 - [x] View published documents (citizen only view).
-- [x] Citizen can search published document by ID and inspect full detail panel.
+- [x] Citizen can search published document by ID or keyword and inspect full detail panel.
 - [x] Citizen hash verification compares stored vs recomputed hash and checks blockchain presence.
 - [x] Manual status update path is available (role-gated).
 
@@ -76,6 +78,7 @@ Evidence notes:
 - [x] budgetCategory field stored in document rows.
 - [x] amount field stored in document rows.
 - [x] description field stored in document rows.
+- [x] tags field stored in document rows.
 - [x] file metadata stored (fileName, fileType, filePath, fileSizeBytes).
 - [x] SHA-256 hash value stored and used for verification workflow.
 - [x] Budget input is handled in Budget Workspace, not in document upload prompts.
@@ -87,6 +90,7 @@ Evidence notes:
 - [x] Filter by exact date.
 - [x] Filter by date range.
 - [x] Filter by category text.
+- [x] Filter by tags text.
 - [x] Filter by department text.
 - [x] Filter by uploader text.
 - [x] Combined criteria query works.
@@ -101,6 +105,8 @@ Evidence notes:
 - [x] Approval rows are auto-generated for required approver roles.
 - [x] Approval role routing is category-rule-driven with DEFAULT fallback.
 - [x] Pending approvals can be listed.
+- [x] Request-for-comment thread is available for pending approvals.
+- [x] Approval comments persist in approval_comments.txt.
 - [x] Approve action updates approval row and document state.
 - [x] Reject action updates approval row and document state.
 - [x] Any rejection enforces rejected document state.
@@ -125,6 +131,7 @@ Evidence notes:
 
 - [x] Admin command center routes to overview dashboard.
 - [x] Analytics hub provides approval/budget/audit/integrity/executive screens.
+- [x] Analytics hub provides Department Workload and Compliance Audit reports.
 - [x] Layout mode toggle (compact/full) works from overview and analytics hub.
 - [x] Analytics charts and bars adapt to selected layout mode.
 - [x] Optional paged detail table flow is available from analytics reports.

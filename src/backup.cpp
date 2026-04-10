@@ -19,7 +19,7 @@ const std::string BACKUP_DIR_NAME = "backups";
 
 const std::vector<std::string> DATA_FILES = {
     "users.txt", "admins.txt", "documents.txt", "approvals.txt",
-    "approval_rules.txt", "budgets.txt", "budget_entries.txt",
+    "approval_rules.txt", "approval_comments.txt", "budgets.txt", "budget_entries.txt",
     "budget_approvals.txt", "audit_log.txt", "password_flags.txt",
     "delegations.txt"
 };

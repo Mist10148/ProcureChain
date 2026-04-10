@@ -18,13 +18,17 @@ It is designed for classroom-level procedural programming and focuses on:
 - Admin Command Center with grouped workspaces and analytics hub
 - Compact and full analytics layout modes with optional paged detail tables
 - Guided search/filter prompts with available-value suggestions and recent record previews
+- Document tagging with normalized comma-separated tags
+- Ranked full-text search by ID/title/description/category/tags (admin and citizen published view)
 - SHA-256 password hashing at rest for all stored credentials
 - Optional approval/rejection notes with display in document detail panels
+- Request-for-comment thread for pending approvals (including delegated pending access)
 - Notification inbox for pending actions on login
 - In-app role-specific help system
 - Data backup and restore (Super Admin)
 - Forced password change after Super Admin reset
 - Delegated approval authority with date-range control
+- Department workload analytics report and compliance audit report in Analytics Hub
 
 The system stores records in text files under the data folder and keeps the implementation modular through separate source files per feature.
 
@@ -57,10 +61,11 @@ High-level process:
 - SHA-256 password hashing at rest (plaintext passwords auto-migrated on startup)
 - Forced password change after Super Admin password reset
 - Published document viewing for citizens
-- Citizen published document search by document ID
+- Citizen published document search by document ID or keyword
 - Citizen published document hash verification (stored hash, recomputed hash, blockchain presence)
 - Admin document upload, search, full listing, and status update
 - Document upload requires title, category, and description
+- Document upload supports optional comma-separated tags
 - Source file upload/import is optional (pdf/docx/csv/txt); metadata-only upload is supported
 - Amendment upload supports rejected-document revision flow (v1 to v2 lineage)
 - Category input uses guided choices with an Other option for custom categories
@@ -69,9 +74,11 @@ High-level process:
 - Uploaded document file is copied to data/documents and SHA-256 hash is displayed after success
 - Search assistance with recent document previews, ID/prefix/title matching, and guided selection
 - Advanced document filters by status/date/category/department/uploader
+- Advanced document filters by status/date/category/tags/department/uploader
 - Filter suggestion hints (status/category/department/uploader/date) shown before input
 - Approval routing uses configurable per-category rules with a DEFAULT fallback
 - Approval decision screen shows the current approver's pending document list before input
+- Request-for-comment thread for pending approvals with persistent comment history
 - Publication gate for documents: rejected if any reject, published only with unanimous non-rejected decisions
 - Super Admin escalation queue lists overdue pending approvals based on rule SLA
 - Approval analytics dashboard
@@ -82,6 +89,8 @@ High-level process:
   - per-role SLA bottlenecks (pending load, overdue count, average age, worst overdue)
 - Admin overview dashboard and analytics hub
   - approval funnel and throughput trends
+  - department workload report
+  - compliance audit report
   - budget utilization comparisons
   - audit activity timeline and action frequency
   - integrity status cards and risk indicators
@@ -164,7 +173,7 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 
 ### data/documents.txt
 
-  docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId
+  docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags
 
 Note: budgetCategory and amount are retained for compatibility/analytics, but budget inputs are managed in Budget Workspace.
 
@@ -175,6 +184,10 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 ### data/approvals.txt
 
     docID|approverUsername|role|status|createdAt|decidedAt|note
+
+### data/approval_comments.txt
+
+  docID|commenterUsername|commenterRole|createdAt|commentText
 
 ### data/budgets.txt
 
@@ -221,7 +234,7 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 - View Published Documents
 - View Procurement Budgets
 - View Audit Trail (with export)
-- Search Published Document by ID
+- Search Published Document (ID or Keyword)
 - Verify Published Document Hash
 - Notification Inbox
 - Help
@@ -237,7 +250,7 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 - Documents Workspace
   - upload, view, search, filter, manual status update
 - Approvals Workspace
-  - view pending, approve, reject, detailed approval analytics
+  - view pending, request-for-comment thread, approve, reject, detailed approval analytics
   - escalation queue for overdue pending approvals (Super Admin)
   - approval rule management (Super Admin)
   - delegation management (Budget Officer, Municipal Administrator)
@@ -264,6 +277,7 @@ Admins can filter with combined criteria:
 - exact upload date
 - upload date range
 - category contains
+- tags contains
 - department contains
 - uploader contains
 
@@ -287,6 +301,8 @@ Dashboard computes and displays:
 The analytics hub provides dashboard screens for:
 
 - approval funnel and throughput trends
+- department workload report
+- compliance audit report
 - budget utilization comparisons
 - audit activity timeline and action frequency
 - integrity status cards and risk indicators

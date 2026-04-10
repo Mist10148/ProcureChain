@@ -150,7 +150,7 @@ void printCitizenMenu(const User& citizen) {
     std::cout << "  " << ui::info("[1]") << " View Published Documents\n";
     std::cout << "  " << ui::info("[2]") << " View Procurement Budgets\n";
     std::cout << "  " << ui::info("[3]") << " View Audit Trail\n";
-    std::cout << "  " << ui::info("[4]") << " Search Published Document by ID\n";
+    std::cout << "  " << ui::info("[4]") << " Search Published Document (ID or Keyword)\n";
     std::cout << "  " << ui::info("[5]") << " Verify Published Document Hash\n";
     std::cout << "  " << ui::info("[6]") << " Notification Inbox\n";
     std::cout << "  " << ui::info("[7]") << " Help\n";
@@ -178,7 +178,7 @@ void runDocumentsWorkspace(const Admin& admin) {
     actionCodes.push_back(2);
     actionLabels.push_back("View All Documents");
     actionCodes.push_back(3);
-    actionLabels.push_back("Search Document by ID");
+    actionLabels.push_back("Search Document (ID or Keyword)");
     actionCodes.push_back(4);
     actionLabels.push_back("Advanced Document Filters");
     actionCodes.push_back(6);
@@ -240,6 +240,8 @@ void runApprovalsWorkspace(const Admin& admin) {
     if (canViewPendingApprovals(admin)) {
         actionCodes.push_back(1);
         actionLabels.push_back("View Pending Approvals");
+        actionCodes.push_back(8);
+        actionLabels.push_back("Request-for-Comment Thread");
     }
     if (canApproveOrReject(admin)) {
         actionCodes.push_back(2);
@@ -311,6 +313,9 @@ void runApprovalsWorkspace(const Admin& admin) {
                 break;
             case 7:
                 runDelegationManagement(admin);
+                break;
+            case 8:
+                addApprovalCommentAsAdmin(admin);
                 break;
             default:
                 break;

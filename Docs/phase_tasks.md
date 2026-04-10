@@ -72,9 +72,11 @@ Completed
 - category selection includes guided choices with Other for custom category input
 - source file import accepts pdf/docx/csv/txt and copies into local document storage
 - SHA-256 hash is computed from imported file content and stored with metadata
+- upload supports optional comma-separated tags with normalized storage
 - full admin listing and ID search
+- ranked admin search supports ID/title/description/category/tag keywords
 - citizen published-only viewing
-- citizen published-document search by ID with detail panel and approval-chain visibility
+- citizen published-document search by ID or keyword with ranked result suggestions
 - metadata persistence using pipe-delimited format
 
 ### Status
@@ -93,6 +95,8 @@ Completed
 
 - request generation now uses category-based approval rules with DEFAULT fallback
 - per-approver status persistence in approvals.txt
+- request-for-comment thread persistence in approval_comments.txt
+- comment thread action for pending approvals (direct/delegated access)
 - reject-any rule and unanimous publish rule
 - pending state handling while decisions are incomplete
 - publication is withheld until unanimous non-rejected decisions are completed
@@ -163,6 +167,7 @@ Implemented criteria:
 - exact upload date
 - date range
 - category contains
+- tags contains
 - department contains
 - uploader contains
 
@@ -256,6 +261,26 @@ Implemented behavior:
 - blockchain append returns chain index
 - audit rows store optional chain index
 - audit view displays chain index when present
+
+### Status
+
+Completed
+
+## Phase 10: Search, Discussion, and Compliance Extensions
+
+### Objectives
+
+- improve retrieval quality using ranked keyword search
+- add pre-decision discussion channel for approvers
+- expand analytics with department and compliance governance lenses
+
+### Implemented
+
+- ranked full-text search scoring across ID/title/description/category/tags
+- citizen and admin search prompts updated to "ID or Keyword"
+- request-for-comment thread action in Approvals Workspace
+- persistent approval comments in data/approval_comments.txt
+- analytics hub additions: Department Workload Report and Compliance Audit Report
 
 ### Status
 

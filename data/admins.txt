@@ -1,6 +1,6 @@
 adminID|fullName|username|password|role|status|updatedAt
-A001|System Admin Test|admin_test|admin1234|Super Admin|active|2026-04-10 08:00:00
-A002|Procurement Officer Demo|proc_admin|proc1234|Procurement Officer|active|2026-04-10 08:00:00
-A003|Budget Officer Demo|budget_admin|budget1234|Budget Officer|active|2026-04-10 08:00:00
-A004|Municipal Admin Demo|mun_admin|mun1234|Municipal Administrator|active|2026-04-10 08:00:00
-A005|Compliance Officer Demo|mist|letmeinpls|Procurement Officer|active|2026-04-10 08:00:00
+A001|System Admin Test|admin_test|ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270|Super Admin|active|2026-04-10 08:00:00
+A002|Procurement Officer Demo|proc_admin|0ac06cd0e42cebba172929d33151ad8809b6105e647280dc873c51a0f1790f53|Procurement Officer|active|2026-04-10 08:00:00
+A003|Budget Officer Demo|budget_admin|bdde75ce2401387a495356bcf820c53c414e9744e003d2e3a46ddb4bd5c6b2df|Budget Officer|active|2026-04-10 08:00:00
+A004|Municipal Admin Demo|mun_admin|f266c463b39f96199670b8eee55219f9cb2f8bf6e4c9631b3459e0c34924e047|Municipal Administrator|active|2026-04-10 08:00:00
+A005|Compliance Officer Demo|mist|568b708d1a14fab824625a3a7db593f4ac147f37864c9bc3f7d1f8dec2246f62|Procurement Officer|active|2026-04-10 08:00:00

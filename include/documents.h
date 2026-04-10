@@ -8,6 +8,7 @@ struct Document {
     std::string docId;
     std::string title;
     std::string category;
+    std::string tags;
     std::string description;
     std::string department;
     std::string dateUploaded;

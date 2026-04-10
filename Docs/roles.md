@@ -31,7 +31,7 @@ Citizen accounts are transparency users (read-only for governance data).
 ### Allowed Actions
 
 - View published procurement documents
-- Search published document by ID
+- Search published document by ID or keyword
 - Verify published document hash and blockchain registration
 - View procurement budgets
 - View audit trail
@@ -67,6 +67,7 @@ Super Admin is the governance and platform-control role.
 - Admin Overview Dashboard and Analytics Hub
 - Documents Workspace (including upload and manual status override)
 - Approvals Workspace (view pending and analytics)
+- Approvals Workspace request-for-comment thread
 - Approvals Workspace escalation queue (overdue SLA items)
 - Approvals Workspace rule management (category roles and SLA days)
 - Budget Workspace (submit entries and monitor publication after consensus)
@@ -105,8 +106,8 @@ Procurement Officer is the document preparation and submission role.
 
 - Upload documents
 - View all documents
-- Search documents (with recent previews and suggestions)
-- Use advanced document filters (with available-value suggestions)
+- Search documents by ID or keyword (with ranked suggestions)
+- Use advanced document filters including tags (with available-value suggestions)
 - View budget allocations and variance report
 - View audit trail, integrity snapshot, and blockchain explorer
 
@@ -124,12 +125,13 @@ Procurement Officer is the document preparation and submission role.
 1. Login as Procurement Officer.
 2. Upload document with title, category, and description.
 3. Pick category from guided options (or use Other for custom value).
-4. Provide file path only when available (optional upload) and confirm SHA-256 output.
-5. If revising a rejected record, enter rejected base Document ID to create amendment version (v2+).
-6. Confirm approval requests were generated automatically.
-6. Use search/filter tools to monitor document progress.
-7. Review audit trail if needed.
-8. Logout.
+4. Optionally add comma-separated tags for discoverability.
+5. Provide file path only when available (optional upload) and confirm SHA-256 output.
+6. If revising a rejected record, enter rejected base Document ID to create amendment version (v2+).
+7. Confirm approval requests were generated automatically.
+8. Use search/filter tools to monitor document progress.
+9. Review audit trail if needed.
+10. Logout.
 
 ## Budget Officer SOP
 
@@ -140,6 +142,7 @@ Budget Officer is an approver and budget-domain operator.
 ### Allowed Actions
 
 - View pending approvals
+- Use request-for-comment thread on pending approvals
 - Approve or reject assigned documents
 - View approval analytics dashboard
 - View budget allocations and variance report
@@ -176,6 +179,7 @@ Municipal Administrator is a second required approver role.
 ### Allowed Actions
 
 - View pending approvals
+- Use request-for-comment thread on pending approvals
 - Approve or reject assigned documents
 - View approval analytics dashboard
 - View documents (list/search/filter)
@@ -207,9 +211,10 @@ Municipal Administrator is a second required approver role.
 1. Procurement Officer uploads a document.
 2. System creates pending approval rows using category-based rules in approval_rules.txt.
 3. If no category rule is found, DEFAULT rule is applied.
-4. Each approver can only decide their own pending entries.
-5. If any required approver rejects, document becomes rejected.
-6. If all required decisions are non-rejected, document becomes published.
+4. Approvers can add request-for-comment entries before decisioning.
+5. Each approver can only decide their own pending entries.
+6. If any required approver rejects, document becomes rejected.
+7. If all required decisions are non-rejected, document becomes published.
 
 ## Amendment Lineage SOP
 
@@ -268,6 +273,13 @@ Municipal Administrator is a second required approver role.
 - Notes are stored with the approval record and displayed in the document detail approval chain.
 - Notes from delegated decisions automatically include delegation attribution.
 
+## Request-for-Comment SOP
+
+- Approver opens Approvals Workspace and selects Request-for-Comment Thread.
+- Approver picks a pending document ID they can act on (directly or via delegation).
+- Approver reviews existing thread and adds a new comment.
+- Comment is saved to approval_comments.txt and audit-logged.
+
 ## Audit and Integrity SOP
 
 - Audit trail is append-based and includes chain index for blockchain-backed actions.
@@ -283,6 +295,7 @@ Municipal Administrator is a second required approver role.
 - Inactive accounts are blocked at login.
 - Menus are dynamic by role; inaccessible actions are hidden in normal flows.
 - Search-heavy screens now show recent or available values before input to reduce invalid entries.
+- Search supports ranked keyword matches using ID/title/description/category/tags.
 - Notification inbox is shown on login and accessible as a menu option.
 - In-app help is available from both citizen and admin dashboards.
 - Hashing now uses SHA-256, but ProcureChain remains a classroom file-based simulation.

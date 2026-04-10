@@ -29,6 +29,7 @@ void viewApprovalAnalyticsDashboard(const Admin& admin);
 void viewEscalationQueueForAdmin(const Admin& admin);
 void approveDocumentAsAdmin(const Admin& admin);
 void rejectDocumentAsAdmin(const Admin& admin);
+void addApprovalCommentAsAdmin(const Admin& admin);
 void manageApprovalRulesForAdmin(const Admin& admin);
 
 #endif

@@ -1,0 +1,1 @@
+docID|commenterUsername|commenterRole|createdAt|commentText
