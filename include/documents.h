@@ -20,6 +20,8 @@ struct Document {
     long long fileSizeBytes;
     std::string budgetCategory;
     double amount;
+    int versionNumber;
+    std::string previousDocId;
 };
 
 std::string generateNextDocumentId();

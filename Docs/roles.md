@@ -4,7 +4,7 @@
 
 This document defines who can do what in ProcureChain and the standard operating procedure (SOP) for each role.
 
-It reflects the current implementation as of 2026-04-09.
+It reflects the current implementation as of 2026-04-10.
 
 ## Access Model Summary
 
@@ -67,6 +67,8 @@ Super Admin is the governance and platform-control role.
 - Admin Overview Dashboard and Analytics Hub
 - Documents Workspace (including upload and manual status override)
 - Approvals Workspace (view pending and analytics)
+- Approvals Workspace escalation queue (overdue SLA items)
+- Approvals Workspace rule management (category roles and SLA days)
 - Budget Workspace (submit entries and monitor publication after consensus)
 - Audit and Integrity Workspace
   - View audit trail
@@ -89,7 +91,8 @@ Super Admin is the governance and platform-control role.
 2. Start from Overview Dashboard to inspect KPIs and alerts.
 3. Use Analytics Hub for deeper governance reporting.
 4. Use Audit and Integrity tools for trust checks.
-5. Use Account Administration for account lifecycle tasks.
+5. Use Approvals Workspace to monitor escalation queue and configure approval rules.
+6. Use Account Administration for account lifecycle tasks.
 6. Logout after completion.
 
 ## Procurement Officer SOP
@@ -122,7 +125,8 @@ Procurement Officer is the document preparation and submission role.
 2. Upload document with title, category, and description.
 3. Pick category from guided options (or use Other for custom value).
 4. Provide file path only when available (optional upload) and confirm SHA-256 output.
-5. Confirm approval requests were generated automatically.
+5. If revising a rejected record, enter rejected base Document ID to create amendment version (v2+).
+6. Confirm approval requests were generated automatically.
 6. Use search/filter tools to monitor document progress.
 7. Review audit trail if needed.
 8. Logout.
@@ -201,12 +205,19 @@ Municipal Administrator is a second required approver role.
 ## Approval Protocol SOP (Cross-Role)
 
 1. Procurement Officer uploads a document.
-2. System creates pending approval rows for required approver roles:
-   - Budget Officer
-   - Municipal Administrator
-3. Each approver can only decide their own pending entries.
-4. If any required approver rejects, document becomes rejected.
-5. If all required decisions are non-rejected, document becomes published.
+2. System creates pending approval rows using category-based rules in approval_rules.txt.
+3. If no category rule is found, DEFAULT rule is applied.
+4. Each approver can only decide their own pending entries.
+5. If any required approver rejects, document becomes rejected.
+6. If all required decisions are non-rejected, document becomes published.
+
+## Amendment Lineage SOP
+
+1. Locate rejected base document ID.
+2. Upload revised document and provide base rejected ID when prompted.
+3. System saves new row with incremented versionNumber and previousDocId reference.
+4. Approvals are regenerated for the amended version under current category rules.
+5. Search detail panels show full version lineage.
 
 ## Budget Consensus SOP (Cross-Role)
 

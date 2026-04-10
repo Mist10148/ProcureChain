@@ -1,6 +1,6 @@
 # Context for ProcureChain Collaborators
 
-## Live Status (2026-04-09)
+## Live Status (2026-04-10)
 
 Current implemented baseline:
 
@@ -12,6 +12,7 @@ Current implemented baseline:
 - codebase is modularized by feature using src and include modules
 - admin dashboard actions enforce role permissions (Procurement/Budget/Municipal/Super Admin)
 - approval request generation is restricted to designated approver roles
+- approval request generation is category-rule-driven with DEFAULT fallback
 - key actions append blockchain transactions (upload/approve/reject/status/budget updates)
 - startup seeding initializes demo admin accounts, approvals, and blockchain starter rows when needed
 - role-based regression scenarios have been executed and validated through data and audit outputs
@@ -24,6 +25,9 @@ Newly implemented governance/reporting slice:
 - budget variance report (allocated vs actual, variance, utilization)
 - account lifecycle admin controls (deactivate/reactivate/reset password)
 - audit-to-blockchain linking via chain index
+- super-admin escalation queue for overdue approvals
+- approval rule management with per-category SLA day thresholds
+- document amendment lineage (versionNumber + previousDocId)
 
 Latest integrity and consensus implementation updates:
 
@@ -151,6 +155,8 @@ Document fields currently stored:
 - file size bytes
 - budget category
 - amount
+- version number
+- previous document ID (for amendment lineage)
 
 Input behavior note:
 
@@ -176,6 +182,7 @@ Publication requires decisions from required approver roles.
 Behavior:
 
 - document upload generates pending approval rows
+- required approval roles are selected from category rules (or DEFAULT fallback)
 - one rejection marks document rejected
 - all required decisions without rejection publishes document
 - pending decisions keep document pending_approval
@@ -192,6 +199,9 @@ Analytics dashboard computes:
 - rejection rate
 - average decision time (rows with complete timestamps)
 - throughput chart by role
+- overdue pending count based on per-category SLA days
+- pending SLA compliance rate
+- role bottleneck table (pending, overdue, average age, worst overdue)
 
 ### 7. Budget Viewing and Variance
 
@@ -284,7 +294,15 @@ Stores procurement document metadata and budget mapping.
 
 Format:
 
-    docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
+    docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId
+
+### approval_rules.txt
+
+Stores per-category approval routing and SLA threshold.
+
+Format:
+
+    category|requiredRoles|maxDecisionDays
 
 ### approvals.txt
 

@@ -9,6 +9,7 @@ It is designed for classroom-level procedural programming and focuses on:
 - Procurement document lifecycle tracking
 - File-import-backed procurement document registry (pdf, docx, csv, txt)
 - Multi-role approval workflow
+- Category-based approval rule engine with default fallback
 - Budget consensus workflow and published budget projection
 - Audit trail logging and CSV export
 - Simulated blockchain consistency checks
@@ -28,7 +29,7 @@ High-level process:
 
 1. A procurement admin uploads a document with title, category, description, and an optional source file path.
 2. Category is selected from guided choices, with Other for custom input.
-3. Approval requests are created for required approver roles.
+3. Approval requests are created from category-based approval rules.
 4. Approvers approve or reject.
 5. Document is published only when unanimous required approvals are completed.
 6. Citizens can view published documents.
@@ -52,6 +53,7 @@ High-level process:
 - Admin document upload, search, full listing, and status update
 - Document upload requires title, category, and description
 - Source file upload/import is optional (pdf/docx/csv/txt); metadata-only upload is supported
+- Amendment upload supports rejected-document revision flow (v1 to v2 lineage)
 - Category input uses guided choices with an Other option for custom categories
 - Document input no longer collects budget allocation fields
 - Allowed import extensions: pdf, docx, csv, txt
@@ -59,13 +61,16 @@ High-level process:
 - Search assistance with recent document previews, ID/prefix/title matching, and guided selection
 - Advanced document filters by status/date/category/department/uploader
 - Filter suggestion hints (status/category/department/uploader/date) shown before input
-- Approval routing for Budget Officer and Municipal Administrator
+- Approval routing uses configurable per-category rules with a DEFAULT fallback
 - Approval decision screen shows the current approver's pending document list before input
 - Publication gate for documents: rejected if any reject, published only with unanimous non-rejected decisions
+- Super Admin escalation queue lists overdue pending approvals based on rule SLA
 - Approval analytics dashboard
   - rejection rate
   - average decision time
   - throughput by role
+  - overdue pending count and pending SLA compliance
+  - per-role SLA bottlenecks (pending load, overdue count, average age, worst overdue)
 - Admin overview dashboard and analytics hub
   - approval funnel and throughput trends
   - budget utilization comparisons
@@ -145,9 +150,13 @@ You can also create new citizen and admin accounts from the Sign Up menu.
 
 ### data/documents.txt
 
-  docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
+  docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId
 
 Note: budgetCategory and amount are retained for compatibility/analytics, but budget inputs are managed in Budget Workspace.
+
+### data/approval_rules.txt
+
+    category|requiredRoles|maxDecisionDays
 
 ### data/approvals.txt
 
@@ -205,6 +214,8 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
   - upload, view, search, filter, manual status update
 - Approvals Workspace
   - view pending, approve, reject, detailed approval analytics
+  - escalation queue for overdue pending approvals (Super Admin)
+  - approval rule management (Super Admin)
 - Budget Workspace
   - view published allocations, submit budget entries, approve/reject budget entries, variance report
 - Audit and Integrity Workspace
@@ -239,6 +250,9 @@ Dashboard computes and displays:
 - rejection rate
 - average decision hours (rows with complete timing)
 - throughput chart by approver role
+- overdue pending approvals based on category rule SLA days
+- pending SLA compliance percentage
+- per-role bottleneck table (pending, overdue, average age, worst overdue)
 
 ### Analytics Hub Views
 

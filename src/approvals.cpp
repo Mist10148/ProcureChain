@@ -8,6 +8,7 @@
 
 #include <ctime>
 #include <cctype>
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -25,6 +26,26 @@ const std::string APPROVAL_RULES_FILE_PATH_PRIMARY = "data/approval_rules.txt";
 const std::string APPROVAL_RULES_FILE_PATH_FALLBACK = "../data/approval_rules.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
+const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
+const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
+
+struct DocumentContext {
+    std::string title;
+    std::string category;
+    std::string status;
+};
+
+struct PendingApprovalSlaRow {
+    std::string docId;
+    std::string title;
+    std::string category;
+    std::string approverUsername;
+    std::string role;
+    std::string createdAt;
+    int pendingDays;
+    int slaDays;
+    int overdueDays;
+};
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     // Constant-time path fallback: try primary, then fallback.
@@ -377,6 +398,109 @@ bool parseTimestamp(const std::string& text, std::time_t& outTime) {
     return outTime != static_cast<std::time_t>(-1);
 }
 
+std::string shortenText(const std::string& value, std::size_t maxLen) {
+    if (value.size() <= maxLen) {
+        return value;
+    }
+
+    if (maxLen <= 3) {
+        return value.substr(0, maxLen);
+    }
+
+    return value.substr(0, maxLen - 3) + "...";
+}
+
+bool loadDocumentContexts(std::map<std::string, DocumentContext>& rows) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    rows.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.size() < 3) {
+            continue;
+        }
+
+        DocumentContext row;
+        row.title = tokens.size() > 1 ? tokens[1] : "";
+        row.category = tokens.size() > 2 ? tokens[2] : "";
+        row.status = tokens.size() > 7 ? tokens[7] : "pending_approval";
+        rows[tokens[0]] = row;
+    }
+
+    return true;
+}
+
+int computePendingDaysFromCreatedAt(const std::string& createdAt) {
+    std::time_t createdTime;
+    if (!parseTimestamp(createdAt, createdTime)) {
+        return 0;
+    }
+
+    const std::time_t now = std::time(NULL);
+    const double elapsedSeconds = std::difftime(now, createdTime);
+    if (elapsedSeconds <= 0.0) {
+        return 0;
+    }
+
+    return static_cast<int>(elapsedSeconds / (24.0 * 3600.0));
+}
+
+std::vector<PendingApprovalSlaRow> buildPendingSlaRows(const std::vector<Approval>& approvals) {
+    std::vector<PendingApprovalSlaRow> rows;
+    std::map<std::string, DocumentContext> docById;
+    loadDocumentContexts(docById);
+
+    for (std::size_t i = 0; i < approvals.size(); ++i) {
+        if (toLowerCopy(approvals[i].status) != "pending") {
+            continue;
+        }
+
+        PendingApprovalSlaRow row;
+        row.docId = approvals[i].docId;
+        row.approverUsername = approvals[i].approverUsername;
+        row.role = approvals[i].role;
+        row.createdAt = approvals[i].createdAt;
+
+        const std::map<std::string, DocumentContext>::const_iterator found = docById.find(approvals[i].docId);
+        if (found != docById.end()) {
+            row.title = found->second.title;
+            row.category = found->second.category;
+        } else {
+            row.title = "(unknown)";
+            row.category = "DEFAULT";
+        }
+
+        const ApprovalRule appliedRule = resolveRuleForCategory(row.category);
+        row.slaDays = appliedRule.maxDecisionDays;
+        row.pendingDays = computePendingDaysFromCreatedAt(row.createdAt);
+        row.overdueDays = row.pendingDays - row.slaDays;
+        if (row.overdueDays < 0) {
+            row.overdueDays = 0;
+        }
+
+        rows.push_back(row);
+    }
+
+    return rows;
+}
+
 void applyApprovalDecision(const Admin& admin, bool approve) {
     // Main decision flow:
     // 1) update exactly one pending row for this approver,
@@ -727,6 +851,32 @@ void viewApprovalAnalyticsDashboard(const Admin& admin) {
 
     const double rejectionRate = decidedCount > 0 ? (100.0 * rejectedCount / decidedCount) : 0.0;
     const double avgDecisionHours = timedRows > 0 ? (totalDecisionHours / timedRows) : 0.0;
+    const std::vector<PendingApprovalSlaRow> pendingSlaRows = buildPendingSlaRows(rows);
+
+    int overduePendingCount = 0;
+    std::map<std::string, int> pendingByRole;
+    std::map<std::string, int> overdueByRole;
+    std::map<std::string, int> worstOverdueByRole;
+    std::map<std::string, double> pendingAgeTotalsByRole;
+
+    for (std::size_t i = 0; i < pendingSlaRows.size(); ++i) {
+        pendingByRole[pendingSlaRows[i].role] += 1;
+        pendingAgeTotalsByRole[pendingSlaRows[i].role] += static_cast<double>(pendingSlaRows[i].pendingDays);
+
+        if (pendingSlaRows[i].overdueDays > 0) {
+            overduePendingCount++;
+            overdueByRole[pendingSlaRows[i].role] += 1;
+        }
+
+        if (pendingSlaRows[i].overdueDays > worstOverdueByRole[pendingSlaRows[i].role]) {
+            worstOverdueByRole[pendingSlaRows[i].role] = pendingSlaRows[i].overdueDays;
+        }
+    }
+
+    const double pendingSlaCompliance = pendingSlaRows.empty()
+                                            ? 100.0
+                                            : (100.0 * static_cast<double>(pendingSlaRows.size() - static_cast<std::size_t>(overduePendingCount)) /
+                                               static_cast<double>(pendingSlaRows.size()));
 
     const std::vector<std::string> headers = {"Metric", "Value"};
     const std::vector<int> widths = {30, 16};
@@ -738,6 +888,9 @@ void viewApprovalAnalyticsDashboard(const Admin& admin) {
     std::ostringstream avgOut;
     avgOut << std::fixed << std::setprecision(2) << avgDecisionHours << " hrs";
 
+    std::ostringstream pendingSlaOut;
+    pendingSlaOut << std::fixed << std::setprecision(1) << pendingSlaCompliance << "%";
+
     ui::printTableRow({"Total approval rows", std::to_string(rows.size())}, widths);
     ui::printTableRow({"Decided rows", std::to_string(decidedCount)}, widths);
     ui::printTableRow({"Pending rows", std::to_string(pendingCount)}, widths);
@@ -746,6 +899,8 @@ void viewApprovalAnalyticsDashboard(const Admin& admin) {
     ui::printTableRow({"Rejection rate", rejOut.str()}, widths);
     ui::printTableRow({"Average decision time", avgOut.str()}, widths);
     ui::printTableRow({"Rows with timing data", std::to_string(timedRows)}, widths);
+    ui::printTableRow({"Overdue pending approvals", std::to_string(overduePendingCount)}, widths);
+    ui::printTableRow({"Pending SLA compliance", pendingSlaOut.str()}, widths);
     ui::printTableFooter(widths);
 
     std::cout << "\n" << ui::bold("Throughput By Role") << "\n";
@@ -760,8 +915,148 @@ void viewApprovalAnalyticsDashboard(const Admin& admin) {
         ui::printBar(it->first, static_cast<double>(it->second), static_cast<double>(maxRoleCount), 24);
     }
 
+    if (!pendingByRole.empty()) {
+        std::cout << "\n" << ui::bold("SLA Bottlenecks By Role") << "\n";
+        const std::vector<std::string> slaHeaders = {"Role", "Pending", "Overdue", "Avg Age (d)", "Worst Overdue (d)"};
+        const std::vector<int> slaWidths = {26, 9, 9, 13, 18};
+        ui::printTableHeader(slaHeaders, slaWidths);
+
+        std::vector<std::string> orderedRoles;
+        for (std::map<std::string, int>::const_iterator it = pendingByRole.begin(); it != pendingByRole.end(); ++it) {
+            orderedRoles.push_back(it->first);
+        }
+
+        std::sort(orderedRoles.begin(), orderedRoles.end(), [&overdueByRole, &pendingByRole](const std::string& left, const std::string& right) {
+            const int leftOverdue = overdueByRole.find(left) != overdueByRole.end() ? overdueByRole.find(left)->second : 0;
+            const int rightOverdue = overdueByRole.find(right) != overdueByRole.end() ? overdueByRole.find(right)->second : 0;
+            if (leftOverdue != rightOverdue) {
+                return leftOverdue > rightOverdue;
+            }
+
+            const int leftPending = pendingByRole.find(left) != pendingByRole.end() ? pendingByRole.find(left)->second : 0;
+            const int rightPending = pendingByRole.find(right) != pendingByRole.end() ? pendingByRole.find(right)->second : 0;
+            if (leftPending != rightPending) {
+                return leftPending > rightPending;
+            }
+
+            return left < right;
+        });
+
+        int maxOverdueRoleCount = 1;
+        for (std::size_t i = 0; i < orderedRoles.size(); ++i) {
+            const int overdueCount = overdueByRole.find(orderedRoles[i]) != overdueByRole.end() ? overdueByRole[orderedRoles[i]] : 0;
+            if (overdueCount > maxOverdueRoleCount) {
+                maxOverdueRoleCount = overdueCount;
+            }
+
+            const int pendingCountByRole = pendingByRole[orderedRoles[i]];
+            const double averageAge = pendingCountByRole > 0 ? (pendingAgeTotalsByRole[orderedRoles[i]] / static_cast<double>(pendingCountByRole)) : 0.0;
+
+            std::ostringstream avgAgeOut;
+            avgAgeOut << std::fixed << std::setprecision(1) << averageAge;
+
+            ui::printTableRow({orderedRoles[i],
+                               std::to_string(pendingCountByRole),
+                               std::to_string(overdueCount),
+                               avgAgeOut.str(),
+                               std::to_string(worstOverdueByRole[orderedRoles[i]])},
+                              slaWidths);
+        }
+        ui::printTableFooter(slaWidths);
+
+        std::cout << "\n" << ui::bold("Overdue Queue By Role") << "\n";
+        for (std::size_t i = 0; i < orderedRoles.size(); ++i) {
+            const int overdueCount = overdueByRole.find(orderedRoles[i]) != overdueByRole.end() ? overdueByRole[orderedRoles[i]] : 0;
+            ui::printBar(orderedRoles[i], static_cast<double>(overdueCount), static_cast<double>(maxOverdueRoleCount), 24, "33");
+        }
+    }
+
     std::cout << "\n" << ui::muted("[i] Legacy rows without timestamps are excluded from average-time computation.") << "\n";
     logAuditAction("APPROVAL_ANALYTICS_VIEW", "MULTI", admin.username);
+    waitForEnter();
+}
+
+void viewEscalationQueueForAdmin(const Admin& admin) {
+    clearScreen();
+    ui::printSectionTitle("ESCALATION QUEUE (OVERDUE SLA)");
+
+    if (admin.role != "Super Admin") {
+        std::cout << ui::error("[!] Only Super Admin can access the escalation queue.") << "\n";
+        logAuditAction("APPROVAL_ESCALATION_ACCESS_DENIED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
+        std::cout << ui::error("[!] Unable to open approvals file.") << "\n";
+        logAuditAction("APPROVAL_ESCALATION_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    const std::vector<PendingApprovalSlaRow> pendingRows = buildPendingSlaRows(rows);
+    std::vector<PendingApprovalSlaRow> overdueRows;
+    std::map<std::string, int> overdueByRole;
+
+    for (std::size_t i = 0; i < pendingRows.size(); ++i) {
+        if (pendingRows[i].overdueDays <= 0) {
+            continue;
+        }
+
+        overdueRows.push_back(pendingRows[i]);
+        overdueByRole[pendingRows[i].role] += 1;
+    }
+
+    if (overdueRows.empty()) {
+        std::cout << "\n" << ui::success("[+] No overdue pending approvals. Escalation queue is clear.") << "\n";
+        logAuditAction("APPROVAL_ESCALATION_QUEUE_EMPTY", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::sort(overdueRows.begin(), overdueRows.end(), [](const PendingApprovalSlaRow& left, const PendingApprovalSlaRow& right) {
+        if (left.overdueDays != right.overdueDays) {
+            return left.overdueDays > right.overdueDays;
+        }
+
+        if (left.pendingDays != right.pendingDays) {
+            return left.pendingDays > right.pendingDays;
+        }
+
+        return left.docId < right.docId;
+    });
+
+    std::cout << "  " << ui::muted("Items are sorted by highest overdue days first.") << "\n\n";
+
+    const std::vector<std::string> headers = {"Doc ID", "Title", "Role", "Approver", "Pending", "SLA", "Overdue"};
+    const std::vector<int> widths = {10, 20, 22, 16, 8, 6, 8};
+    ui::printTableHeader(headers, widths);
+    for (std::size_t i = 0; i < overdueRows.size(); ++i) {
+        ui::printTableRow({overdueRows[i].docId,
+                           shortenText(overdueRows[i].title, 20),
+                           shortenText(overdueRows[i].role, 22),
+                           overdueRows[i].approverUsername,
+                           std::to_string(overdueRows[i].pendingDays),
+                           std::to_string(overdueRows[i].slaDays),
+                           std::to_string(overdueRows[i].overdueDays)},
+                          widths);
+    }
+    ui::printTableFooter(widths);
+
+    std::cout << "\n" << ui::bold("Escalation Load By Role") << "\n";
+    int maxOverdue = 1;
+    for (std::map<std::string, int>::const_iterator it = overdueByRole.begin(); it != overdueByRole.end(); ++it) {
+        if (it->second > maxOverdue) {
+            maxOverdue = it->second;
+        }
+    }
+
+    for (std::map<std::string, int>::const_iterator it = overdueByRole.begin(); it != overdueByRole.end(); ++it) {
+        ui::printBar(it->first, static_cast<double>(it->second), static_cast<double>(maxOverdue), 24, "33");
+    }
+
+    logAuditAction("APPROVAL_ESCALATION_QUEUE_VIEW", "MULTI", admin.username);
     waitForEnter();
 }
 

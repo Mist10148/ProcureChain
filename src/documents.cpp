@@ -154,6 +154,8 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
     doc.fileSizeBytes = 0;
     doc.budgetCategory = doc.category;
     doc.amount = 0.0;
+    doc.versionNumber = 1;
+    doc.previousDocId = "";
 
     if (tokens.size() >= 15) {
         doc.description = tokens[3];
@@ -173,6 +175,16 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
 
         std::stringstream amountIn(tokens[14]);
         amountIn >> doc.amount;
+
+        if (tokens.size() > 15) {
+            std::stringstream versionIn(tokens[15]);
+            versionIn >> doc.versionNumber;
+            if (versionIn.fail() || doc.versionNumber <= 0) {
+                doc.versionNumber = 1;
+            }
+        }
+
+        doc.previousDocId = tokens.size() > 16 ? tokens[16] : "";
     } else {
         // Legacy schema fallback.
         doc.department = tokens.size() > 3 ? tokens[3] : "";
@@ -189,6 +201,9 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
             std::stringstream amountIn(tokens[9]);
             amountIn >> doc.amount;
         }
+
+        doc.versionNumber = 1;
+        doc.previousDocId = "";
     }
 
     if (doc.budgetCategory.empty()) {
@@ -235,7 +250,9 @@ std::string serializeDocument(const Document& doc) {
         << doc.filePath << '|'
         << doc.fileSizeBytes << '|'
         << doc.budgetCategory << '|'
-        << std::fixed << std::setprecision(2) << doc.amount;
+        << std::fixed << std::setprecision(2) << doc.amount << '|'
+        << doc.versionNumber << '|'
+        << doc.previousDocId;
 
     return out.str();
 }
@@ -281,7 +298,7 @@ bool saveDocuments(const std::vector<Document>& docs) {
         return false;
     }
 
-    writer << "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount\n";
+    writer << "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId\n";
     for (size_t i = 0; i < docs.size(); ++i) {
         writer << serializeDocument(docs[i]) << '\n';
     }
@@ -434,6 +451,69 @@ std::vector<Document> findDocumentSuggestions(const std::vector<Document>& docs,
     });
 
     return suggestions;
+}
+
+std::string findRootDocumentId(const std::vector<Document>& docs, const Document& startDoc) {
+    std::string currentId = startDoc.docId;
+    std::string previousId = startDoc.previousDocId;
+    int guard = 0;
+
+    while (!previousId.empty() && guard < 1000) {
+        Document previous;
+        if (!findExactDocumentById(docs, previousId, previous)) {
+            break;
+        }
+
+        currentId = previous.docId;
+        previousId = previous.previousDocId;
+        guard++;
+    }
+
+    return currentId;
+}
+
+void printDocumentLineagePanel(const Document& doc, const std::vector<Document>& docs) {
+    const std::string rootId = findRootDocumentId(docs, doc);
+    std::vector<Document> lineage;
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (findRootDocumentId(docs, docs[i]) == rootId) {
+            lineage.push_back(docs[i]);
+        }
+    }
+
+    if (lineage.size() <= 1) {
+        return;
+    }
+
+    std::sort(lineage.begin(), lineage.end(), [](const Document& left, const Document& right) {
+        if (left.versionNumber != right.versionNumber) {
+            return left.versionNumber < right.versionNumber;
+        }
+
+        if (left.dateUploaded != right.dateUploaded) {
+            return left.dateUploaded < right.dateUploaded;
+        }
+
+        return left.docId < right.docId;
+    });
+
+    std::cout << "\n" << ui::bold("Version Lineage") << "\n";
+    const std::vector<std::string> headers = {"Doc ID", "Version", "Status", "Previous", "Date"};
+    const std::vector<int> widths = {10, 9, 16, 10, 10};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < lineage.size(); ++i) {
+        std::string previous = lineage[i].previousDocId.empty() ? "(root)" : lineage[i].previousDocId;
+        ui::printTableRow({lineage[i].docId,
+                           std::to_string(lineage[i].versionNumber),
+                           lineage[i].status,
+                           previous,
+                           lineage[i].dateUploaded},
+                          widths);
+    }
+
+    ui::printTableFooter(widths);
 }
 
 void printConsensusLegend() {
@@ -644,7 +724,7 @@ std::vector<ApprovalChainRow> loadApprovalChainRows(const std::string& docId) {
     return rows;
 }
 
-void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain) {
+void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, const std::vector<Document>* allDocs) {
     std::ostringstream sizeOut;
     sizeOut << doc.fileSizeBytes;
 
@@ -664,8 +744,14 @@ void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain) {
     ui::printTableRow({"File Type", doc.fileType.empty() ? "(legacy/no import)" : doc.fileType}, widths);
     ui::printTableRow({"File Path", doc.filePath.empty() ? "(legacy/no import)" : doc.filePath}, widths);
     ui::printTableRow({"File Size (bytes)", sizeOut.str()}, widths);
+    ui::printTableRow({"Version", std::to_string(doc.versionNumber)}, widths);
+    ui::printTableRow({"Previous Version", doc.previousDocId.empty() ? "(root)" : doc.previousDocId}, widths);
     ui::printTableRow({"Budget Link", "Managed in Budget Workspace (separate consensus flow)"}, widths);
     ui::printTableFooter(widths);
+
+    if (allDocs != NULL) {
+        printDocumentLineagePanel(doc, *allDocs);
+    }
 
     if (!includeApprovalChain) {
         return;
@@ -802,17 +888,18 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
     std::vector<std::string> headers;
 
     if (includeHashValue) {
-        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash"};
-        widths = {6, 22, 16, 16, 10, 12, 16, 12};
+        headers = {"ID", "Ver", "Title", "Category", "Department", "Date", "Uploader", "Status", "Hash"};
+        widths = {6, 5, 18, 14, 14, 10, 10, 14, 10};
     } else {
-        headers = {"ID", "Title", "Category", "Department", "Date", "Uploader", "Status"};
-        widths = {6, 24, 16, 16, 10, 12, 16};
+        headers = {"ID", "Ver", "Title", "Category", "Department", "Date", "Uploader", "Status"};
+        widths = {6, 5, 20, 14, 14, 10, 10, 14};
     }
 
     ui::printTableHeader(headers, widths);
     for (size_t i = 0; i < docs.size(); ++i) {
         if (includeHashValue) {
             ui::printTableRow({docs[i].docId,
+                               std::to_string(docs[i].versionNumber),
                                docs[i].title,
                                docs[i].category,
                                docs[i].department,
@@ -823,6 +910,7 @@ void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValu
                               widths);
         } else {
             ui::printTableRow({docs[i].docId,
+                               std::to_string(docs[i].versionNumber),
                                docs[i].title,
                                docs[i].category,
                                docs[i].department,
@@ -1029,7 +1117,7 @@ void searchPublishedDocumentForCitizen(const std::string& actor) {
         return;
     }
 
-    printDocumentDetailPanel(found, true);
+    printDocumentDetailPanel(found, true, &published);
     logAuditAction("SEARCH_PUBLISHED_DOC", found.docId, actor);
     waitForEnter();
 }
@@ -1046,6 +1134,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::cout << "  3) The system copies the file into data/documents using the new document ID.\n";
     std::cout << "  4) It computes SHA-256 from the file (or metadata if no file) and stores it.\n";
     std::cout << "  5) It auto-creates pending approvals based on configured category rules (with safe defaults).\n\n";
+    std::cout << "  6) Optional: link this upload as an amendment to a rejected document (v1 -> v2).\n\n";
 
     clearInputBuffer();
 
@@ -1072,6 +1161,39 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
         waitForEnter();
         return;
+    }
+
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
+        docs.clear();
+    }
+
+    std::cout << "Amend rejected Document ID (optional): ";
+    std::string amendmentDocId;
+    std::getline(std::cin, amendmentDocId);
+    amendmentDocId = trimCopy(amendmentDocId);
+
+    doc.versionNumber = 1;
+    doc.previousDocId = "";
+
+    if (!amendmentDocId.empty()) {
+        Document rejectedBase;
+        if (!findExactDocumentById(docs, amendmentDocId, rejectedBase)) {
+            std::cout << ui::error("[!] Rejected base document not found.") << "\n";
+            logAuditAction("UPLOAD_DOC_FAILED", amendmentDocId, admin.username);
+            waitForEnter();
+            return;
+        }
+
+        if (toLowerCopy(rejectedBase.status) != "rejected") {
+            std::cout << ui::error("[!] Amendment is allowed only for rejected documents.") << "\n";
+            logAuditAction("UPLOAD_DOC_FAILED", amendmentDocId, admin.username);
+            waitForEnter();
+            return;
+        }
+
+        doc.versionNumber = rejectedBase.versionNumber + 1;
+        doc.previousDocId = rejectedBase.docId;
     }
 
     // Budget allocation is handled in the dedicated budget workspace.
@@ -1122,11 +1244,6 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         doc.hashValue = computeDocumentRecordHash(doc);
     }
 
-    std::vector<Document> docs;
-    if (!loadDocuments(docs)) {
-        docs.clear();
-    }
-
     docs.push_back(doc);
     if (!saveDocuments(docs)) {
         std::cout << ui::error("[!] Unable to save document record.") << "\n";
@@ -1153,8 +1270,16 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     const int chainIndex = appendBlockchainAction("UPLOAD_HASH:" + doc.hashValue, doc.docId, admin.username);
 
     logAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex);
+    if (!doc.previousDocId.empty()) {
+        logAuditAction("DOC_AMENDMENT_CREATED", doc.docId + "<-" + doc.previousDocId, admin.username);
+    }
     std::cout << "\n" << ui::success("[+] Document uploaded successfully.") << "\n";
     std::cout << "  Document ID : " << doc.docId << "\n";
+    std::cout << "  Version     : v" << doc.versionNumber;
+    if (!doc.previousDocId.empty()) {
+        std::cout << " (amends " << doc.previousDocId << ")";
+    }
+    std::cout << "\n";
     if (doc.fileType == "manual") {
         std::cout << "  File Import : skipped (metadata-only upload)\n";
     } else {
@@ -1231,7 +1356,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 
     Document exact;
     if (findExactDocumentById(docs, query, exact)) {
-        printDocumentDetailPanel(exact, true);
+        printDocumentDetailPanel(exact, true, &docs);
         logAuditAction("SEARCH_DOC", exact.docId, admin.username);
         waitForEnter();
         return;
@@ -1260,7 +1385,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 
     Document selected;
     if (findExactDocumentById(suggestions, selectedDocId, selected)) {
-        printDocumentDetailPanel(selected, true);
+        printDocumentDetailPanel(selected, true, &docs);
         logAuditAction("SEARCH_DOC", selected.docId, admin.username);
         waitForEnter();
         return;

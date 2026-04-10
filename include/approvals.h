@@ -25,6 +25,7 @@ void ensureApprovalRulesDataFileExists();
 void createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category);
 void viewPendingApprovalsForAdmin(const Admin& admin);
 void viewApprovalAnalyticsDashboard(const Admin& admin);
+void viewEscalationQueueForAdmin(const Admin& admin);
 void approveDocumentAsAdmin(const Admin& admin);
 void rejectDocumentAsAdmin(const Admin& admin);
 void manageApprovalRulesForAdmin(const Admin& admin);

@@ -4,7 +4,7 @@
 ProcureChain: Municipal Procurement Document Tracking System  
 Platform: C++ CLI (Procedural)  
 Storage: TXT files in data folder  
-Last Updated: 2026-04-09
+Last Updated: 2026-04-10
 
 ## Purpose of this Document
 
@@ -91,11 +91,13 @@ Completed
 
 ### Implemented
 
-- request generation for Budget Officer and Municipal Administrator
+- request generation now uses category-based approval rules with DEFAULT fallback
 - per-approver status persistence in approvals.txt
 - reject-any rule and unanimous publish rule
 - pending state handling while decisions are incomplete
 - publication is withheld until unanimous non-rejected decisions are completed
+- super-admin approval rule management (add/update/delete)
+- super-admin escalation queue for overdue pending approvals
 
 ### Status
 
@@ -181,6 +183,9 @@ Implemented metrics:
 - rejection rate
 - average decision time (hours)
 - throughput by role
+- overdue pending approvals based on per-category SLA days
+- pending SLA compliance rate
+- per-role bottleneck table (pending, overdue, average age, worst overdue)
 
 Latest expansion under analytics hub:
 
@@ -251,6 +256,24 @@ Implemented behavior:
 - blockchain append returns chain index
 - audit rows store optional chain index
 - audit view displays chain index when present
+
+### Status
+
+Completed
+
+## Phase 6A: Amendment and Version Lineage
+
+### Objectives
+
+- support rejected-document amendment flow (v1 to v2)
+- preserve lineage between document versions
+
+### Implemented
+
+- upload supports optional rejected base document reference
+- amendment uploads increment versionNumber and store previousDocId
+- detail/search screens display version lineage history
+- backward-compatible parsing defaults old rows to version 1
 
 ### Status
 

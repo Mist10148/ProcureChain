@@ -9,7 +9,7 @@ Project Level: Beginner-friendly, procedural C++
 Course Scope: File handling, arrays, vectors, functions, and structs  
 Excluded Scope: OOP redesign, databases, web development, networking, external blockchain platforms
 
-### Current Build Status (2026-04-09)
+### Current Build Status (2026-04-10)
 
 Implemented in code right now:
 
@@ -21,6 +21,8 @@ Implemented in code right now:
 - advanced document filters (status, date/date range, category, department, uploader)
 - guided search/filter suggestions with recent available records shown before input
 - approvals module (request creation + pending view + approve/reject with document status transitions)
+- configurable approval rules (category -> required roles + max decision days)
+- super-admin escalation queue for overdue pending approvals
 - citizen published-document search and verification flow
 - analytics hub with approval, budget, audit, integrity, and executive views
 - compact/full layout mode toggle for analytics rendering
@@ -43,6 +45,7 @@ Implemented in code right now:
 - modular folder-aligned source/header split is in place
 - admin sub-role permission enforcement is active in dashboard actions
 - admin menus are role-visible (users only see actions/workspaces available to their role)
+- document amendment/version lineage (rejected base -> amended next version)
 
 Still pending against optional desired scope:
 
@@ -195,6 +198,8 @@ Acceptance Criteria:
 - Source file import accepts pdf/docx/csv/txt and copies files into local storage
 - Category selection uses guided choices with Other for custom category input
 - Document records store ID/title/category/description/department/date/uploader/status/hash/file metadata/budget fields
+- Document records include versionNumber and previousDocId for lineage tracking
+- Upload can be linked to a rejected base document to create amendment versions
 - Document upload does not collect budget allocation inputs; budget allocation is handled in Budget Workspace
 - Verification compares recomputed SHA-256 hash with stored hash
 - Citizen verification checks whether hash evidence is present in blockchain records
@@ -229,7 +234,8 @@ Documents become published only after all required approvers decide and none rej
 Acceptance Criteria:
 
 - Approval records stored per approver in approvals.txt
-- Required approver roles are Budget Officer and Municipal Administrator
+- Required approver roles are configured by category in approval_rules.txt
+- DEFAULT rule is used when a category-specific rule does not exist
 - Any rejection marks the document rejected
 - Complete non-rejected decisions publish document
 - Approve/reject actions update both approvals and document status
@@ -250,6 +256,9 @@ Acceptance Criteria:
 - Rejection rate is computed from decided rows
 - Average decision time is computed from rows with complete timestamps
 - Throughput by role displayed as chart
+- Overdue pending approvals are computed from rule maxDecisionDays
+- Pending SLA compliance percentage is displayed
+- Role bottleneck table shows pending count, overdue count, average pending age, and worst overdue days
 - Dashboard is reachable via overview-driven analytics hub navigation
 - Layout mode toggle updates chart and table density
 - Optional paged detail table can be opened for deeper row inspection
@@ -353,6 +362,8 @@ Acceptance Criteria:
   - upload, view, search, filter, manual status update
 - Approvals Workspace
   - pending approvals, approve/reject, detailed approval analytics
+  - escalation queue for overdue approvals (Super Admin)
+  - approval rule management (Super Admin)
 - Budget Workspace
   - view published allocations, submit budget entries, approve/reject budget entries, variance report
 - Audit and Integrity Workspace
@@ -377,7 +388,11 @@ userID|fullName|username|password|status|updatedAt
 
 ### documents.txt
 
-docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount
+docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId
+
+### approval_rules.txt
+
+category|requiredRoles|maxDecisionDays
 
 ### approvals.txt
 

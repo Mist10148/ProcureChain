@@ -3,7 +3,7 @@
 ## Project
 ProcureChain: Municipal Procurement Document Tracking System  
 Type: C++ CLI (Procedural)  
-Validation Date: 2026-04-09
+Validation Date: 2026-04-10
 
 ## How to Use this Checklist
 
@@ -59,6 +59,7 @@ Evidence notes:
 - [x] Upload document record with title/category/description.
 - [x] Document category supports guided choices plus Other/custom input.
 - [x] Source file upload is optional (metadata-only upload allowed).
+- [x] Upload supports amendment linkage to rejected document versions.
 - [x] Optional upload import accepts only pdf/docx/csv/txt.
 - [x] Upload success output shows SHA-256 hash.
 - [x] View all documents (admin).
@@ -78,6 +79,7 @@ Evidence notes:
 - [x] file metadata stored (fileName, fileType, filePath, fileSizeBytes).
 - [x] SHA-256 hash value stored and used for verification workflow.
 - [x] Budget input is handled in Budget Workspace, not in document upload prompts.
+- [x] Document version and previousDocId lineage fields are persisted.
 
 ### 3.3 Advanced Document Filtering
 
@@ -97,6 +99,7 @@ Evidence notes:
 ### 4.1 Approval Protocol
 
 - [x] Approval rows are auto-generated for required approver roles.
+- [x] Approval role routing is category-rule-driven with DEFAULT fallback.
 - [x] Pending approvals can be listed.
 - [x] Approve action updates approval row and document state.
 - [x] Reject action updates approval row and document state.
@@ -112,6 +115,11 @@ Evidence notes:
 - [x] Rejection rate computed correctly.
 - [x] Average decision time computed from valid timestamp pairs.
 - [x] Throughput by role displayed.
+- [x] Overdue pending approvals metric displayed using rule-based SLA days.
+- [x] Pending SLA compliance metric displayed.
+- [x] Role bottleneck table displayed (pending/overdue/age/worst overdue).
+- [x] Super Admin escalation queue lists overdue items.
+- [x] Super Admin approval rules management is available.
 
 ### 4.3 Analytics Hub and Dashboard UX
 

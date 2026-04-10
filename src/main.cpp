@@ -247,6 +247,8 @@ void runApprovalsWorkspace(const Admin& admin) {
     }
     if (canManageAccounts(admin)) {
         actionCodes.push_back(5);
+        actionLabels.push_back("Escalation Queue (Overdue SLA)");
+        actionCodes.push_back(6);
         actionLabels.push_back("Manage Approval Rules");
     }
 
@@ -292,6 +294,9 @@ void runApprovalsWorkspace(const Admin& admin) {
                 viewApprovalAnalyticsDashboard(admin);
                 break;
             case 5:
+                viewEscalationQueueForAdmin(admin);
+                break;
+            case 6:
                 manageApprovalRulesForAdmin(admin);
                 break;
             default:
