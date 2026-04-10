@@ -223,7 +223,71 @@ Evidence notes:
 
 ---
 
-## 10. Documentation Readiness
+## 10. Security and UX Extensions (Phase 9)
+
+### 10.1 Password Hashing
+
+- [x] Passwords hashed with SHA-256 before storage on signup.
+- [x] Login compares hashed input against stored hash.
+- [x] Password reset stores hashed temporary password.
+- [x] Startup migration detects plaintext passwords (length != 64) and hashes them.
+- [x] Seed accounts are migrated on first startup.
+
+### 10.2 Approval Notes
+
+- [x] Approval decision prompts for optional note.
+- [x] Budget approval decision prompts for optional note.
+- [x] Note field persisted in approvals.txt (7th column).
+- [x] Note field persisted in budget_approvals.txt (7th column).
+- [x] Note displayed in document detail approval chain table.
+- [x] Backward compatible: missing note defaults to empty string.
+
+### 10.3 Forced Password Change
+
+- [x] Password reset sets flag in password_flags.txt.
+- [x] Login checks flag and forces password change before dashboard.
+- [x] New password is validated (length, confirmation match).
+- [x] Flag cleared after successful password change.
+- [x] Action logged as FORCED_PASSWORD_CHANGE.
+
+### 10.4 Notification Inbox
+
+- [x] Admin notification inbox shows pending document approvals count.
+- [x] Admin notification inbox shows pending budget approvals count.
+- [x] Admin notification inbox shows overdue counts.
+- [x] Citizen notification inbox shows recently published documents.
+- [x] Inbox displayed automatically after login.
+- [x] Inbox accessible as a workspace/menu option.
+
+### 10.5 In-App Help
+
+- [x] Help menu accessible from citizen dashboard.
+- [x] Help menu accessible from admin command center.
+- [x] Content is role-specific (different help for each role).
+- [x] Key concepts section covers approval flow, budget consensus, blockchain, audit, delegation.
+
+### 10.6 Data Backup and Restore
+
+- [x] Super Admin can create timestamped backup.
+- [x] All data files and blockchain nodes are copied.
+- [x] Super Admin can list and select backup for restore.
+- [x] Restore requires confirmation before overwrite.
+- [x] Backup and restore actions are audited.
+
+### 10.7 Delegated Approvals
+
+- [x] Budget Officer and Municipal Administrator can create delegations.
+- [x] Delegation specifies delegatee, start date, and end date.
+- [x] Delegatee can approve/reject on behalf of delegator.
+- [x] Delegated pending items shown in approval hints.
+- [x] Delegation note automatically appended with delegator info.
+- [x] View and revoke delegation options available.
+- [x] Delegation actions are audited.
+- [x] Delegation file created at startup.
+
+---
+
+## 11. Documentation Readiness
 
 - [x] README reflects current implementation state.
 - [x] PRD reflects implemented and optional-scope items.

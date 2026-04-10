@@ -56,6 +56,22 @@ Latest analytics and UX updates:
 - search/filter screens now show recent/available suggestions before input
 - document search supports exact ID, ID prefix, and keyword-guided matching
 
+Security, UX, and governance extensions (Phase 9):
+
+- SHA-256 password hashing at rest for all stored credentials
+- automatic plaintext password migration on startup
+- forced password change after Super Admin password reset
+- optional approval/rejection notes on document and budget decisions
+- notes displayed in document detail approval chain panel
+- notification inbox on login for admins (pending approvals, overdue items) and citizens (recently published documents)
+- notification inbox accessible as a workspace menu option
+- in-app role-specific help system with key concept explanations
+- data backup and restore workspace for Super Admin with timestamped backup folders
+- delegated approval authority for Budget Officer and Municipal Administrator
+- delegation management workspace (create, view, revoke) with date-range control
+- delegated pending items shown in approval decision hints
+- all delegation and backup/restore actions are audited
+
 ## Development Constraints
 
 The implementation must stay within topics already covered in class:
@@ -123,7 +139,7 @@ Super Admin can:
 
 - list all citizen and admin accounts
 - deactivate or reactivate accounts
-- reset account password using generated temporary password
+- reset account password using generated temporary password (forces password change on next login)
 
 Inactive accounts are denied at login.
 
@@ -310,7 +326,7 @@ Stores approval state per document and approver.
 
 Format:
 
-    docID|approverUsername|role|status|createdAt|decidedAt
+    docID|approverUsername|role|status|createdAt|decidedAt|note
 
 ### budgets.txt
 
@@ -334,7 +350,23 @@ Stores per-approver budget consensus decisions.
 
 Format:
 
-    entryID|approverUsername|role|status|createdAt|decidedAt
+    entryID|approverUsername|role|status|createdAt|decidedAt|note
+
+### password_flags.txt
+
+Stores forced password change flags after Super Admin reset.
+
+Format:
+
+    username|mustChangePassword
+
+### delegations.txt
+
+Stores delegated approval authority assignments.
+
+Format:
+
+    delegatorUsername|delegateeUsername|startDate|endDate|status
 
 ### audit_log.txt
 
@@ -400,6 +432,8 @@ Can:
 - verify published document hash and blockchain presence
 - view budgets
 - view audit trail and export CSV
+- view notification inbox
+- access in-app help
 
 ## Recommended CLI Flow
 
@@ -414,6 +448,10 @@ Can:
 - View Published Documents
 - View Budget Summary
 - View Audit Trail
+- Search Published Document by ID
+- Verify Published Document Hash
+- Notification Inbox
+- Help
 - Logout
 
 ### Admin Command Center
@@ -426,12 +464,18 @@ Can:
     - upload with file import, view, search, advanced filters, manual status update
 - Approvals Workspace
     - pending queue, approve, reject, detailed approval analytics
+    - escalation queue for overdue approvals (Super Admin)
+    - approval rule management (Super Admin)
+    - delegation management (Budget Officer, Municipal Administrator)
 - Budget Workspace
     - published budget summary, budget entry submission, budget approvals, variance report
 - Audit and Integrity Workspace
     - audit trail, blockchain validation, integrity verification, integrity snapshot, blockchain explorer
 - Account Administration Workspace
     - account lifecycle management
+    - data backup and restore (Super Admin)
+- Notification Inbox
+- Help
 - Logout
 
 Note: menus are role-visible. Users only see actions available to their role.

@@ -5,6 +5,7 @@
 #include "../include/budget.h"
 #include "../include/documents.h"
 #include "../include/ui.h"
+#include "../include/verification.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -29,6 +30,8 @@ const std::string BUDGETS_FILE_PATH_PRIMARY = "data/budgets.txt";
 const std::string BUDGETS_FILE_PATH_FALLBACK = "../data/budgets.txt";
 const std::string AUDIT_FILE_PATH_PRIMARY = "data/audit_log.txt";
 const std::string AUDIT_FILE_PATH_FALLBACK = "../data/audit_log.txt";
+const std::string PASSWORD_FLAGS_FILE_PATH_PRIMARY = "data/password_flags.txt";
+const std::string PASSWORD_FLAGS_FILE_PATH_FALLBACK = "../data/password_flags.txt";
 
 const size_t MAX_FULLNAME_LENGTH = 60;
 const size_t MAX_USERNAME_LENGTH = 30;
@@ -273,17 +276,35 @@ bool saveAdmins(const std::vector<Admin>& admins) {
     return true;
 }
 
+void migratePasswordsToHash(std::vector<User>& users, std::vector<Admin>& admins) {
+    // SHA-256 hex output is always 64 characters.
+    // Any stored password shorter than 64 chars is plaintext and needs hashing.
+    for (size_t i = 0; i < users.size(); ++i) {
+        if (users[i].password.size() != 64) {
+            users[i].password = computeSimpleHash(users[i].password);
+        }
+    }
+    for (size_t i = 0; i < admins.size(); ++i) {
+        if (admins[i].password.size() != 64) {
+            admins[i].password = computeSimpleHash(admins[i].password);
+        }
+    }
+}
+
 void migrateAccountFilesIfNeeded() {
     // Load+save pass upgrades legacy rows to current schema defaults.
+    // Also migrates plaintext passwords to SHA-256 hashes.
     std::vector<User> users;
-    if (loadUsers(users)) {
-        saveUsers(users);
+    std::vector<Admin> admins;
+    bool usersLoaded = loadUsers(users);
+    bool adminsLoaded = loadAdmins(admins);
+
+    if (usersLoaded && adminsLoaded) {
+        migratePasswordsToHash(users, admins);
     }
 
-    std::vector<Admin> admins;
-    if (loadAdmins(admins)) {
-        saveAdmins(admins);
-    }
+    if (usersLoaded) { saveUsers(users); }
+    if (adminsLoaded) { saveAdmins(admins); }
 }
 
 bool containsUsername(const std::vector<std::string>& usernames, const std::string& username) {
@@ -495,6 +516,135 @@ bool updateAdminStatus(const std::string& username, const std::string& newStatus
     return saveAdmins(admins);
 }
 
+bool hasMustChangePasswordFlag(const std::string& username) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    std::string line;
+    bool firstLine = true;
+    while (std::getline(file, line)) {
+        if (line.empty()) { continue; }
+        if (firstLine) { firstLine = false; if (line.find("username|") == 0) { continue; } }
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.size() >= 2 && tokens[0] == username && tokens[1] == "yes") {
+            return true;
+        }
+    }
+    return false;
+}
+
+void setMustChangePasswordFlag(const std::string& username) {
+    // Load all flags, set/add for username, rewrite file.
+    std::vector<std::pair<std::string, std::string>> flags;
+    std::ifstream file;
+    if (openInputFileWithFallback(file, PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK)) {
+        std::string line;
+        bool firstLine = true;
+        while (std::getline(file, line)) {
+            if (line.empty()) { continue; }
+            if (firstLine) { firstLine = false; if (line.find("username|") == 0) { continue; } }
+            const std::vector<std::string> tokens = splitPipe(line);
+            if (tokens.size() >= 2 && tokens[0] != username) {
+                flags.push_back(std::make_pair(tokens[0], tokens[1]));
+            }
+        }
+        file.close();
+    }
+    flags.push_back(std::make_pair(username, std::string("yes")));
+
+    std::ofstream writer(resolveDataPath(PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK));
+    if (writer.is_open()) {
+        writer << "username|mustChangePassword\n";
+        for (size_t i = 0; i < flags.size(); ++i) {
+            writer << flags[i].first << "|" << flags[i].second << "\n";
+        }
+        writer.flush();
+    }
+}
+
+void clearMustChangePasswordFlag(const std::string& username) {
+    std::vector<std::pair<std::string, std::string>> flags;
+    std::ifstream file;
+    if (openInputFileWithFallback(file, PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK)) {
+        std::string line;
+        bool firstLine = true;
+        while (std::getline(file, line)) {
+            if (line.empty()) { continue; }
+            if (firstLine) { firstLine = false; if (line.find("username|") == 0) { continue; } }
+            const std::vector<std::string> tokens = splitPipe(line);
+            if (tokens.size() >= 2 && tokens[0] != username) {
+                flags.push_back(std::make_pair(tokens[0], tokens[1]));
+            }
+        }
+        file.close();
+    }
+
+    std::ofstream writer(resolveDataPath(PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK));
+    if (writer.is_open()) {
+        writer << "username|mustChangePassword\n";
+        for (size_t i = 0; i < flags.size(); ++i) {
+            writer << flags[i].first << "|" << flags[i].second << "\n";
+        }
+        writer.flush();
+    }
+}
+
+bool forcePasswordChange(const std::string& username, bool isAdmin) {
+    clearScreen();
+    ui::printSectionTitle("PASSWORD CHANGE REQUIRED");
+    std::cout << ui::warning("[!] Your password was recently reset. You must set a new password.") << "\n\n";
+
+    std::string newPassword;
+    std::string confirmPassword;
+    std::cout << "  New Password    : ";
+    std::getline(std::cin, newPassword);
+    std::cout << "  Confirm Password: ";
+    std::getline(std::cin, confirmPassword);
+
+    if (newPassword != confirmPassword) {
+        std::cout << ui::error("[!] Passwords do not match.") << "\n";
+        return false;
+    }
+    if (newPassword.size() < MIN_PASSWORD_LENGTH || newPassword.size() > MAX_PASSWORD_LENGTH) {
+        std::cout << ui::error("[!] Password must be between 4 and 50 characters.") << "\n";
+        return false;
+    }
+
+    const std::string hashed = computeSimpleHash(newPassword);
+
+    if (isAdmin) {
+        std::vector<Admin> admins;
+        if (!loadAdmins(admins)) { return false; }
+        for (size_t i = 0; i < admins.size(); ++i) {
+            if (admins[i].username == username) {
+                admins[i].password = hashed;
+                admins[i].updatedAt = getCurrentTimestamp();
+                break;
+            }
+        }
+        if (!saveAdmins(admins)) { return false; }
+    } else {
+        std::vector<User> users;
+        if (!loadUsers(users)) { return false; }
+        for (size_t i = 0; i < users.size(); ++i) {
+            if (users[i].username == username) {
+                users[i].password = hashed;
+                users[i].updatedAt = getCurrentTimestamp();
+                break;
+            }
+        }
+        if (!saveUsers(users)) { return false; }
+    }
+
+    clearMustChangePasswordFlag(username);
+    logAuditAction("FORCED_PASSWORD_CHANGE", username, username);
+    std::cout << ui::success("[+] Password changed successfully.") << "\n";
+    waitForEnter();
+    return true;
+}
+
 bool resetCitizenPassword(const std::string& username, std::string& tempPassword) {
     // Resets one matching user credential and records update timestamp.
     std::vector<User> users;
@@ -506,7 +656,7 @@ bool resetCitizenPassword(const std::string& username, std::string& tempPassword
     for (size_t i = 0; i < users.size(); ++i) {
         if (users[i].username == username) {
             tempPassword = generateTemporaryPassword();
-            users[i].password = tempPassword;
+            users[i].password = computeSimpleHash(tempPassword);
             users[i].updatedAt = getCurrentTimestamp();
             updated = true;
             break;
@@ -517,7 +667,9 @@ bool resetCitizenPassword(const std::string& username, std::string& tempPassword
         return false;
     }
 
-    return saveUsers(users);
+    if (!saveUsers(users)) { return false; }
+    setMustChangePasswordFlag(username);
+    return true;
 }
 
 bool resetAdminPassword(const std::string& username, std::string& tempPassword) {
@@ -531,7 +683,7 @@ bool resetAdminPassword(const std::string& username, std::string& tempPassword) 
     for (size_t i = 0; i < admins.size(); ++i) {
         if (admins[i].username == username) {
             tempPassword = generateTemporaryPassword();
-            admins[i].password = tempPassword;
+            admins[i].password = computeSimpleHash(tempPassword);
             admins[i].updatedAt = getCurrentTimestamp();
             updated = true;
             break;
@@ -542,9 +694,18 @@ bool resetAdminPassword(const std::string& username, std::string& tempPassword) 
         return false;
     }
 
-    return saveAdmins(admins);
+    if (!saveAdmins(admins)) { return false; }
+    setMustChangePasswordFlag(username);
+    return true;
 }
 } // namespace
+
+bool checkAndForcePasswordChange(const std::string& username, bool isAdmin) {
+    if (!hasMustChangePasswordFlag(username)) {
+        return true;
+    }
+    return forcePasswordChange(username, isAdmin);
+}
 
 void clearScreen() {
     std::system("cls");
@@ -563,6 +724,7 @@ void ensureUserDataFileExists() {
     ensureFileWithHeader(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK, "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount");
     ensureFileWithHeader(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK, "category|amount");
     ensureFileWithHeader(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK, "timestamp|action|targetID|actor|chainIndex|previousHash|currentHash");
+    ensureFileWithHeader(PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK, "username|mustChangePassword");
 
     migrateAccountFilesIfNeeded();
     ensureSeedAdminAccounts();
@@ -674,6 +836,7 @@ bool signUpCitizen() {
         return false;
     }
 
+    newUser.password = computeSimpleHash(newUser.password);
     newUser.userId = generateNextUserId();
     newUser.status = "active";
     newUser.updatedAt = getCurrentTimestamp();
@@ -715,6 +878,8 @@ bool signUpAdmin() {
     if (!hasValidAccountInput(newAdmin.fullName, newAdmin.username, newAdmin.password)) {
         return false;
     }
+
+    newAdmin.password = computeSimpleHash(newAdmin.password);
 
     std::cout << "\n" << ui::bold("Select Admin Role") << "\n";
     std::cout << "  " << ui::info("[1]") << " Procurement Officer\n";
@@ -811,6 +976,8 @@ bool loginCitizen(User& loggedInUser) {
         return false;
     }
 
+    const std::string hashedInput = computeSimpleHash(password);
+
     std::vector<User> users;
     if (!loadUsers(users)) {
         std::cout << ui::error("[!] Unable to open user account records.") << "\n";
@@ -818,7 +985,7 @@ bool loginCitizen(User& loggedInUser) {
     }
 
     for (size_t i = 0; i < users.size(); ++i) {
-        if (users[i].username != username || users[i].password != password) {
+        if (users[i].username != username || users[i].password != hashedInput) {
             continue;
         }
 
@@ -863,6 +1030,8 @@ bool loginAdmin(Admin& loggedInAdmin) {
         return false;
     }
 
+    const std::string hashedInput = computeSimpleHash(password);
+
     std::vector<Admin> admins;
     if (!loadAdmins(admins)) {
         std::cout << ui::error("[!] Unable to open admin account records.") << "\n";
@@ -871,7 +1040,7 @@ bool loginAdmin(Admin& loggedInAdmin) {
     }
 
     for (size_t i = 0; i < admins.size(); ++i) {
-        if (admins[i].username != username || admins[i].password != password) {
+        if (admins[i].username != username || admins[i].password != hashedInput) {
             continue;
         }
 

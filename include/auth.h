@@ -38,5 +38,6 @@ bool loginCitizen();
 bool loginAdmin(Admin& loggedInAdmin);
 bool loginAdmin();
 void manageAccountLifecycleForAdmin(const Admin& admin);
+bool checkAndForcePasswordChange(const std::string& username, bool isAdmin);
 
 #endif

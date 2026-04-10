@@ -12,6 +12,7 @@ struct Approval {
     std::string status;
     std::string createdAt;
     std::string decidedAt;
+    std::string note;
 };
 
 struct ApprovalRule {

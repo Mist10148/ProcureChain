@@ -1,10 +1,14 @@
 #include "../include/auth.h"
 #include "../include/audit.h"
+#include "../include/backup.h"
 #include "../include/budget.h"
 #include "../include/blockchain.h"
+#include "../include/delegation.h"
 #include "../include/documents.h"
 #include "../include/approvals.h"
 #include "../include/analytics.h"
+#include "../include/help.h"
+#include "../include/notifications.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -148,6 +152,8 @@ void printCitizenMenu(const User& citizen) {
     std::cout << "  " << ui::info("[3]") << " View Audit Trail\n";
     std::cout << "  " << ui::info("[4]") << " Search Published Document by ID\n";
     std::cout << "  " << ui::info("[5]") << " Verify Published Document Hash\n";
+    std::cout << "  " << ui::info("[6]") << " Notification Inbox\n";
+    std::cout << "  " << ui::info("[7]") << " Help\n";
     std::cout << "  " << ui::info("[0]") << " Logout\n";
     std::cout << ui::muted("--------------------------------------------------------------") << "\n";
     std::cout << "  Enter your choice: ";
@@ -251,6 +257,10 @@ void runApprovalsWorkspace(const Admin& admin) {
         actionCodes.push_back(6);
         actionLabels.push_back("Manage Approval Rules");
     }
+    if (canApproveOrReject(admin)) {
+        actionCodes.push_back(7);
+        actionLabels.push_back("Delegation Management");
+    }
 
     if (actionCodes.empty()) {
         clearScreen();
@@ -298,6 +308,9 @@ void runApprovalsWorkspace(const Admin& admin) {
                 break;
             case 6:
                 manageApprovalRulesForAdmin(admin);
+                break;
+            case 7:
+                runDelegationManagement(admin);
                 break;
             default:
                 break;
@@ -424,7 +437,7 @@ void runAccountAdministrationWorkspace(const Admin& admin) {
         return;
     }
 
-    const std::vector<std::string> actionLabels = {"Account Lifecycle Management"};
+    const std::vector<std::string> actionLabels = {"Account Lifecycle Management", "Data Backup & Restore"};
     int choice = -1;
 
     do {
@@ -447,6 +460,9 @@ void runAccountAdministrationWorkspace(const Admin& admin) {
             case 0:
                 manageAccountLifecycleForAdmin(admin);
                 break;
+            case 1:
+                runBackupWorkspace(admin);
+                break;
             default:
                 break;
         }
@@ -462,7 +478,7 @@ void runCitizenDashboard(const User& citizen) {
         clearScreen();
         printCitizenMenu(citizen);
 
-        if (!readBoundedMenuChoice(citizenChoice, 0, 5)) {
+        if (!readBoundedMenuChoice(citizenChoice, 0, 7)) {
             std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
             continue;
         }
@@ -482,6 +498,12 @@ void runCitizenDashboard(const User& citizen) {
                 break;
             case 5:
                 verifyPublishedDocumentAsCitizen(citizen.username);
+                break;
+            case 6:
+                showCitizenNotificationInbox(citizen);
+                break;
+            case 7:
+                showHelpMenu("Citizen");
                 break;
             case 0:
                 logAuditAction("CITIZEN_LOGOUT", citizen.userId, citizen.username);
@@ -519,6 +541,11 @@ void runAdminDashboard(const Admin& admin) {
         workspaceCodes.push_back(6);
         workspaceLabels.push_back("Account Administration");
     }
+
+    workspaceCodes.push_back(7);
+    workspaceLabels.push_back("Notification Inbox");
+    workspaceCodes.push_back(8);
+    workspaceLabels.push_back("Help");
 
     int adminChoice = -1;
 
@@ -558,6 +585,12 @@ void runAdminDashboard(const Admin& admin) {
             case 6:
                 runAccountAdministrationWorkspace(admin);
                 break;
+            case 7:
+                showAdminNotificationInbox(admin);
+                break;
+            case 8:
+                showHelpMenu(admin.role);
+                break;
             default:
                 break;
         }
@@ -584,6 +617,12 @@ void handleLoginFlow() {
     if (loginType == 1) {
         User loggedInCitizen;
         if (loginCitizen(loggedInCitizen)) {
+            if (!checkAndForcePasswordChange(loggedInCitizen.username, false)) {
+                std::cout << "\n" << ui::error("[!] You must change your password to continue.") << "\n";
+                waitForEnter();
+                return;
+            }
+            showCitizenNotificationInbox(loggedInCitizen);
             runCitizenDashboard(loggedInCitizen);
         }
         return;
@@ -592,6 +631,12 @@ void handleLoginFlow() {
     if (loginType == 2) {
         Admin loggedInAdmin;
         if (loginAdmin(loggedInAdmin)) {
+            if (!checkAndForcePasswordChange(loggedInAdmin.username, true)) {
+                std::cout << "\n" << ui::error("[!] You must change your password to continue.") << "\n";
+                waitForEnter();
+                return;
+            }
+            showAdminNotificationInbox(loggedInAdmin);
             runAdminDashboard(loggedInAdmin);
         }
     }
@@ -606,6 +651,7 @@ int main() {
     ensureUserDataFileExists();
     ensureApprovalsDataFileExists();
     ensureBlockchainNodeFilesExist();
+    ensureDelegationFileExists();
 
     int choice = -1;
 

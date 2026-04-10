@@ -3,6 +3,7 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/blockchain.h"
+#include "../include/delegation.h"
 #include "../include/documents.h"
 #include "../include/ui.h"
 
@@ -269,6 +270,7 @@ Approval parseApprovalTokens(const std::vector<std::string>& tokens) {
     row.status = tokens.size() > 3 ? tokens[3] : "pending";
     row.createdAt = tokens.size() > 4 ? tokens[4] : "";
     row.decidedAt = tokens.size() > 5 ? tokens[5] : "";
+    row.note = tokens.size() > 6 ? tokens[6] : "";
 
     if (row.createdAt.empty()) {
         row.createdAt = getCurrentTimestamp();
@@ -279,7 +281,7 @@ Approval parseApprovalTokens(const std::vector<std::string>& tokens) {
 
 std::string serializeApproval(const Approval& row) {
     // Keep schema order stable because other modules parse this exact layout.
-    return row.docId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt;
+    return row.docId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt + "|" + row.note;
 }
 
 bool loadApprovals(std::vector<Approval>& rows) {
@@ -323,7 +325,7 @@ bool saveApprovals(const std::vector<Approval>& rows) {
         return false;
     }
 
-    writer << "docID|approverUsername|role|status|createdAt|decidedAt\n";
+    writer << "docID|approverUsername|role|status|createdAt|decidedAt|note\n";
     for (size_t i = 0; i < rows.size(); ++i) {
         writer << serializeApproval(rows[i]) << '\n';
     }
@@ -362,18 +364,32 @@ bool printPendingDecisionHints(const std::vector<Approval>& rows, const std::str
         }
     }
 
-    if (pendingRows.empty()) {
+    // Also include delegated pending items
+    std::vector<Delegation> delegations = getActiveDelegationsFor(approverUsername);
+    std::vector<Approval> delegatedRows;
+    for (size_t d = 0; d < delegations.size(); ++d) {
+        for (size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].approverUsername == delegations[d].delegatorUsername && rows[i].status == "pending") {
+                delegatedRows.push_back(rows[i]);
+            }
+        }
+    }
+
+    if (pendingRows.empty() && delegatedRows.empty()) {
         std::cout << "\n" << ui::warning("[!] You have no pending approvals right now.") << "\n";
         return false;
     }
 
     std::cout << "\n" << ui::bold("Available Pending Decisions") << "\n";
-    const std::vector<std::string> headers = {"Document ID", "Role", "Created"};
-    const std::vector<int> widths = {12, 24, 19};
+    const std::vector<std::string> headers = {"Document ID", "Role", "Created", "Via"};
+    const std::vector<int> widths = {12, 24, 19, 16};
     ui::printTableHeader(headers, widths);
 
     for (std::size_t i = 0; i < pendingRows.size(); ++i) {
-        ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].createdAt}, widths);
+        ui::printTableRow({pendingRows[i].docId, pendingRows[i].role, pendingRows[i].createdAt, "Direct"}, widths);
+    }
+    for (std::size_t i = 0; i < delegatedRows.size(); ++i) {
+        ui::printTableRow({delegatedRows[i].docId, delegatedRows[i].role, delegatedRows[i].createdAt, "Delegated"}, widths);
     }
 
     ui::printTableFooter(widths);
@@ -544,8 +560,41 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
         if (rows[i].docId == targetDocId && rows[i].approverUsername == admin.username && rows[i].status == "pending") {
             rows[i].status = approve ? "approved" : "rejected";
             rows[i].decidedAt = now;
+
+            std::string note;
+            std::cout << "  Add a note (optional, press Enter to skip): ";
+            std::getline(std::cin, note);
+            rows[i].note = note;
+
             updated = true;
             break;
+        }
+    }
+
+    // If no direct match, check for delegated authority
+    std::string actingOnBehalfOf;
+    if (!updated) {
+        std::vector<Delegation> delegations = getActiveDelegationsFor(admin.username);
+        for (size_t d = 0; d < delegations.size() && !updated; ++d) {
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (rows[i].docId == targetDocId &&
+                    rows[i].approverUsername == delegations[d].delegatorUsername &&
+                    rows[i].status == "pending") {
+                    rows[i].status = approve ? "approved" : "rejected";
+                    rows[i].decidedAt = now;
+
+                    std::string note;
+                    std::cout << "  Add a note (optional, press Enter to skip): ";
+                    std::getline(std::cin, note);
+                    std::string delegateNote = "(delegated by " + admin.username + ")";
+                    if (!note.empty()) { delegateNote = note + " " + delegateNote; }
+                    rows[i].note = delegateNote;
+
+                    actingOnBehalfOf = delegations[d].delegatorUsername;
+                    updated = true;
+                    break;
+                }
+            }
         }
     }
 
@@ -597,13 +646,21 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     std::cout << "\nDecision Saved: " << ui::consensusStatus(approve ? "approved" : "denied") << "\n";
     std::cout << "Consensus Result: " << ui::consensusStatus(nextDocStatus) << "\n";
 
+    if (!actingOnBehalfOf.empty()) {
+        std::cout << "  " << ui::muted("(Acting on behalf of " + actingOnBehalfOf + " via delegation)") << "\n";
+    }
+
+    const std::string auditActor = actingOnBehalfOf.empty() ? admin.username :
+        admin.username + " (on behalf of " + actingOnBehalfOf + ")";
     if (approve) {
-        const int chainIndex = appendBlockchainAction("APPROVE", targetDocId, admin.username);
-        logAuditAction("APPROVE_DOC", targetDocId, admin.username, chainIndex);
+        const std::string action = actingOnBehalfOf.empty() ? "APPROVE" : "APPROVE_DELEGATED";
+        const int chainIndex = appendBlockchainAction(action, targetDocId, admin.username);
+        logAuditAction("APPROVE_DOC", targetDocId, auditActor, chainIndex);
         std::cout << ui::success("[+] Document approved successfully.") << "\n";
     } else {
-        const int chainIndex = appendBlockchainAction("REJECT", targetDocId, admin.username);
-        logAuditAction("REJECT_DOC", targetDocId, admin.username, chainIndex);
+        const std::string action = actingOnBehalfOf.empty() ? "REJECT" : "REJECT_DELEGATED";
+        const int chainIndex = appendBlockchainAction(action, targetDocId, admin.username);
+        logAuditAction("REJECT_DOC", targetDocId, auditActor, chainIndex);
         std::cout << ui::error("[+] Document denied successfully.") << "\n";
     }
 
@@ -622,7 +679,7 @@ void ensureApprovalsDataFileExists() {
         }
 
         if (createFile.is_open()) {
-            createFile << "docID|approverUsername|role|status|createdAt|decidedAt\n";
+            createFile << "docID|approverUsername|role|status|createdAt|decidedAt|note\n";
         }
     }
 

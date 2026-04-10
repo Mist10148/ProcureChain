@@ -46,12 +46,15 @@ Implemented in code right now:
 - admin sub-role permission enforcement is active in dashboard actions
 - admin menus are role-visible (users only see actions/workspaces available to their role)
 - document amendment/version lineage (rejected base -> amended next version)
-
-Still pending against optional desired scope:
-
-- optional forced password change-on-next-login flow
-- optional delegated approvals
-- optional richer reporting presets
+- SHA-256 password hashing at rest with automatic plaintext migration on startup
+- forced password change after Super Admin password reset
+- optional approval/rejection notes on document and budget approval decisions
+- notification inbox on login (pending approvals and overdue items for admins, recently published documents for citizens)
+- in-app role-specific help system with key concept explanations
+- data backup and restore workspace (Super Admin, timestamped backup folders)
+- delegated approval authority for Budget Officer and Municipal Administrator with date-range control
+- delegation management workspace (create, view, revoke)
+- all delegation and backup/restore actions are audited
 
 ## 2. Product Name
 
@@ -181,6 +184,7 @@ Acceptance Criteria:
 - Super Admin can deactivate/reactivate accounts
 - Inactive accounts cannot log in
 - Super Admin can reset password with generated temporary password
+- Password reset forces the target account to change password on next login
 - Lifecycle actions are logged in audit trail
 
 ### Feature 3: Procurement Document Management and Verification
@@ -334,6 +338,119 @@ Acceptance Criteria:
 - blockchain-backed actions pass chain index to logAuditAction
 - audit table displays chain index when present
 
+### Feature 11: SHA-256 Password Hashing
+
+Priority: High
+
+Description:
+
+All stored passwords are hashed with SHA-256. Plaintext passwords are auto-migrated on startup.
+
+Acceptance Criteria:
+
+- Signup hashes password before writing to file
+- Login compares hashed input against stored hash
+- Password reset stores hashed temporary password
+- Startup migration detects plaintext passwords (length != 64) and hashes them in place
+
+### Feature 12: Forced Password Change After Reset
+
+Priority: High
+
+Description:
+
+When Super Admin resets a password, the target account must change their password on next login.
+
+Acceptance Criteria:
+
+- Password reset sets flag in password_flags.txt
+- Login checks flag and forces password change before dashboard access
+- New password is validated (minimum length, confirmation match)
+- Flag is cleared after successful change
+- Action logged as FORCED_PASSWORD_CHANGE
+
+### Feature 13: Approval Notes
+
+Priority: Medium
+
+Description:
+
+Approvers can attach optional notes when approving or rejecting documents and budget entries.
+
+Acceptance Criteria:
+
+- Approval decision prompts for optional note
+- Budget approval decision prompts for optional note
+- Note persisted as 7th column in approvals.txt and budget_approvals.txt
+- Note displayed in document detail approval chain table
+- Backward compatible: missing note defaults to empty string
+- Delegated decisions automatically include delegation attribution in note
+
+### Feature 14: Notification Inbox
+
+Priority: Medium
+
+Description:
+
+On login, users see a summary of pending actions or recent activity.
+
+Acceptance Criteria:
+
+- Admin inbox shows pending document approval count
+- Admin inbox shows pending budget approval count
+- Admin inbox shows overdue counts
+- Citizen inbox shows recently published documents (last 7 days)
+- Inbox displayed automatically after login
+- Inbox accessible as a menu option from dashboard
+
+### Feature 15: In-App Help System
+
+Priority: Medium
+
+Description:
+
+Role-specific help is accessible from both citizen and admin dashboards.
+
+Acceptance Criteria:
+
+- Help menu accessible from citizen dashboard
+- Help menu accessible from admin command center
+- Content is role-specific (different guidance per role)
+- Key concepts section covers approval flow, budget consensus, blockchain, audit, delegation
+
+### Feature 16: Data Backup and Restore
+
+Priority: High
+
+Description:
+
+Super Admin can create timestamped backups and restore from them.
+
+Acceptance Criteria:
+
+- Backup copies all data files and blockchain nodes to data/backups/YYYY-MM-DD_HHMMSS/
+- Restore lists available backups, requires confirmation before overwrite
+- Both backup and restore actions are audited
+- Only Super Admin can access this workspace
+
+### Feature 17: Delegated Approvals
+
+Priority: High
+
+Description:
+
+Budget Officer and Municipal Administrator can delegate their approval authority to another admin for a date range.
+
+Acceptance Criteria:
+
+- Delegation specifies delegatee admin username, start date, and end date
+- Delegatee can approve/reject on behalf of delegator within the active date range
+- Delegated decisions include delegation attribution in the approval note
+- Delegated pending items appear in delegatee's approval hints
+- Delegations can be viewed and revoked from Delegation Management
+- All delegation actions are audited
+- Delegation file is created at startup if missing
+
 ## 8. System Flow
 
 ### Main Menu
@@ -349,6 +466,8 @@ Acceptance Criteria:
 - View Audit Trail
 - Search Published Document by ID
 - Verify Published Document Hash
+- Notification Inbox
+- Help
 - Logout
 
 ### Admin Command Center
@@ -364,12 +483,16 @@ Acceptance Criteria:
   - pending approvals, approve/reject, detailed approval analytics
   - escalation queue for overdue approvals (Super Admin)
   - approval rule management (Super Admin)
+  - delegation management (Budget Officer, Municipal Administrator)
 - Budget Workspace
   - view published allocations, submit budget entries, approve/reject budget entries, variance report
 - Audit and Integrity Workspace
   - audit trail, blockchain validation, document integrity verification, integrity snapshot, blockchain explorer
 - Account Administration Workspace
   - lifecycle controls
+  - data backup and restore (Super Admin)
+- Notification Inbox
+- Help
 - Logout
 
 Note:
@@ -396,7 +519,7 @@ category|requiredRoles|maxDecisionDays
 
 ### approvals.txt
 
-docID|approverUsername|role|status|createdAt|decidedAt
+docID|approverUsername|role|status|createdAt|decidedAt|note
 
 ### budgets.txt
 
@@ -408,7 +531,15 @@ entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|crea
 
 ### budget_approvals.txt
 
-entryID|approverUsername|role|status|createdAt|decidedAt
+entryID|approverUsername|role|status|createdAt|decidedAt|note
+
+### password_flags.txt
+
+username|mustChangePassword
+
+### delegations.txt
+
+delegatorUsername|delegateeUsername|startDate|endDate|status
 
 ### audit_log.txt
 
@@ -467,6 +598,13 @@ The project is successful if it can demonstrate:
 - budget summary and variance reporting
 - audit trail logging and CSV export
 - simulated blockchain validation with linked audit evidence
+- SHA-256 password hashing at rest
+- forced password change after admin reset
+- approval/rejection notes
+- notification inbox
+- in-app help system
+- data backup and restore
+- delegated approval authority
 
 Integrity note:
 

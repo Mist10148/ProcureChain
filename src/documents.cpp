@@ -35,6 +35,7 @@ struct ApprovalChainRow {
     std::string role;
     std::string status;
     std::string decidedAt;
+    std::string note;
 };
 
 struct DocumentFilter {
@@ -718,6 +719,7 @@ std::vector<ApprovalChainRow> loadApprovalChainRows(const std::string& docId) {
         row.role = tokens[2];
         row.status = tokens[3];
         row.decidedAt = tokens.size() > 5 ? tokens[5] : "";
+        row.note = tokens.size() > 6 ? tokens[6] : "";
         rows.push_back(row);
     }
 
@@ -768,12 +770,12 @@ void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, co
     int rejected = 0;
 
     std::cout << "\n" << ui::bold("Approval Chain") << "\n";
-    const std::vector<std::string> chainHeaders = {"Role", "Approver", "Status", "Decided At"};
-    const std::vector<int> chainWidths = {26, 18, 14, 19};
+    const std::vector<std::string> chainHeaders = {"Role", "Approver", "Status", "Decided At", "Note"};
+    const std::vector<int> chainWidths = {22, 16, 12, 19, 24};
     ui::printTableHeader(chainHeaders, chainWidths);
 
     for (std::size_t i = 0; i < chainRows.size(); ++i) {
-        ui::printTableRow({chainRows[i].role, chainRows[i].approverUsername, chainRows[i].status, chainRows[i].decidedAt}, chainWidths);
+        ui::printTableRow({chainRows[i].role, chainRows[i].approverUsername, chainRows[i].status, chainRows[i].decidedAt, chainRows[i].note}, chainWidths);
 
         const std::string normalized = toLowerCopy(chainRows[i].status);
         if (normalized == "approved") {

@@ -235,8 +235,38 @@ Municipal Administrator is a second required approver role.
 4. Select action:
    - Deactivate
    - Reactivate
-   - Reset password
+   - Reset password (user will be forced to change password on next login)
 5. Share temporary password securely when reset is used.
+
+## Data Backup and Restore SOP (Super Admin)
+
+1. Open Account Administration Workspace.
+2. Select Data Backup & Restore.
+3. Create Backup: copies all data files to data/backups/YYYY-MM-DD_HHMMSS/.
+4. Restore from Backup: lists available backups, requires confirmation before overwrite.
+5. Both actions are recorded in the audit trail.
+
+## Delegation SOP (Budget Officer, Municipal Administrator)
+
+1. Open Approvals Workspace and select Delegation Management.
+2. Create Delegation: specify delegatee admin username, start date, and end date.
+3. Delegatee can approve/reject on behalf of delegator within the active date range.
+4. Delegated decisions are automatically annotated with delegation info in the approval note.
+5. Delegated pending items appear in the delegatee's approval hints.
+6. Revoke delegation at any time from Delegation Management.
+7. All delegation actions are audited.
+
+## Forced Password Change SOP
+
+- When Super Admin resets a password, the target account is flagged.
+- On next login, the user must set a new password before accessing their dashboard.
+- The new password is validated (length, confirmation match) and hashed with SHA-256.
+
+## Approval Notes SOP
+
+- When approving or rejecting a document or budget entry, the approver can optionally add a note.
+- Notes are stored with the approval record and displayed in the document detail approval chain.
+- Notes from delegated decisions automatically include delegation attribution.
 
 ## Audit and Integrity SOP
 
@@ -249,7 +279,10 @@ Municipal Administrator is a second required approver role.
 
 ## Operational Notes
 
+- All passwords are stored as SHA-256 hashes; plaintext passwords are auto-migrated on startup.
 - Inactive accounts are blocked at login.
 - Menus are dynamic by role; inaccessible actions are hidden in normal flows.
 - Search-heavy screens now show recent or available values before input to reduce invalid entries.
+- Notification inbox is shown on login and accessible as a menu option.
+- In-app help is available from both citizen and admin dashboards.
 - Hashing now uses SHA-256, but ProcureChain remains a classroom file-based simulation.

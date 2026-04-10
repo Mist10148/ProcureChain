@@ -325,22 +325,45 @@ Still to execute before final defense:
 - one intentional tamper simulation followed by blockchain validation
 - one citizen hash verification demonstration showing on-chain and mismatch outcomes
 
-## Optional Stretch Phases (If Time Allows)
+## Phase 9: Security, UX, and Governance Extensions
 
-### Phase 9A: Security and UX Refinements
+### Objectives
 
-- force password change flow after temporary reset
-- clearer in-menu status/error wording for edge cases
+- harden credential storage with SHA-256 password hashing
+- add approval notes for governance traceability
+- improve login experience with notification inbox
+- add in-app help for defense demo clarity
+- add data backup/restore for data management
+- enforce forced password change after admin reset
+- enable delegated approval authority
 
-### Phase 9B: Workflow Flexibility
+### Implemented
 
-- delegated approvals
-- richer date presets for reports
+- SHA-256 password hashing at rest with automatic plaintext migration on startup
+- Optional approval/rejection notes on document and budget approval decisions
+- Notes displayed in document detail approval chain panel
+- Notification inbox shown on login for admins (pending approvals, overdue items) and citizens (recently published documents)
+- Notification inbox accessible as a workspace menu option
+- In-app help system with role-specific action guidance and key concept explanations
+- Data backup and restore workspace (Super Admin) with timestamped backup folders
+- Forced password change after Super Admin password reset using separate password_flags.txt
+- Delegated approvals: Budget Officer and Municipal Administrator can delegate authority to another admin for a date range
+- Delegated pending items shown in approval decision hints
+- Delegation management workspace (create, view, revoke)
+- All delegation and backup/restore actions are audited
 
-### Phase 9C: Reporting Enhancements
+### New Files
 
-- additional trend views over time windows
-- optional document-to-budget drilldown report
+- include/notifications.h, src/notifications.cpp
+- include/help.h, src/help.cpp
+- include/backup.h, src/backup.cpp
+- include/delegation.h, src/delegation.cpp
+- data/password_flags.txt
+- data/delegations.txt
+
+### Status
+
+Completed
 
 ## Current Priority Queue
 
@@ -360,5 +383,12 @@ The project has moved beyond baseline CLI CRUD and now includes a governance-foc
 - account lifecycle administration
 - audit export and chain-linked traceability
 - blockchain explorer and tamper diagnostics across five nodes
+- SHA-256 password hashing at rest
+- approval/rejection notes
+- notification inbox
+- in-app help system
+- data backup and restore
+- forced password change after reset
+- delegated approval authority
 
 This places ProcureChain in a strong final-defense state while remaining within the required procedural C++ course scope.

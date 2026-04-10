@@ -18,6 +18,13 @@ It is designed for classroom-level procedural programming and focuses on:
 - Admin Command Center with grouped workspaces and analytics hub
 - Compact and full analytics layout modes with optional paged detail tables
 - Guided search/filter prompts with available-value suggestions and recent record previews
+- SHA-256 password hashing at rest for all stored credentials
+- Optional approval/rejection notes with display in document detail panels
+- Notification inbox for pending actions on login
+- In-app role-specific help system
+- Data backup and restore (Super Admin)
+- Forced password change after Super Admin reset
+- Delegated approval authority with date-range control
 
 The system stores records in text files under the data folder and keeps the implementation modular through separate source files per feature.
 
@@ -46,7 +53,9 @@ High-level process:
 - User account lifecycle admin tools (Super Admin)
   - list accounts
   - deactivate/reactivate accounts
-  - reset password with generated temporary password
+  - reset password with generated temporary password (forces password change on next login)
+- SHA-256 password hashing at rest (plaintext passwords auto-migrated on startup)
+- Forced password change after Super Admin password reset
 - Published document viewing for citizens
 - Citizen published document search by document ID
 - Citizen published document hash verification (stored hash, recomputed hash, blockchain presence)
@@ -94,6 +103,11 @@ High-level process:
 - Simulated blockchain append and validation across 5 node files
 - Blockchain explorer: per-node integrity, consensus matrix, per-block agreement, tamper alerts
 - Audit-to-blockchain linking for blockchain-backed actions
+- Optional approval/rejection notes attached to decisions (shown in document detail panel)
+- Notification inbox shown on login and available as menu option
+- In-app help system with role-specific guidance
+- Data backup and restore (Super Admin, timestamped backup folders)
+- Delegated approval authority (Budget Officer, Municipal Administrator can delegate to another admin for a date range)
 
 ## Requirements
 
@@ -110,13 +124,13 @@ Optional check:
 
 Open PowerShell in the project folder and run:
 
-    g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp src/analytics.cpp -o procurechain.exe
+    g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp src/analytics.cpp src/notifications.cpp src/help.cpp src/backup.cpp src/delegation.cpp -o procurechain.exe
     .\procurechain.exe
 
 ### Option B: Run from src folder
 
     cd src
-    g++ -std=c++17 main.cpp auth.cpp documents.cpp verification.cpp budget.cpp audit.cpp approvals.cpp blockchain.cpp ui.cpp analytics.cpp -o ..\procurechain.exe
+    g++ -std=c++17 main.cpp auth.cpp documents.cpp verification.cpp budget.cpp audit.cpp approvals.cpp blockchain.cpp ui.cpp analytics.cpp notifications.cpp help.cpp backup.cpp delegation.cpp -o ..\procurechain.exe
     cd ..
     .\procurechain.exe
 
@@ -160,7 +174,7 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 
 ### data/approvals.txt
 
-    docID|approverUsername|role|status|createdAt|decidedAt
+    docID|approverUsername|role|status|createdAt|decidedAt|note
 
 ### data/budgets.txt
 
@@ -172,7 +186,15 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 
 ### data/budget_approvals.txt
 
-  entryID|approverUsername|role|status|createdAt|decidedAt
+  entryID|approverUsername|role|status|createdAt|decidedAt|note
+
+### data/password_flags.txt
+
+    username|mustChangePassword
+
+### data/delegations.txt
+
+    delegatorUsername|delegateeUsername|startDate|endDate|status
 
 ### data/audit_log.txt
 
@@ -201,6 +223,8 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 - View Audit Trail (with export)
 - Search Published Document by ID
 - Verify Published Document Hash
+- Notification Inbox
+- Help
 - Logout
 
 ### Admin Command Center
@@ -216,12 +240,16 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
   - view pending, approve, reject, detailed approval analytics
   - escalation queue for overdue pending approvals (Super Admin)
   - approval rule management (Super Admin)
+  - delegation management (Budget Officer, Municipal Administrator)
 - Budget Workspace
   - view published allocations, submit budget entries, approve/reject budget entries, variance report
 - Audit and Integrity Workspace
   - view audit trail, validate blockchain, verify document integrity, integrity snapshot, blockchain explorer
 - Account Administration Workspace
   - account lifecycle management
+  - data backup and restore (Super Admin)
+- Notification Inbox
+- Help
 - Logout
 
 Role gates are enforced per action, and menu options are displayed dynamically so users only see what they are allowed to run.

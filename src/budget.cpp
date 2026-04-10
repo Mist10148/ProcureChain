@@ -61,6 +61,7 @@ struct BudgetApproval {
     std::string status;
     std::string createdAt;
     std::string decidedAt;
+    std::string note;
 };
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
@@ -299,11 +300,12 @@ BudgetApproval parseBudgetApprovalTokens(const std::vector<std::string>& tokens)
     row.status = tokens.size() > 3 ? tokens[3] : "pending";
     row.createdAt = tokens.size() > 4 ? tokens[4] : "";
     row.decidedAt = tokens.size() > 5 ? tokens[5] : "";
+    row.note = tokens.size() > 6 ? tokens[6] : "";
     return row;
 }
 
 std::string serializeBudgetApproval(const BudgetApproval& row) {
-    return row.entryId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt;
+    return row.entryId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt + "|" + row.note;
 }
 
 bool loadBudgetApprovals(std::vector<BudgetApproval>& rows) {
@@ -343,7 +345,7 @@ bool saveBudgetApprovals(const std::vector<BudgetApproval>& rows) {
         return false;
     }
 
-    writer << "entryID|approverUsername|role|status|createdAt|decidedAt\n";
+    writer << "entryID|approverUsername|role|status|createdAt|decidedAt|note\n";
     for (std::size_t i = 0; i < rows.size(); ++i) {
         writer << serializeBudgetApproval(rows[i]) << '\n';
     }
@@ -853,6 +855,12 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         if (approvals[i].entryId == entryId && approvals[i].approverUsername == admin.username && approvals[i].status == "pending") {
             approvals[i].status = approve ? "approved" : "rejected";
             approvals[i].decidedAt = now;
+
+            std::string note;
+            std::cout << "  Add a note (optional, press Enter to skip): ";
+            std::getline(std::cin, note);
+            approvals[i].note = note;
+
             updated = true;
             break;
         }
@@ -946,7 +954,7 @@ void ensureBudgetConsensusFilesExist() {
                          "entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt");
     ensureFileWithHeader(BUDGET_APPROVALS_FILE_PATH_PRIMARY,
                          BUDGET_APPROVALS_FILE_PATH_FALLBACK,
-                         "entryID|approverUsername|role|status|createdAt|decidedAt");
+                         "entryID|approverUsername|role|status|createdAt|decidedAt|note");
 
     std::vector<BudgetEntry> entries;
     if (loadBudgetEntries(entries)) {
