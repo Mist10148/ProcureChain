@@ -35,6 +35,26 @@ These challenges highlight the need for a system that can manage the complete pr
 
 ---
 
+## OBJECTIVES OF THE STUDY
+
+This project aims to design a municipal procurement document tracking system using the C++ programming language that seeks to apply fundamental programming concepts covered during the finals period of the academic year 2025–2026 while implementing governance-oriented features for procurement transparency and accountability.
+
+Specifically:
+
+1. To design a functional procurement document tracking system that allows authorized personnel to upload, review, approve, and publish procurement documents through structured CRUD operations and a multi-role approval workflow.
+
+2. To apply essential C++ programming concepts such as loops, conditional statements, functions, vectors, file I/O, and string manipulation in building a modular, procedural system capable of managing complex governance workflows.
+
+3. To implement role-based access control across five user roles — Citizen, Super Admin, Procurement Officer, Budget Officer, and Municipal Administrator — ensuring that each role has defined permissions and responsibilities aligned with proper procurement governance procedures.
+
+4. To integrate a simulated blockchain verification mechanism and a hash-linked audit trail using SHA-256 cryptographic hashing, providing tamper-evident record-keeping and enabling independent verification of document integrity.
+
+5. To develop budget tracking and variance reporting features that allow authorized users to submit, approve, and monitor budget allocations against actual procurement amounts, supporting fiscal accountability.
+
+6. To incorporate compliance monitoring tools, including SLA-based approval thresholds, escalation queues for overdue actions, analytics dashboards, and notification systems, that enable administrators to maintain oversight and enforce procedural standards across the procurement process.
+
+---
+
 ## STATEMENT OF THE PROBLEM
 
 The project focused on designing a Municipal Procurement Document Tracking System to support local government units in managing procurement documents with transparency, accountability, and procedural compliance. Specifically, the study will examine the following problems:
