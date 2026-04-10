@@ -1,0 +1,5 @@
+category|requiredRoles|maxDecisionDays
+DEFAULT|Budget Officer,Municipal Administrator|7
+Infrastructure Procurement|Budget Officer,Municipal Administrator,Procurement Officer|5
+Health Supplies|Budget Officer,Municipal Administrator|5
+IT and Digital Services|Budget Officer,Municipal Administrator,Procurement Officer|4

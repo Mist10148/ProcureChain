@@ -7,6 +7,7 @@
 #include "../include/ui.h"
 
 #include <ctime>
+#include <cctype>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -20,6 +21,8 @@ namespace {
 // a fallback path so the program works from either project root or src folder.
 const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
+const std::string APPROVAL_RULES_FILE_PATH_PRIMARY = "data/approval_rules.txt";
+const std::string APPROVAL_RULES_FILE_PATH_FALLBACK = "../data/approval_rules.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
 
@@ -59,6 +62,181 @@ std::vector<std::string> splitPipe(const std::string& line) {
         tokens.push_back(token);
     }
     return tokens;
+}
+
+std::string trimCopy(const std::string& value) {
+    const std::string whitespace = " \t\r\n";
+    const size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+std::string toLowerCopy(std::string value) {
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        value[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(value[i])));
+    }
+    return value;
+}
+
+std::vector<std::string> defaultRequiredRoles() {
+    std::vector<std::string> roles;
+    roles.push_back("Budget Officer");
+    roles.push_back("Municipal Administrator");
+    return roles;
+}
+
+std::vector<std::string> splitRolesCsv(const std::string& value) {
+    std::vector<std::string> roles;
+    std::stringstream parser(value);
+    std::string token;
+
+    while (std::getline(parser, token, ',')) {
+        token = trimCopy(token);
+        if (!token.empty()) {
+            roles.push_back(token);
+        }
+    }
+
+    return roles;
+}
+
+std::string joinRolesCsv(const std::vector<std::string>& roles) {
+    std::string output;
+    for (std::size_t i = 0; i < roles.size(); ++i) {
+        if (!output.empty()) {
+            output += ",";
+        }
+        output += roles[i];
+    }
+
+    return output;
+}
+
+bool roleExistsInRule(const std::vector<std::string>& requiredRoles, const std::string& role) {
+    for (std::size_t i = 0; i < requiredRoles.size(); ++i) {
+        if (requiredRoles[i] == role) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ApprovalRule buildDefaultRule() {
+    ApprovalRule rule;
+    rule.category = "DEFAULT";
+    rule.requiredRoles = defaultRequiredRoles();
+    rule.maxDecisionDays = 7;
+    return rule;
+}
+
+ApprovalRule parseApprovalRuleTokens(const std::vector<std::string>& tokens) {
+    ApprovalRule rule = buildDefaultRule();
+    rule.category = tokens.size() > 0 ? trimCopy(tokens[0]) : "DEFAULT";
+
+    if (rule.category.empty()) {
+        rule.category = "DEFAULT";
+    }
+
+    if (tokens.size() > 1) {
+        const std::vector<std::string> parsedRoles = splitRolesCsv(tokens[1]);
+        if (!parsedRoles.empty()) {
+            rule.requiredRoles = parsedRoles;
+        }
+    }
+
+    if (tokens.size() > 2) {
+        std::stringstream in(tokens[2]);
+        int parsedDays = 0;
+        in >> parsedDays;
+        if (!in.fail() && parsedDays > 0) {
+            rule.maxDecisionDays = parsedDays;
+        }
+    }
+
+    return rule;
+}
+
+std::string serializeApprovalRule(const ApprovalRule& rule) {
+    std::ostringstream out;
+    out << rule.category << "|" << joinRolesCsv(rule.requiredRoles) << "|" << rule.maxDecisionDays;
+    return out.str();
+}
+
+bool loadApprovalRules(std::vector<ApprovalRule>& rules) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, APPROVAL_RULES_FILE_PATH_PRIMARY, APPROVAL_RULES_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    rules.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("category|") == 0) {
+                continue;
+            }
+        }
+
+        ApprovalRule rule = parseApprovalRuleTokens(splitPipe(line));
+        if (rule.category.empty()) {
+            continue;
+        }
+
+        rules.push_back(rule);
+    }
+
+    return true;
+}
+
+bool saveApprovalRules(const std::vector<ApprovalRule>& rules) {
+    std::ofstream writer(resolveDataPath(APPROVAL_RULES_FILE_PATH_PRIMARY, APPROVAL_RULES_FILE_PATH_FALLBACK));
+    if (!writer.is_open()) {
+        return false;
+    }
+
+    writer << "category|requiredRoles|maxDecisionDays\n";
+    for (std::size_t i = 0; i < rules.size(); ++i) {
+        writer << serializeApprovalRule(rules[i]) << '\n';
+    }
+    writer.flush();
+    return true;
+}
+
+ApprovalRule resolveRuleForCategory(const std::string& category) {
+    std::vector<ApprovalRule> rules;
+    ApprovalRule defaultRule = buildDefaultRule();
+
+    if (!loadApprovalRules(rules) || rules.empty()) {
+        return defaultRule;
+    }
+
+    const std::string categoryKey = toLowerCopy(trimCopy(category));
+
+    for (std::size_t i = 0; i < rules.size(); ++i) {
+        if (toLowerCopy(trimCopy(rules[i].category)) == "default") {
+            defaultRule = rules[i];
+            break;
+        }
+    }
+
+    for (std::size_t i = 0; i < rules.size(); ++i) {
+        if (toLowerCopy(trimCopy(rules[i].category)) == categoryKey) {
+            return rules[i];
+        }
+    }
+
+    return defaultRule;
 }
 
 Approval parseApprovalTokens(const std::vector<std::string>& tokens) {
@@ -130,38 +308,6 @@ bool saveApprovals(const std::vector<Approval>& rows) {
     }
     writer.flush();
     return true;
-}
-
-bool isRequiredApproverRole(const std::string& role) {
-    // Approval flow currently requires exactly two governance roles.
-    return role == "Budget Officer" || role == "Municipal Administrator";
-}
-
-std::string findAdminUsernameByRole(const std::string& targetRole) {
-    // Linear search over admin records: O(a), a = admin row count.
-    std::ifstream file;
-    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
-        return "";
-    }
-
-    std::string line;
-    std::getline(file, line); // Skip header.
-
-    while (std::getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        const std::vector<std::string> tokens = splitPipe(line);
-        const std::string username = tokens.size() > 2 ? tokens[2] : "";
-        const std::string role = tokens.size() > 4 ? tokens[4] : "";
-
-        if (role == targetRole && !username.empty()) {
-            return username;
-        }
-    }
-
-    return "";
 }
 
 void seedApprovalsIfEmpty() {
@@ -362,10 +508,35 @@ void ensureApprovalsDataFileExists() {
     }
 
     seedApprovalsIfEmpty();
+    ensureApprovalRulesDataFileExists();
 }
 
-void createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader) {
-    // Creates one pending request per required active admin role.
+void ensureApprovalRulesDataFileExists() {
+    std::ifstream checkFile;
+    if (!openInputFileWithFallback(checkFile, APPROVAL_RULES_FILE_PATH_PRIMARY, APPROVAL_RULES_FILE_PATH_FALLBACK)) {
+        std::ofstream createFile(APPROVAL_RULES_FILE_PATH_PRIMARY);
+        if (!createFile.is_open()) {
+            createFile.clear();
+            createFile.open(APPROVAL_RULES_FILE_PATH_FALLBACK);
+        }
+
+        if (createFile.is_open()) {
+            createFile << "category|requiredRoles|maxDecisionDays\n";
+            createFile << "DEFAULT|Budget Officer,Municipal Administrator|7\n";
+            createFile << "Infrastructure Procurement|Budget Officer,Municipal Administrator,Procurement Officer|5\n";
+            createFile << "Health Supplies|Budget Officer,Municipal Administrator|5\n";
+            createFile << "IT and Digital Services|Budget Officer,Municipal Administrator,Procurement Officer|4\n";
+        }
+    }
+
+    std::vector<ApprovalRule> rules;
+    if (loadApprovalRules(rules) && !rules.empty()) {
+        saveApprovalRules(rules);
+    }
+}
+
+void createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category) {
+    // Creates pending requests from category-specific rules with a safe DEFAULT fallback.
     // Complexity: O(a + n), where a=admin rows and n=existing approval rows.
     std::ifstream adminFile;
     if (!openInputFileWithFallback(adminFile, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
@@ -378,9 +549,11 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
     std::vector<Approval> existing;
     loadApprovals(existing);
 
-    std::vector<Approval> requests;
     const std::string now = getCurrentTimestamp();
+    ApprovalRule chosenRule = resolveRuleForCategory(category);
+    const std::vector<std::string> fallbackRoles = defaultRequiredRoles();
 
+    std::vector<Approval> requests;
     while (std::getline(adminFile, line)) {
         if (line.empty()) {
             continue;
@@ -391,7 +564,11 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
         const std::string role = tokens.size() > 4 ? tokens[4] : "";
         const std::string status = tokens.size() > 5 ? tokens[5] : "active";
 
-        if (username == uploader || !isRequiredApproverRole(role) || status != "active") {
+        if (username.empty() || username == uploader || status != "active") {
+            continue;
+        }
+
+        if (!roleExistsInRule(chosenRule.requiredRoles, role)) {
             continue;
         }
 
@@ -402,6 +579,39 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
         request.status = "pending";
         request.createdAt = now;
         requests.push_back(request);
+    }
+
+    if (requests.empty() && toLowerCopy(trimCopy(chosenRule.category)) != "default") {
+        adminFile.clear();
+        adminFile.seekg(0);
+        std::getline(adminFile, line); // Skip header.
+
+        while (std::getline(adminFile, line)) {
+            if (line.empty()) {
+                continue;
+            }
+
+            const std::vector<std::string> tokens = splitPipe(line);
+            const std::string username = tokens.size() > 2 ? tokens[2] : "";
+            const std::string role = tokens.size() > 4 ? tokens[4] : "";
+            const std::string status = tokens.size() > 5 ? tokens[5] : "active";
+
+            if (username.empty() || username == uploader || status != "active") {
+                continue;
+            }
+
+            if (!roleExistsInRule(fallbackRoles, role)) {
+                continue;
+            }
+
+            Approval request;
+            request.docId = docId;
+            request.approverUsername = username;
+            request.role = role;
+            request.status = "pending";
+            request.createdAt = now;
+            requests.push_back(request);
+        }
     }
 
     if (requests.empty()) {
@@ -561,4 +771,148 @@ void approveDocumentAsAdmin(const Admin& admin) {
 
 void rejectDocumentAsAdmin(const Admin& admin) {
     applyApprovalDecision(admin, false);
+}
+
+void manageApprovalRulesForAdmin(const Admin& admin) {
+    if (admin.role != "Super Admin") {
+        clearScreen();
+        ui::printSectionTitle("APPROVAL RULES MANAGEMENT");
+        std::cout << ui::error("[!] Only Super Admin can manage approval rules.") << "\n";
+        logAuditAction("APPROVAL_RULES_ACCESS_DENIED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    int choice = -1;
+    do {
+        clearScreen();
+        ui::printSectionTitle("APPROVAL RULES MANAGEMENT");
+
+        std::vector<ApprovalRule> rules;
+        if (!loadApprovalRules(rules) || rules.empty()) {
+            rules.push_back(buildDefaultRule());
+            saveApprovalRules(rules);
+        }
+
+        const std::vector<std::string> headers = {"Category", "Required Roles", "SLA (days)"};
+        const std::vector<int> widths = {28, 44, 12};
+        ui::printTableHeader(headers, widths);
+        for (std::size_t i = 0; i < rules.size(); ++i) {
+            ui::printTableRow({rules[i].category, joinRolesCsv(rules[i].requiredRoles), std::to_string(rules[i].maxDecisionDays)}, widths);
+        }
+        ui::printTableFooter(widths);
+
+        std::cout << "\n";
+        std::cout << "  [1] Add or Update Rule\n";
+        std::cout << "  [2] Delete Rule\n";
+        std::cout << "  [0] Back\n";
+        std::cout << "  Enter choice: ";
+
+        std::cin >> choice;
+        if (std::cin.fail()) {
+            std::cin.clear();
+            clearInputBuffer();
+            std::cout << "\n" << ui::error("[!] Invalid input.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        clearInputBuffer();
+
+        if (choice == 1) {
+            std::string category;
+            std::string rolesInput;
+            std::string daysInput;
+
+            std::cout << "Category (or DEFAULT): ";
+            std::getline(std::cin, category);
+            category = trimCopy(category);
+
+            std::cout << "Required roles (comma-separated): ";
+            std::getline(std::cin, rolesInput);
+
+            std::cout << "Max decision days: ";
+            std::getline(std::cin, daysInput);
+
+            std::vector<std::string> parsedRoles = splitRolesCsv(rolesInput);
+            if (category.empty() || parsedRoles.empty()) {
+                std::cout << "\n" << ui::error("[!] Category and required roles are required.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            int maxDays = 7;
+            std::stringstream in(daysInput);
+            in >> maxDays;
+            if (in.fail() || maxDays <= 0) {
+                maxDays = 7;
+            }
+
+            bool replaced = false;
+            const std::string key = toLowerCopy(category);
+            for (std::size_t i = 0; i < rules.size(); ++i) {
+                if (toLowerCopy(rules[i].category) == key) {
+                    rules[i].requiredRoles = parsedRoles;
+                    rules[i].maxDecisionDays = maxDays;
+                    replaced = true;
+                    break;
+                }
+            }
+
+            if (!replaced) {
+                ApprovalRule newRule;
+                newRule.category = category;
+                newRule.requiredRoles = parsedRoles;
+                newRule.maxDecisionDays = maxDays;
+                rules.push_back(newRule);
+            }
+
+            if (!saveApprovalRules(rules)) {
+                std::cout << "\n" << ui::error("[!] Failed to save approval rules.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            logAuditAction("APPROVAL_RULE_SAVED", category, admin.username);
+            std::cout << "\n" << ui::success("[+] Approval rule saved.") << "\n";
+            waitForEnter();
+        } else if (choice == 2) {
+            std::string category;
+            std::cout << "Category to delete: ";
+            std::getline(std::cin, category);
+            category = trimCopy(category);
+
+            if (toLowerCopy(category) == "default") {
+                std::cout << "\n" << ui::warning("[!] DEFAULT rule cannot be deleted.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            bool removed = false;
+            for (std::size_t i = 0; i < rules.size(); ++i) {
+                if (toLowerCopy(rules[i].category) == toLowerCopy(category)) {
+                    rules.erase(rules.begin() + static_cast<std::vector<ApprovalRule>::difference_type>(i));
+                    removed = true;
+                    break;
+                }
+            }
+
+            if (!removed) {
+                std::cout << "\n" << ui::warning("[!] Rule not found.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (!saveApprovalRules(rules)) {
+                std::cout << "\n" << ui::error("[!] Failed to save approval rules.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            logAuditAction("APPROVAL_RULE_DELETED", category, admin.username);
+            std::cout << "\n" << ui::success("[+] Approval rule deleted.") << "\n";
+            waitForEnter();
+        }
+
+    } while (choice != 0);
 }

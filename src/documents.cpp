@@ -1045,7 +1045,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::cout << "  2) Optionally provide a source file path (.pdf/.docx/.csv/.txt).\n";
     std::cout << "  3) The system copies the file into data/documents using the new document ID.\n";
     std::cout << "  4) It computes SHA-256 from the file (or metadata if no file) and stores it.\n";
-    std::cout << "  5) It auto-creates pending approvals for all active Budget Officer and Municipal Administrator accounts (except uploader).\n\n";
+    std::cout << "  5) It auto-creates pending approvals based on configured category rules (with safe defaults).\n\n";
 
     clearInputBuffer();
 
@@ -1135,7 +1135,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         return;
     }
 
-    createApprovalRequestsForDocument(doc.docId, admin.username);
+    createApprovalRequestsForDocument(doc.docId, admin.username, doc.category);
 
     const std::vector<ApprovalChainRow> generatedChain = loadApprovalChainRows(doc.docId);
     if (!generatedChain.empty()) {
@@ -1147,7 +1147,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
             ui::printTableRow({generatedChain[i].role, generatedChain[i].approverUsername, generatedChain[i].status}, widths);
         }
         ui::printTableFooter(widths);
-        std::cout << "  " << ui::muted("Active Budget Officer/Municipal Administrator accounts are auto-included in this chain.") << "\n";
+        std::cout << "  " << ui::muted("Active accounts matching the category approval rule are auto-included in this chain.") << "\n";
     }
 
     const int chainIndex = appendBlockchainAction("UPLOAD_HASH:" + doc.hashValue, doc.docId, admin.username);

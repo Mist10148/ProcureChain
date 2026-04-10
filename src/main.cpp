@@ -245,6 +245,10 @@ void runApprovalsWorkspace(const Admin& admin) {
         actionCodes.push_back(4);
         actionLabels.push_back("Approval Analytics Dashboard (Detailed)");
     }
+    if (canManageAccounts(admin)) {
+        actionCodes.push_back(5);
+        actionLabels.push_back("Manage Approval Rules");
+    }
 
     if (actionCodes.empty()) {
         clearScreen();
@@ -286,6 +290,9 @@ void runApprovalsWorkspace(const Admin& admin) {
                 break;
             case 4:
                 viewApprovalAnalyticsDashboard(admin);
+                break;
+            case 5:
+                manageApprovalRulesForAdmin(admin);
                 break;
             default:
                 break;
