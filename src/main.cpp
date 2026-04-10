@@ -651,6 +651,8 @@ int main() {
     // Program bootstrap initializes UI capabilities and required data files,
     // then runs the home menu loop until the user exits.
     ui::initializeUi();
+    clearScreen();
+    ui::showStartupSplash();
 
     // Startup ensures all required files and seed data exist before any user interaction.
     ensureUserDataFileExists();

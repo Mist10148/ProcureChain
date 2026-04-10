@@ -10,6 +10,7 @@ namespace ui {
 
 bool isColorEnabled();
 void initializeUi();
+void showStartupSplash();
 bool isCompactLayout();
 void setCompactLayout(bool compact);
 void toggleCompactLayout();

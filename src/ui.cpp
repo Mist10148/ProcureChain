@@ -1,9 +1,12 @@
 #include "../include/ui.h"
 
 #include <algorithm>
+#include <clocale>
+#include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <thread>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -17,6 +20,44 @@ namespace {
 bool g_uiInitialized = false;
 bool g_colorEnabled = false;
 bool g_compactLayout = false;
+
+void sleepForMilliseconds(int milliseconds) {
+    if (milliseconds <= 0) {
+        return;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+}
+
+void printAnimatedLine(const std::string& line, int delayMs) {
+    if (delayMs <= 0) {
+        std::cout << line << '\n';
+        return;
+    }
+
+    for (std::size_t i = 0; i < line.size();) {
+        unsigned char leadByte = static_cast<unsigned char>(line[i]);
+        std::size_t charWidth = 1;
+
+        // Step through UTF-8 code points so animated output does not split
+        // multi-byte glyphs used in the splash screen art.
+        if ((leadByte & 0x80U) == 0x00U) {
+            charWidth = 1;
+        } else if ((leadByte & 0xE0U) == 0xC0U) {
+            charWidth = 2;
+        } else if ((leadByte & 0xF0U) == 0xE0U) {
+            charWidth = 3;
+        } else if ((leadByte & 0xF8U) == 0xF0U) {
+            charWidth = 4;
+        }
+
+        std::cout << line.substr(i, charWidth) << std::flush;
+        sleepForMilliseconds(delayMs);
+        i += charWidth;
+    }
+
+    std::cout << '\n';
+}
 
 std::string toLowerCopy(std::string value) {
     // ASCII lowercase conversion used by consensus status helpers.
@@ -64,7 +105,51 @@ bool isColorEnabled() {
 
 void initializeUi() {
     // Explicit warm-up so first interactive screen already has color state set.
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+    std::setlocale(LC_ALL, ".UTF-8");
     (void)isColorEnabled();
+}
+
+void showStartupSplash() {
+    static const char* kTitleArt[] = {
+        "                                                                                                                                                                      ",
+        "                                                              ██████╗ ██████╗  ██████╗  ██████╗██╗   ██╗██████╗ ███████╗ ██████╗██╗  ██╗ █████╗ ██╗███╗   ██╗         ",
+        "                                                              ██╔══██╗██╔══██╗██╔═══██╗██╔════╝██║   ██║██╔══██╗██╔════╝██╔════╝██║  ██║██╔══██╗██║████╗  ██║         ",
+        "                                                              ██████╔╝██████╔╝██║   ██║██║     ██║   ██║██████╔╝█████╗  ██║     ███████║███████║██║██╔██╗ ██║         ",
+        "                                                              ██╔═══╝ ██╔══██╗██║   ██║██║     ██║   ██║██╔══██╗██╔══╝  ██║     ██╔══██║██╔══██║██║██║╚██╗██║         ",
+        "                                                              ██║     ██║  ██║╚██████╔╝╚██████╗╚██████╔╝██║  ██║███████╗╚██████╗██║  ██║██║  ██║██║██║ ╚████║         ",
+        "                                                              ╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝         ",
+        "                                                     ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄",
+    };
+    static const char* kBanner[] = {
+        "                                                       ┌┬┐╷ ╷┌┐╷╷┌─╴╷┌─┐┌─┐╷     ┌─┐┌─┐┌─┐┌─╴╷ ╷┌─┐┌─╴┌┬┐┌─╴┌┐╷╶┬╴   ┌─┐╷  ┌─┐╶┬╴┌─╴┌─┐┌─┐┌┬┐   ┌─┐╶┬╴┌─┐┌─┐╶┬╴╷ ╷┌─┐ ",
+        "                                                       ││││ ││└┤││  │├─┘├─┤│     ├─┘├┬┘│ ││  │ │├┬┘├╴ │││├╴ │└┤ │    ├─┘│  ├─┤ │ ├╴ │ │├┬┘│││   └─┐ │ ├─┤├┬┘ │ │ │├─┘ ",
+        "                                                       ╵ ╵└─┘╵ ╵╵└─╴╵╵  ╵ ╵└─╴   ╵  ╵└╴└─┘└─╴└─┘╵└╴└─╴╵ ╵└─╴╵ ╵ ╵    ╵  └─╴╵ ╵ ╵ ╵  └─┘╵└╴╵ ╵   └─┘ ╵ ╵ ╵╵└╴ ╵ └─┘╵   "
+    };
+
+    std::cout << "\n";
+    for (std::size_t i = 0; i < sizeof(kBanner) / sizeof(kBanner[0]); ++i) {
+        printAnimatedLine(accent(kBanner[i]), 0);
+    }
+    std::cout << "\n";
+
+    for (std::size_t i = 0; i < sizeof(kTitleArt) / sizeof(kTitleArt[0]); ++i) {
+        printAnimatedLine(primary(kTitleArt[i]), 0);
+        sleepForMilliseconds(30);
+    }
+
+    std::cout << "\n";
+    printAnimatedLine(bold(
+        "                                                                                                         ProcureChain"), 8);
+    printAnimatedLine(muted(
+        "                                                                                 Secure approvals, audit trails, and public transparency"), 0);
+    printAnimatedLine(info(
+        "                                                                                          Municipal Procurement Document Tracking"), 0);
+    std::cout << "\n";
+    sleepForMilliseconds(2000);
 }
 
 bool isCompactLayout() {
