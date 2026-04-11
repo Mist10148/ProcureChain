@@ -37,6 +37,9 @@ std::string truncate(const std::string& text, std::size_t width);
 
 void printSectionTitle(const std::string& title);
 void printBreadcrumb(const std::vector<std::string>& segments);
+bool confirmAction(const std::string& question,
+				   const std::string& confirmLabel = "Confirm",
+				   const std::string& cancelLabel = "Cancel");
 void printKpiTiles(const std::vector<std::pair<std::string, std::string>>& tiles);
 void printTableRule(const std::vector<int>& widths);
 void printTableHeader(const std::vector<std::string>& columns, const std::vector<int>& widths);

@@ -849,6 +849,67 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
+    std::vector<BudgetApproval> projectedApprovals = approvals;
+    for (std::size_t i = 0; i < projectedApprovals.size(); ++i) {
+        if (projectedApprovals[i].entryId == entryId &&
+            projectedApprovals[i].approverUsername == admin.username &&
+            projectedApprovals[i].status == "pending") {
+            projectedApprovals[i].status = approve ? "approved" : "rejected";
+            break;
+        }
+    }
+
+    bool projectedHasAny = false;
+    bool projectedHasPending = false;
+    bool projectedHasRejected = false;
+    int projectedApproved = 0;
+    int projectedTotal = 0;
+
+    for (std::size_t i = 0; i < projectedApprovals.size(); ++i) {
+        if (projectedApprovals[i].entryId != entryId) {
+            continue;
+        }
+
+        projectedHasAny = true;
+        projectedTotal++;
+        if (projectedApprovals[i].status == "pending") {
+            projectedHasPending = true;
+        } else if (projectedApprovals[i].status == "rejected") {
+            projectedHasRejected = true;
+        } else if (projectedApprovals[i].status == "approved") {
+            projectedApproved++;
+        }
+    }
+
+    std::string projectedStatus = "pending_approval";
+    if (projectedHasRejected) {
+        projectedStatus = "rejected";
+    } else if (projectedHasAny && !projectedHasPending) {
+        projectedStatus = "published";
+    }
+
+    const std::string projectedProgress = "[" + std::string(static_cast<std::size_t>(projectedApproved), '#') +
+                                         std::string(static_cast<std::size_t>(std::max(0, projectedTotal - projectedApproved)), '-') +
+                                         "] " + std::to_string(projectedApproved) + "/" + std::to_string(projectedTotal);
+    std::cout << "\nProjected consensus after this action: "
+              << projectedProgress << " -> " << ui::consensusStatus(projectedStatus) << "\n";
+
+    std::string confirmQuestion = approve
+        ? "Are you sure you want to approve this budget entry?"
+        : "Are you sure you want to reject this budget entry?";
+    if (projectedStatus == "published") {
+        confirmQuestion = "All required approvals are complete. Publish this budget entry now?";
+    }
+
+    if (!ui::confirmAction(confirmQuestion,
+                           approve ? "Confirm Approval" : "Confirm Rejection",
+                           "Cancel")) {
+        logAuditAction("BUDGET_APPROVAL_CANCELLED", entryId, admin.username);
+        std::cout << ui::warning("[!] Budget decision cancelled.") << "\n";
+        waitForEnter();
+        return;
+    }
+
     bool updated = false;
     const std::string now = getCurrentTimestamp();
     for (std::size_t i = 0; i < approvals.size(); ++i) {

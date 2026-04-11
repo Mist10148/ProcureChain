@@ -511,6 +511,14 @@ void runCitizenDashboard(const User& citizen) {
                 showHelpMenu("Citizen");
                 break;
             case 0:
+                if (!ui::confirmAction("Are you sure you want to logout?",
+                                       "Confirm Logout",
+                                       "Stay Logged In")) {
+                    citizenChoice = -1;
+                    std::cout << "\n" << ui::warning("[!] Logout cancelled.") << "\n";
+                    waitForEnter();
+                    break;
+                }
                 logAuditAction("CITIZEN_LOGOUT", citizen.userId, citizen.username);
                 std::cout << "\n" << ui::success("[+] You have been logged out successfully.") << "\n";
                 break;
@@ -564,6 +572,12 @@ void runAdminDashboard(const Admin& admin) {
         }
 
         if (adminChoice == -1) {
+            if (!ui::confirmAction("Are you sure you want to logout?",
+                                   "Confirm Logout",
+                                   "Stay Logged In")) {
+                adminChoice = 0;
+                continue;
+            }
             logAuditAction("ADMIN_LOGOUT", admin.adminId, admin.username);
             std::cout << "\n" << ui::success("[+] You have been logged out successfully.") << "\n";
             break;

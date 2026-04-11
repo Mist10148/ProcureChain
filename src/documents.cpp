@@ -29,6 +29,8 @@ const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
 const std::string DOCUMENT_UPLOAD_DIR_PRIMARY = "data/documents";
 const std::string DOCUMENT_UPLOAD_DIR_FALLBACK = "../data/documents";
+const std::string DOCUMENT_SOURCE_UPLOAD_DIR_PRIMARY = "data/uploads";
+const std::string DOCUMENT_SOURCE_UPLOAD_DIR_FALLBACK = "../data/uploads";
 
 struct ApprovalChainRow {
     std::string approverUsername;
@@ -888,6 +890,42 @@ std::string resolveUploadDirectory() {
     return "";
 }
 
+std::string resolveUploadSourceDirectory() {
+    std::error_code ec;
+    std::filesystem::create_directories(DOCUMENT_SOURCE_UPLOAD_DIR_PRIMARY, ec);
+    if (!ec) {
+        return DOCUMENT_SOURCE_UPLOAD_DIR_PRIMARY;
+    }
+
+    ec.clear();
+    std::filesystem::create_directories(DOCUMENT_SOURCE_UPLOAD_DIR_FALLBACK, ec);
+    if (!ec) {
+        return DOCUMENT_SOURCE_UPLOAD_DIR_FALLBACK;
+    }
+
+    return "";
+}
+
+std::vector<std::filesystem::path> collectUploadSourceFiles(const std::string& uploadSourceDirectory) {
+    std::vector<std::filesystem::path> files;
+    std::error_code ec;
+
+    for (std::filesystem::directory_iterator it(uploadSourceDirectory, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        if (!it->is_regular_file()) {
+            continue;
+        }
+
+        if (!isAllowedImportExtension(it->path().extension().string())) {
+            continue;
+        }
+
+        files.push_back(it->path());
+    }
+
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
 bool copyImportedFileToStorage(const std::string& sourcePath,
                                const std::string& targetDirectory,
                                const std::string& documentId,
@@ -1032,6 +1070,30 @@ void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, co
     std::ostringstream summary;
     summary << "Approved: " << approved << " | Pending: " << pending << " | Rejected: " << rejected;
     std::cout << "  " << summary.str() << "\n";
+
+    const int totalApprovers = static_cast<int>(chainRows.size());
+    const int filled = std::max(0, std::min(approved, totalApprovers));
+    const std::string progressBar = "[" + std::string(static_cast<std::size_t>(filled), '#') +
+                                    std::string(static_cast<std::size_t>(totalApprovers - filled), '-') + "]";
+    std::cout << "  Consensus Progress: " << progressBar
+              << " " << approved << "/" << totalApprovers << " approvals\n";
+
+    std::cout << "\n" << ui::bold("Approvals Checklist") << "\n";
+    for (std::size_t i = 0; i < chainRows.size(); ++i) {
+        const std::string normalized = toLowerCopy(chainRows[i].status);
+        std::string marker = "[ ]";
+        if (normalized == "approved") {
+            marker = "[v]";
+        } else if (normalized == "rejected") {
+            marker = "[x]";
+        }
+
+        std::cout << "  " << marker << " " << chainRows[i].role << " - " << chainRows[i].approverUsername;
+        if (normalized == "rejected" && !chainRows[i].note.empty()) {
+            std::cout << " | Reason: " << chainRows[i].note;
+        }
+        std::cout << "\n";
+    }
 
     if (rejected > 0) {
         std::cout << "  " << ui::consensusStatus("rejected") << " (publication blocked)\n";
@@ -1420,7 +1482,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::cout << ui::bold("Mini Guide") << "\n";
     std::cout << "  1) Enter title/category/description.\n";
     std::cout << "  1.1) Optional: add comma-separated tags (e.g., urgent, legal, q2).\n";
-    std::cout << "  2) Optionally provide a source file path (.pdf/.docx/.csv/.txt).\n";
+    std::cout << "  2) Pick one source file from data/uploads (.pdf/.docx/.csv/.txt).\n";
     std::cout << "  3) The system copies the file into data/documents using the new document ID.\n";
     std::cout << "  4) It computes SHA-256 from the file (or metadata if no file) and stores it.\n";
     std::cout << "  5) It auto-creates pending approvals based on configured category rules (with safe defaults).\n\n";
@@ -1442,12 +1504,6 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::cout << "Tags (comma-separated, optional): ";
     std::string tagInput;
     std::getline(std::cin, tagInput);
-    std::cout << "Source file path (optional): ";
-    std::string sourceFilePath;
-    std::getline(std::cin, sourceFilePath);
-
-    // Keep upload guidance visible so users know exact accepted formats.
-    std::cout << "  " << ui::muted("Tip: leave blank for metadata-only upload, or paste a full path to .pdf/.docx/.csv/.txt") << "\n";
 
     if (doc.title.empty() || doc.category.empty() || doc.description.empty()) {
         std::cout << ui::error("[!] Title, category, and description are required.") << "\n";
@@ -1501,7 +1557,70 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     doc.status = "pending_approval";
     doc.department = "General";
 
-    sourceFilePath = trimCopy(sourceFilePath);
+    std::string sourceFilePath;
+    const std::string uploadSourceDirectory = resolveUploadSourceDirectory();
+    if (uploadSourceDirectory.empty()) {
+        std::cout << ui::error("[!] Unable to prepare uploads source folder.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    const std::vector<std::filesystem::path> uploadCandidates = collectUploadSourceFiles(uploadSourceDirectory);
+    std::cout << "\n" << ui::bold("Uploads Folder Picker") << "\n";
+    std::cout << "  Source folder: " << uploadSourceDirectory << "\n";
+
+    if (!uploadCandidates.empty()) {
+        const std::vector<std::string> uploadHeaders = {"#", "File Name", "Type", "Source Path"};
+        const std::vector<int> uploadWidths = {4, 26, 8, 50};
+        ui::printTableHeader(uploadHeaders, uploadWidths);
+
+        for (std::size_t i = 0; i < uploadCandidates.size(); ++i) {
+            const std::string ext = uploadCandidates[i].extension().string();
+            const std::string type = ext.empty() ? "unknown" : toLowerCopy(ext.substr(1));
+            ui::printTableRow({std::to_string(i + 1),
+                               uploadCandidates[i].filename().string(),
+                               type,
+                               uploadCandidates[i].string()},
+                              uploadWidths);
+        }
+
+        ui::printTableFooter(uploadWidths);
+    } else {
+        std::cout << "  " << ui::warning("[!] No eligible files found in uploads folder.") << "\n";
+    }
+
+    std::cout << "\n" << ui::info("[0]") << " Metadata-only upload\n";
+    if (!uploadCandidates.empty()) {
+        std::cout << "  " << ui::info("[1-" + std::to_string(uploadCandidates.size()) + "]") << " Pick source file\n";
+    }
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+    std::cout << "  Select source option: ";
+
+    int sourceChoice = -1;
+    std::cin >> sourceChoice;
+    if (std::cin.fail()) {
+        std::cin.clear();
+        clearInputBuffer();
+        std::cout << ui::error("[!] Invalid upload source selection.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (sourceChoice < 0 || sourceChoice > static_cast<int>(uploadCandidates.size())) {
+        clearInputBuffer();
+        std::cout << ui::error("[!] Upload source selection out of range.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    clearInputBuffer();
+    if (sourceChoice > 0) {
+        sourceFilePath = uploadCandidates[static_cast<std::size_t>(sourceChoice - 1)].string();
+    }
+
     if (!sourceFilePath.empty()) {
         const std::string uploadDirectory = resolveUploadDirectory();
         if (uploadDirectory.empty()) {
@@ -2007,6 +2126,14 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     } else {
         std::cout << ui::error("[!] Invalid status option.") << "\n";
         logAuditAction("UPDATE_STATUS_INPUT_ERROR", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!ui::confirmAction("Are you sure you want to apply this status change?",
+                           "Confirm Status Update",
+                           "Cancel")) {
+        std::cout << ui::warning("[!] Status update cancelled.") << "\n";
         waitForEnter();
         return;
     }

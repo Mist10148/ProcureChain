@@ -179,6 +179,39 @@ bool isWithinDateRange(const std::string& timestamp, const std::string& fromDate
     return true;
 }
 
+std::string shortHash(const std::string& value, std::size_t keep) {
+    if (value.size() <= keep) {
+        return value;
+    }
+
+    return value.substr(0, keep) + "...";
+}
+
+void printAuditTimeline(const std::vector<AuditEntry>& entries, std::size_t maxRows) {
+    if (entries.empty()) {
+        return;
+    }
+
+    std::size_t start = 0;
+    if (entries.size() > maxRows) {
+        start = entries.size() - maxRows;
+    }
+
+    std::cout << "\n" << ui::bold("Audit Timeline (Chain View)") << "\n";
+    for (std::size_t i = start; i < entries.size(); ++i) {
+        std::cout << "\n[" << entries[i].timestamp << "] " << entries[i].action << "\n";
+        std::cout << "  User   : " << entries[i].actor << "\n";
+        std::cout << "  Target : " << entries[i].target << "\n";
+        std::cout << "  Chain  : #" << entries[i].chainIndex << "\n";
+        std::cout << "  Tx Hash: " << shortHash(entries[i].currentHash, 10) << "\n";
+
+        if (i + 1 < entries.size()) {
+            std::cout << "      |\n";
+            std::cout << "      v\n";
+        }
+    }
+}
+
 bool isDateTextValid(const std::string& value) {
     if (value.empty()) {
         return true;
@@ -607,6 +640,9 @@ void viewAuditTrail(const std::string& actor) {
         actionCounts[entries[i].action] += 1.0;
     }
 
+    printAuditTimeline(entries, 12);
+
+    std::cout << "\n" << ui::bold("Audit Table (Detailed)") << "\n";
     const std::vector<std::string> headers = {"Timestamp", "Action", "Target", "Actor", "ChainIdx", "PrevHash", "CurrHash"};
     const std::vector<int> widths = {19, 20, 12, 12, 8, 14, 14};
 

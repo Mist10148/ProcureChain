@@ -20,6 +20,8 @@ namespace {
 // fields used during serialization to detect content drift.
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
+const std::string VERIFY_FOLDER_PATH_PRIMARY = "data/verify";
+const std::string VERIFY_FOLDER_PATH_FALLBACK = "../data/verify";
 const std::string BLOCKCHAIN_NODE_PRIMARY_PREFIX = "data/blockchain/node";
 const std::string BLOCKCHAIN_NODE_FALLBACK_PREFIX = "../data/blockchain/node";
 const int BLOCKCHAIN_NODE_COUNT = 5;
@@ -44,6 +46,7 @@ struct VerificationDocument {
     std::string fileName;
     std::string fileType;
     std::string filePath;
+    std::string tags;
 };
 
 std::vector<std::string> splitPipe(const std::string& line) {
@@ -78,6 +81,22 @@ bool openBlockchainNodeInput(std::ifstream& file, int nodeIndex) {
     return openInputFileWithFallback(file, primary, fallback);
 }
 
+std::string resolveDirectoryPathWithFallback(const std::string& primaryPath, const std::string& fallbackPath) {
+    std::error_code ec;
+    std::filesystem::create_directories(primaryPath, ec);
+    if (!ec) {
+        return primaryPath;
+    }
+
+    ec.clear();
+    std::filesystem::create_directories(fallbackPath, ec);
+    if (!ec) {
+        return fallbackPath;
+    }
+
+    return "";
+}
+
 std::string toLowerCopy(std::string value) {
     for (std::size_t i = 0; i < value.size(); ++i) {
         if (value[i] >= 'A' && value[i] <= 'Z') {
@@ -103,6 +122,7 @@ VerificationDocument parseVerificationDocument(const std::vector<std::string>& t
         doc.fileName = tokens[9];
         doc.fileType = tokens[10];
         doc.filePath = tokens[11];
+        doc.tags = tokens.size() > 17 ? tokens[17] : "";
     } else {
         doc.description = "";
         doc.department = tokens.size() > 3 ? tokens[3] : "";
@@ -113,6 +133,7 @@ VerificationDocument parseVerificationDocument(const std::vector<std::string>& t
         doc.fileName = "";
         doc.fileType = "";
         doc.filePath = "";
+        doc.tags = "";
     }
 
     return doc;
@@ -120,7 +141,71 @@ VerificationDocument parseVerificationDocument(const std::vector<std::string>& t
 
 std::string buildDocumentMetadataHashSource(const VerificationDocument& doc) {
     return doc.docId + "|" + doc.title + "|" + doc.category + "|" + doc.description + "|" + doc.department + "|" +
-           doc.dateUploaded + "|" + doc.uploader;
+           doc.dateUploaded + "|" + doc.uploader + "|" + doc.tags;
+}
+
+bool isAllowedVerificationExtension(const std::string& extensionWithDot) {
+    const std::string ext = toLowerCopy(extensionWithDot);
+    return ext == ".pdf" || ext == ".docx" || ext == ".csv" || ext == ".txt";
+}
+
+bool resolveCandidateVerifyFilePath(const std::string& docId, std::string& outFilePath, std::string& outReason) {
+    outFilePath.clear();
+    outReason.clear();
+
+    const std::string verifyBasePath = resolveDirectoryPathWithFallback(VERIFY_FOLDER_PATH_PRIMARY, VERIFY_FOLDER_PATH_FALLBACK);
+    if (verifyBasePath.empty()) {
+        outReason = "Unable to prepare verify folder path.";
+        return false;
+    }
+
+    const std::filesystem::path verifyDocFolder = std::filesystem::path(verifyBasePath) / docId;
+    std::error_code ec;
+    if (!std::filesystem::exists(verifyDocFolder, ec) || ec || !std::filesystem::is_directory(verifyDocFolder, ec)) {
+        outReason = "Missing folder: " + verifyDocFolder.string();
+        return false;
+    }
+
+    std::vector<std::filesystem::path> eligibleFiles;
+    for (std::filesystem::directory_iterator it(verifyDocFolder, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        if (!it->is_regular_file()) {
+            continue;
+        }
+
+        if (!isAllowedVerificationExtension(it->path().extension().string())) {
+            continue;
+        }
+
+        eligibleFiles.push_back(it->path());
+    }
+
+    if (ec) {
+        outReason = "Unable to read folder: " + verifyDocFolder.string();
+        return false;
+    }
+
+    std::sort(eligibleFiles.begin(), eligibleFiles.end());
+
+    if (eligibleFiles.empty()) {
+        outReason = "No eligible file found in " + verifyDocFolder.string() + " (.pdf/.docx/.csv/.txt).";
+        return false;
+    }
+
+    if (eligibleFiles.size() > 1) {
+        outReason = "Multiple files found in " + verifyDocFolder.string() + ". Keep exactly one file.";
+        return false;
+    }
+
+    outFilePath = eligibleFiles[0].string();
+    return true;
+}
+
+std::string shortHash(const std::string& value) {
+    if (value.size() <= 10) {
+        return value;
+    }
+
+    return value.substr(0, 10) + "...";
 }
 
 bool loadDocumentsForVerification(std::vector<VerificationDocument>& docs) {
@@ -419,8 +504,12 @@ void verifyDocumentIntegrity(const std::string& actor) {
     const bool found = findDocumentById(docs, targetDocId, doc);
 
     if (found) {
+        std::cout << "\n" << ui::bold("Verification Pipeline") << "\n";
+        std::cout << "  Checking official document record...\n";
         const std::string computedHash = computeVerificationHash(doc);
+        std::cout << "  Generating SHA-256 hash...\n";
         const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId);
+        std::cout << "  Validating blockchain registration...\n";
 
         const std::vector<std::string> headers = {"Field", "Value"};
         const std::vector<int> widths = {18, 60};
@@ -432,13 +521,18 @@ void verifyDocumentIntegrity(const std::string& actor) {
         ui::printTableRow({"Algorithm", "SHA-256"}, widths);
         ui::printTableFooter(widths);
 
+        std::cout << "\n" << ui::bold("====================================") << "\n";
+        std::cout << ui::bold("RESULT") << ": ";
         if (doc.hashValue == computedHash && blockchainMatch) {
-            std::cout << ui::success("[+] Verification Result: VALID") << "\n";
+            std::cout << ui::success("[VERIFIED]") << "\n";
+            std::cout << ui::success("This document matches its official stored hash and on-chain record.") << "\n";
             logAuditAction("VERIFY_DOC_VALID", doc.docId, actor);
         } else {
-            std::cout << ui::error("[!] Verification Result: POTENTIALLY TAMPERED") << "\n";
+            std::cout << ui::error("[TAMPERED]") << "\n";
+            std::cout << ui::error("Hash mismatch or chain mismatch detected. Investigate possible alteration.") << "\n";
             logAuditAction("VERIFY_DOC_TAMPERED", doc.docId, actor);
         }
+        std::cout << ui::bold("====================================") << "\n";
     }
 
     if (!found) {
@@ -483,6 +577,11 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
     }
 
     printVerificationHints(hints, 10);
+    std::cout << "\n" << ui::bold("Verification Input Requirement") << "\n";
+    std::cout << "  1) Enter the Published Document ID below.\n";
+    std::cout << "  2) Place exactly one candidate file in: "
+              << ui::muted("data/verify/<DocumentID>/") << "\n";
+    std::cout << "  3) Allowed formats: .pdf .docx .csv .txt\n";
     clearInputBuffer();
 
     std::string targetDocId;
@@ -504,9 +603,41 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
         return;
     }
 
-    const std::string computedHash = computeVerificationHash(doc);
-    const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId);
+    std::string verifyCandidatePath;
+    std::string verifyLookupReason;
+    const bool hasVerifyCandidate = resolveCandidateVerifyFilePath(doc.docId, verifyCandidatePath, verifyLookupReason);
+
+    std::cout << "\n" << ui::bold("Verification Pipeline") << "\n";
+    std::cout << "  Checking verify folder...\n";
+    if (hasVerifyCandidate) {
+        std::cout << "  " << ui::success("[OK]") << " Candidate file found: " << verifyCandidatePath << "\n";
+    } else {
+        std::cout << "  " << ui::warning("[WARN]") << " " << verifyLookupReason << "\n";
+    }
+
+    std::string computedHash;
+    std::string hashSource;
+    if (hasVerifyCandidate) {
+        std::cout << "  Generating SHA-256 hash from verify file...\n";
+        computedHash = computeFileHashSha256(verifyCandidatePath);
+        hashSource = "VERIFY_FOLDER_FILE";
+    } else {
+        std::cout << "  Generating SHA-256 hash from stored record fallback...\n";
+        computedHash = computeVerificationHash(doc);
+        hashSource = "STORED_RECORD_FALLBACK";
+    }
+
+    if (computedHash.empty()) {
+        std::cout << ui::error("[!] Unable to compute hash for verification.") << "\n";
+        logAuditAction("VERIFY_DOC_FAILED", doc.docId, actor);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << "  Comparing hash with official document record...\n";
     const bool hashMatch = (computedHash == doc.hashValue);
+    std::cout << "  Validating blockchain registration...\n";
+    const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(doc.hashValue, doc.docId);
 
     const std::vector<std::string> headers = {"Field", "Value"};
     const std::vector<int> widths = {18, 60};
@@ -515,20 +646,35 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
     ui::printTableRow({"Title", doc.title}, widths);
     ui::printTableRow({"Stored Hash", doc.hashValue}, widths);
     ui::printTableRow({"Computed Hash", computedHash}, widths);
+    ui::printTableRow({"Hash Source", hashSource}, widths);
     ui::printTableRow({"Hash Match", hashMatch ? "YES" : "NO"}, widths);
     ui::printTableRow({"Found on Blockchain", blockchainMatch ? "YES" : "NO"}, widths);
+    ui::printTableRow({"Verify Folder File", hasVerifyCandidate ? verifyCandidatePath : "(not found)"}, widths);
     ui::printTableFooter(widths);
 
-    if (hashMatch && blockchainMatch) {
-        std::cout << ui::success("[+] Verification Result: VALID and ON-CHAIN") << "\n";
+    std::cout << "\n" << ui::bold("====================================") << "\n";
+    std::cout << ui::bold("RESULT") << ": ";
+    if (hashMatch && blockchainMatch && hasVerifyCandidate) {
+        std::cout << ui::success("[VERIFIED]") << "\n";
+        std::cout << ui::success("This document matches the official record and blockchain registration.") << "\n";
         logAuditAction("VERIFY_DOC_VALID", doc.docId, actor);
     } else if (!hashMatch) {
-        std::cout << ui::error("[!] Verification Result: HASH MISMATCH (POTENTIALLY TAMPERED)") << "\n";
+        std::cout << ui::error("[TAMPERED]") << "\n";
+        std::cout << ui::error("Hash mismatch detected. The submitted file may have been altered.") << "\n";
         logAuditAction("VERIFY_DOC_TAMPERED", doc.docId, actor);
+    } else if (!hasVerifyCandidate) {
+        std::cout << ui::warning("[INCOMPLETE]") << "\n";
+        std::cout << ui::warning("No valid candidate file was found in verify folder. Record-only check was shown.") << "\n";
+        logAuditAction("VERIFY_DOC_FILE_MISSING", doc.docId, actor);
     } else {
-        std::cout << ui::warning("[!] Hash matches, but blockchain hash registration was not found.") << "\n";
+        std::cout << ui::warning("[PARTIAL]") << "\n";
+        std::cout << ui::warning("Hash matches official record, but blockchain registration was not found.") << "\n";
         logAuditAction("VERIFY_DOC_CHAIN_MISSING", doc.docId, actor);
     }
+    std::cout << ui::bold("====================================") << "\n";
+
+    std::cout << "\n" << ui::muted("Trace: Stored=") << shortHash(doc.hashValue)
+              << ui::muted(" | Computed=") << shortHash(computedHash) << "\n";
 
     waitForEnter();
 }

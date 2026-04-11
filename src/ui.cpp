@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <thread>
 
 #ifdef _WIN32
@@ -318,6 +319,26 @@ void printBreadcrumb(const std::vector<std::string>& segments) {
     }
 
     std::cout << "  " << muted(joined) << "\n";
+}
+
+bool confirmAction(const std::string& question,
+                   const std::string& confirmLabel,
+                   const std::string& cancelLabel) {
+    std::cout << "\n" << bold(question) << "\n";
+    std::cout << "  " << info("[1]") << " " << confirmLabel << "\n";
+    std::cout << "  " << info("[2]") << " " << cancelLabel << "\n";
+    std::cout << muted("--------------------------------------------------------------") << "\n";
+    std::cout << "  Enter your choice: ";
+
+    int choice = 0;
+    std::cin >> choice;
+    if (std::cin.fail()) {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        return false;
+    }
+
+    return choice == 1;
 }
 
 void printKpiTiles(const std::vector<std::pair<std::string, std::string>>& tiles) {

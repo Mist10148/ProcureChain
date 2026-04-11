@@ -481,6 +481,17 @@ void printConsensusLegend() {
               << ui::consensusStatus("pending") << "\n";
 }
 
+std::string buildConsensusProgressText(int approved, int total) {
+    if (total <= 0) {
+        return "[ ] 0/0";
+    }
+
+    const int boundedApproved = std::max(0, std::min(approved, total));
+    return "[" + std::string(static_cast<std::size_t>(boundedApproved), '#') +
+           std::string(static_cast<std::size_t>(total - boundedApproved), '-') +
+           "] " + std::to_string(boundedApproved) + "/" + std::to_string(total);
+}
+
 bool printPendingDecisionHints(const std::vector<Approval>& rows, const std::string& approverUsername) {
     std::vector<Approval> pendingRows;
     for (std::size_t i = 0; i < rows.size(); ++i) {
@@ -804,6 +815,65 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
+    std::vector<Approval> projectedRows = rows;
+    for (std::size_t i = 0; i < projectedRows.size(); ++i) {
+        if (projectedRows[i].docId == targetDocId &&
+            projectedRows[i].approverUsername == ownerUsername &&
+            projectedRows[i].status == "pending") {
+            projectedRows[i].status = approve ? "approved" : "rejected";
+            break;
+        }
+    }
+
+    bool projectedHasAny = false;
+    bool projectedHasPending = false;
+    bool projectedHasRejected = false;
+    int projectedApproved = 0;
+    int projectedTotal = 0;
+
+    for (std::size_t i = 0; i < projectedRows.size(); ++i) {
+        if (projectedRows[i].docId != targetDocId) {
+            continue;
+        }
+
+        projectedHasAny = true;
+        projectedTotal++;
+        if (projectedRows[i].status == "pending") {
+            projectedHasPending = true;
+        } else if (projectedRows[i].status == "rejected") {
+            projectedHasRejected = true;
+        } else if (projectedRows[i].status == "approved") {
+            projectedApproved++;
+        }
+    }
+
+    std::string projectedDocStatus = "pending_approval";
+    if (projectedHasRejected) {
+        projectedDocStatus = "rejected";
+    } else if (projectedHasAny && !projectedHasPending) {
+        projectedDocStatus = "published";
+    }
+
+    std::cout << "\nProjected consensus after this action: "
+              << buildConsensusProgressText(projectedApproved, projectedTotal)
+              << " -> " << ui::consensusStatus(projectedDocStatus) << "\n";
+
+    std::string confirmQuestion = approve
+        ? "Are you sure you want to approve this document?"
+        : "Are you sure you want to reject this document?";
+    if (projectedDocStatus == "published") {
+        confirmQuestion = "All required approvals will be complete. Publish document to public portal?";
+    }
+
+    if (!ui::confirmAction(confirmQuestion,
+                           approve ? "Confirm Decision" : "Confirm Rejection",
+                           "Cancel")) {
+        logAuditAction("APPROVAL_DECISION_CANCELLED", targetDocId, admin.username);
+        std::cout << ui::warning("[!] Decision cancelled.") << "\n";
+        waitForEnter();
+        return;
+    }
+
     std::string actingOnBehalfOf;
     if (ownerUsername != admin.username) {
         actingOnBehalfOf = ownerUsername;
@@ -1085,6 +1155,52 @@ void viewPendingApprovalsForAdmin(const Admin& admin) {
             ui::printTableRow({delegatedRows[i].docId, delegatedRows[i].role, delegatedRows[i].status, delegatedRows[i].createdAt, "Delegated"}, widths);
         }
         ui::printTableFooter(widths);
+
+        std::cout << "\n" << ui::bold("Consensus Progress By Document") << "\n";
+        const std::vector<std::string> progressHeaders = {"Document ID", "Progress", "Status"};
+        const std::vector<int> progressWidths = {12, 16, 14};
+        ui::printTableHeader(progressHeaders, progressWidths);
+
+        std::map<std::string, bool> targetedDocIds;
+        for (std::size_t i = 0; i < pendingRows.size(); ++i) {
+            targetedDocIds[pendingRows[i].docId] = true;
+        }
+        for (std::size_t i = 0; i < delegatedRows.size(); ++i) {
+            targetedDocIds[delegatedRows[i].docId] = true;
+        }
+
+        for (std::map<std::string, bool>::const_iterator it = targetedDocIds.begin(); it != targetedDocIds.end(); ++it) {
+            int total = 0;
+            int approved = 0;
+            int pending = 0;
+            int rejected = 0;
+
+            for (std::size_t i = 0; i < rows.size(); ++i) {
+                if (rows[i].docId != it->first) {
+                    continue;
+                }
+
+                total++;
+                if (rows[i].status == "approved") {
+                    approved++;
+                } else if (rows[i].status == "pending") {
+                    pending++;
+                } else if (rows[i].status == "rejected") {
+                    rejected++;
+                }
+            }
+
+            std::string statusLabel = "pending";
+            if (rejected > 0) {
+                statusLabel = "rejected";
+            } else if (total > 0 && pending == 0) {
+                statusLabel = "published";
+            }
+
+            ui::printTableRow({it->first, buildConsensusProgressText(approved, total), statusLabel}, progressWidths);
+        }
+
+        ui::printTableFooter(progressWidths);
 
         std::cout << "\n" << ui::bold("Pending Load Chart") << "\n";
         const std::size_t totalPending = pendingRows.size() + delegatedRows.size();
@@ -1593,6 +1709,14 @@ void manageApprovalRulesForAdmin(const Admin& admin) {
 
             if (!removed) {
                 std::cout << "\n" << ui::warning("[!] Rule not found.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (!ui::confirmAction("Are you sure you want to delete this approval rule?",
+                                   "Delete Rule",
+                                   "Cancel")) {
+                std::cout << "\n" << ui::warning("[!] Rule deletion cancelled.") << "\n";
                 waitForEnter();
                 continue;
             }

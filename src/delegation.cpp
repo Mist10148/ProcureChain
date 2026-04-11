@@ -300,6 +300,14 @@ void revokeDelegation(const Admin& admin) {
     if (revokeChoice == 0) { return; }
 
     size_t targetIndex = activeIndices[static_cast<size_t>(revokeChoice - 1)];
+    if (!ui::confirmAction("Are you sure you want to revoke this delegation?",
+                           "Confirm Revoke",
+                           "Cancel")) {
+        std::cout << "\n" << ui::warning("[!] Delegation revoke cancelled.") << "\n";
+        waitForEnter();
+        return;
+    }
+
     delegations[targetIndex].status = "revoked";
     saveDelegations(delegations);
 

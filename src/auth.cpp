@@ -1148,6 +1148,16 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
                     continue;
                 }
 
+                const std::string actionLabel = (choice == 2) ? "deactivate" : "reactivate";
+                const std::string accountTypeLabel = (typeChoice == 1) ? "Citizen" : "Admin";
+                if (!ui::confirmAction("Are you sure you want to " + actionLabel + " this " + accountTypeLabel + " account?",
+                                       (choice == 2) ? "Confirm Deactivate" : "Confirm Reactivate",
+                                       "Cancel")) {
+                    std::cout << ui::warning("[!] Account status update cancelled.") << "\n";
+                    waitForEnter();
+                    continue;
+                }
+
                 bool ok = false;
                 if (typeChoice == 1) {
                     ok = updateCitizenStatus(username, newStatus);
@@ -1169,6 +1179,15 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
             }
 
             std::string generated;
+            const std::string accountTypeLabel = (typeChoice == 1) ? "Citizen" : "Admin";
+            if (!ui::confirmAction("Reset password for " + accountTypeLabel + " account '" + username + "'?",
+                                   "Confirm Reset",
+                                   "Cancel")) {
+                std::cout << ui::warning("[!] Password reset cancelled.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
             bool ok = false;
             if (typeChoice == 1) {
                 ok = resetCitizenPassword(username, generated);
