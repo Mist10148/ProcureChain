@@ -994,15 +994,15 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
 
     if (approve) {
         const int chainIndex = appendBlockchainAction("BUDGET_APPROVE", entryId, admin.username);
-        logAuditAction("BUDGET_APPROVE", entryId, admin.username, chainIndex);
+        logAuditAction("BUDGET_ENTRY_APPROVED", entryId, admin.username, chainIndex);
     } else {
         const int chainIndex = appendBlockchainAction("BUDGET_REJECT", entryId, admin.username);
-        logAuditAction("BUDGET_REJECT", entryId, admin.username, chainIndex);
+        logAuditAction("BUDGET_ENTRY_REJECTED", entryId, admin.username, chainIndex);
     }
 
     if (nextStatus == "published") {
         const int publishChainIndex = appendBlockchainAction("BUDGET_PUBLISH", entryId, admin.username);
-        logAuditAction("BUDGET_PUBLISH", entryId, admin.username, publishChainIndex);
+        logAuditAction("BUDGET_ENTRY_PUBLISH", entryId, admin.username, publishChainIndex);
     }
 
     waitForEnter();
@@ -1223,3 +1223,4 @@ void manageBudgetsForAdmin(const Admin& admin) {
         waitForEnter();
     } while (choice != 0);
 }
+

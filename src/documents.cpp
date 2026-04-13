@@ -2146,7 +2146,23 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     }
 
     const int chainIndex = appendBlockchainAction("STATUS_UPDATE_" + newStatus, targetDocId, admin.username);
-    logAuditAction("UPDATE_STATUS", targetDocId, admin.username, chainIndex);
+    AuditLogMetadata metadata;
+    metadata.targetType = "DOCUMENT";
+    metadata.actorRole = admin.role;
+    metadata.visibility = "PUBLIC";
+    metadata.chainIndex = chainIndex;
+    if (newStatus == "published") {
+        metadata.outcome = "PUBLISHED";
+    } else if (newStatus == "rejected") {
+        metadata.outcome = "REJECTED";
+    } else {
+        metadata.outcome = "PENDING";
+    }
+    logAuditActionDetailed("UPDATE_STATUS", targetDocId, admin.username, metadata);
     std::cout << ui::success("[+] Document status updated successfully.") << "\n";
     waitForEnter();
 }
+
+
+
+

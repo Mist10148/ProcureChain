@@ -149,7 +149,7 @@ void printCitizenMenu(const User& citizen) {
     std::cout << "  Logged in as: " << citizen.fullName << " (" << citizen.userId << ")\n\n";
     std::cout << "  " << ui::info("[1]") << " View Published Documents\n";
     std::cout << "  " << ui::info("[2]") << " View Procurement Budgets\n";
-    std::cout << "  " << ui::info("[3]") << " View Audit Trail\n";
+    std::cout << "  " << ui::info("[3]") << " View Public Audit Trail\n";
     std::cout << "  " << ui::info("[4]") << " Search Published Document (ID or Keyword)\n";
     std::cout << "  " << ui::info("[5]") << " Verify Published Document Hash\n";
     std::cout << "  " << ui::info("[6]") << " Notification Inbox\n";
@@ -372,12 +372,42 @@ void runBudgetWorkspace(const Admin& admin) {
     } while (choice != -1);
 }
 
+void viewAuditTrailMenuForAdmin(const Admin& admin) {
+    if (!canManageAccounts(admin)) {
+        viewPublicAuditTrail(admin.username);
+        return;
+    }
+
+    int choice = -1;
+    do {
+        clearScreen();
+        ui::printSectionTitle("AUDIT TRAIL ACCESS");
+        ui::printBreadcrumb({"ADMIN", "WORKSPACES", "AUDIT + INTEGRITY", "AUDIT TRAILS"});
+        std::cout << "  " << ui::info("[1]") << " View Public Audit Trail\n";
+        std::cout << "  " << ui::info("[2]") << " View Internal Audit Log\n";
+        std::cout << "  " << ui::info("[0]") << " Back\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        if (!readBoundedMenuChoice(choice, 0, 2)) {
+            std::cout << "\n" << ui::error("[!] Invalid input. Please enter a number from the menu.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 1) {
+            viewPublicAuditTrail(admin.username);
+        } else if (choice == 2) {
+            viewInternalAuditLog(admin);
+        }
+    } while (choice != 0);
+}
 void runAuditIntegrityWorkspace(const Admin& admin) {
     std::vector<int> actionCodes;
     std::vector<std::string> actionLabels;
 
     actionCodes.push_back(1);
-    actionLabels.push_back("View Audit Trail");
+    actionLabels.push_back("Audit Trail Access");
     if (canValidateBlockchain(admin)) {
         actionCodes.push_back(2);
         actionLabels.push_back("Validate Blockchain");
@@ -413,7 +443,7 @@ void runAuditIntegrityWorkspace(const Admin& admin) {
 
         switch (selectedAction) {
             case 1:
-                viewAuditTrail(admin.username);
+                viewAuditTrailMenuForAdmin(admin);
                 break;
             case 2:
                 validateBlockchainNodes(admin.username);
@@ -496,7 +526,7 @@ void runCitizenDashboard(const User& citizen) {
                 viewBudgetAllocations(citizen.username);
                 break;
             case 3:
-                viewAuditTrail(citizen.username);
+                viewPublicAuditTrail(citizen.username);
                 break;
             case 4:
                 searchPublishedDocumentForCitizen(citizen.username);
@@ -703,3 +733,6 @@ int main() {
 
     return 0;
 }
+
+
+
