@@ -60,6 +60,8 @@ Evidence notes:
 - [x] Document category supports guided choices plus Other/custom input.
 - [x] Source file upload is optional (metadata-only upload allowed).
 - [x] Upload supports amendment linkage to rejected document versions.
+- [x] Duplicate hash warning appears when matching SHA-256 content is detected.
+- [x] Duplicate warning supports cancel, continue, and link-as-amendment options.
 - [x] Optional upload import accepts only pdf/docx/csv/txt.
 - [x] Upload success output shows SHA-256 hash.
 - [x] View all documents (admin).
@@ -72,6 +74,7 @@ Evidence notes:
 - [x] Citizen can search published document by ID or keyword and inspect full detail panel.
 - [x] Citizen hash verification compares stored vs recomputed hash and checks blockchain presence.
 - [x] Manual status update path is available (role-gated).
+- [x] Document detail panel displays status history timeline (who/when/from/to/note).
 
 ### 3.2 Extended Document Data
 
@@ -111,6 +114,7 @@ Evidence notes:
 - [x] Reject action updates approval row and document state.
 - [x] Any rejection enforces rejected document state.
 - [x] Full non-rejected decisions enable publication state.
+- [x] Conflict-of-interest guard blocks uploader from approving/rejecting own document.
 
 ### 4.2 Approval Analytics Dashboard
 
@@ -154,6 +158,9 @@ Evidence notes:
 - [x] Municipal Administrator can approve/reject assigned budget entries.
 - [x] Budget entry is published only after unanimous non-rejected approvals.
 - [x] Published budget summary updates only after budget publication.
+- [x] Budget publish guardrail warns at 90% utilization.
+- [x] Budget publish guardrail blocks publication above 100% utilization.
+- [x] Document publish path enforces budget guardrails.
 
 ### 5.2 Variance Reporting
 
@@ -161,6 +168,8 @@ Evidence notes:
 - [x] Actual value aggregated from approved/published documents.
 - [x] Variance amount displayed.
 - [x] Utilization percentage displayed.
+- [x] Monthly transparency report exports TXT and CSV outputs.
+- [x] Monthly transparency report includes published docs, approvals/rejections, and variance summary.
 
 ---
 

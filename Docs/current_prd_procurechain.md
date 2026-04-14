@@ -19,16 +19,21 @@ Implemented in code:
 - Document upload/view/search/filter/export flows
 - Optional source-file import (`pdf`, `docx`, `csv`, `txt`) with SHA-256 hash capture
 - Optional normalized document tags (comma-separated)
+- Duplicate SHA-256 hash warning on upload with cancel/continue/link-as-amendment actions
 - Ranked full-text search (`ID`, title, description, category, tags)
 - Advanced document filters (status, exact date, date range, category, tags, department, uploader)
 - Amendment lineage (`versionNumber`, `previousDocId`)
+- Document status timeline ledger (`who`, `when`, `from`, `to`, `note`)
 - Category-rule approvals with `DEFAULT` fallback and SLA thresholds
+- Conflict-of-interest guard blocking uploader from approving/rejecting own document
 - Pending approval queue with direct + delegated access
 - Request-for-comment thread for approvals (persistent per-document discussion)
 - Approval analytics dashboard
 - Escalation queue for overdue pending approvals (Super Admin)
 - Budget entry consensus workflow and publication gate
 - Budget variance reporting
+- Budget overrun guardrails on publish paths (warn at 90%, block above 100%)
+- Monthly transparency report export (`TXT` + `CSV`) for published docs, approvals/rejections, and variance
 - Audit trail table, action frequency, CSV export (all/filtered)
 - Audit hash-linking (`previousHash`, `currentHash`) and optional `chainIndex`
 - Blockchain append/validate/explorer across 5 node files
@@ -156,6 +161,7 @@ Can:
 - data/approval_rules.txt: category|requiredRoles|maxDecisionDays
 - data/approvals.txt: docID|approverUsername|role|status|createdAt|decidedAt|note
 - data/approval_comments.txt: docID|commenterUsername|commenterRole|createdAt|commentText
+- data/document_status_history.txt: docID|timestamp|actorUsername|fromStatus|toStatus|note
 - data/budgets.txt: category|amount
 - data/budget_entries.txt: entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt
 - data/budget_approvals.txt: entryID|approverUsername|role|status|createdAt|decidedAt|note

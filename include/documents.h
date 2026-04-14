@@ -35,6 +35,10 @@ void searchDocumentByIdForAdmin(const Admin& admin);
 void filterDocumentsForAdmin(const Admin& admin);
 void exportDocumentsToTxt(const Admin& admin);
 bool updateDocumentStatusBySystem(const std::string& docId, const std::string& newStatus);
+bool updateDocumentStatusBySystem(const std::string& docId,
+                                  const std::string& newStatus,
+                                  const std::string& actorUsername,
+                                  const std::string& reasonNote);
 void updateDocumentStatusForAdmin(const Admin& admin);
 
 #endif

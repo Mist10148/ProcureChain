@@ -108,6 +108,7 @@ Procurement Officer is the document preparation and submission role.
 - View all documents
 - Search documents by ID or keyword (with ranked suggestions)
 - Use advanced document filters including tags (with available-value suggestions)
+- Resolve duplicate-hash warning prompts during upload (cancel/continue/link-as-amendment)
 - View budget allocations and variance report
 - View audit trail, integrity snapshot, and blockchain explorer
 
@@ -215,6 +216,7 @@ Municipal Administrator is a second required approver role.
 5. Each approver can only decide their own pending entries.
 6. If any required approver rejects, document becomes rejected.
 7. If all required decisions are non-rejected, document becomes published.
+8. Conflict-of-interest rule: uploader cannot approve or reject their own document.
 
 ## Amendment Lineage SOP
 
@@ -223,6 +225,7 @@ Municipal Administrator is a second required approver role.
 3. System saves new row with incremented versionNumber and previousDocId reference.
 4. Approvals are regenerated for the amended version under current category rules.
 5. Search detail panels show full version lineage.
+6. Duplicate hash warning flow can also link a new upload as amendment against any matched document status.
 
 ## Budget Consensus SOP (Cross-Role)
 
@@ -231,6 +234,17 @@ Municipal Administrator is a second required approver role.
 3. Each approver can only decide their own pending budget entries.
 4. Any rejection marks the budget entry rejected.
 5. Budget entry is published to public budgets only after unanimous non-rejected decisions.
+6. Overrun guardrail is applied on publication:
+  - warning at 90% utilization
+  - publication blocked above 100% utilization
+
+## Monthly Transparency Report SOP
+
+1. Open Budget Workspace.
+2. Select Generate Monthly Transparency Report.
+3. Enter period using YYYY-MM.
+4. System exports both TXT and CSV reports by default.
+5. Reports include published document count, approval/rejection counts, and variance by category.
 
 ## Account Lifecycle SOP (Super Admin)
 

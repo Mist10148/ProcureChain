@@ -6,6 +6,7 @@
 #include "../include/ui.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -23,6 +24,8 @@ const std::string BUDGET_ENTRIES_FILE_PATH_PRIMARY = "data/budget_entries.txt";
 const std::string BUDGET_ENTRIES_FILE_PATH_FALLBACK = "../data/budget_entries.txt";
 const std::string BUDGET_APPROVALS_FILE_PATH_PRIMARY = "data/budget_approvals.txt";
 const std::string BUDGET_APPROVALS_FILE_PATH_FALLBACK = "../data/budget_approvals.txt";
+const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
+const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
@@ -62,6 +65,24 @@ struct BudgetApproval {
     std::string createdAt;
     std::string decidedAt;
     std::string note;
+};
+
+struct OverrunGuardrailCheck {
+    bool hasBudget;
+    bool warn;
+    bool block;
+    std::string category;
+    double allocation;
+    double actual;
+    double utilization;
+};
+
+struct MonthlyVarianceRow {
+    std::string category;
+    double allocated;
+    double monthlyActual;
+    double variance;
+    double utilization;
 };
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
@@ -147,6 +168,75 @@ std::string trimCopy(const std::string& value) {
 
     const std::size_t end = value.find_last_not_of(whitespace);
     return value.substr(start, end - start + 1);
+}
+
+bool isSafeExportFileName(const std::string& fileName) {
+    if (fileName.empty() || fileName.size() > 90) {
+        return false;
+    }
+
+    if (fileName.find("..") != std::string::npos) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < fileName.size(); ++i) {
+        const char c = fileName[i];
+        const bool safe = std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '-' || c == '.';
+        if (!safe) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::string sanitizeFileToken(std::string token) {
+    for (std::size_t i = 0; i < token.size(); ++i) {
+        const char c = token[i];
+        const bool safe = std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '-' || c == '.';
+        if (!safe) {
+            token[i] = '_';
+        }
+    }
+    return token;
+}
+
+std::string chooseExportPath(const std::string& fileName) {
+    std::ofstream primary("data/" + fileName);
+    if (primary.is_open()) {
+        primary.close();
+        return "data/" + fileName;
+    }
+
+    std::ofstream fallback("../data/" + fileName);
+    if (fallback.is_open()) {
+        fallback.close();
+        return "../data/" + fileName;
+    }
+
+    return "";
+}
+
+bool isYearMonthTextValid(const std::string& yearMonth) {
+    if (yearMonth.size() != 7 || yearMonth[4] != '-') {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < yearMonth.size(); ++i) {
+        if (i == 4) {
+            continue;
+        }
+        if (yearMonth[i] < '0' || yearMonth[i] > '9') {
+            return false;
+        }
+    }
+
+    const int month = std::atoi(yearMonth.substr(5, 2).c_str());
+    return month >= 1 && month <= 12;
+}
+
+bool isTimestampInYearMonth(const std::string& timestamp, const std::string& yearMonth) {
+    return timestamp.size() >= 7 && timestamp.substr(0, 7) == yearMonth;
 }
 
 bool isBudgetApproverRole(const Admin& admin) {
@@ -653,6 +743,89 @@ bool applyPublishedBudgetChange(const BudgetEntry& entry) {
     return saveBudgetRows(rows);
 }
 
+OverrunGuardrailCheck buildBudgetEntryPublishGuardrailCheck(const BudgetEntry& entry) {
+    OverrunGuardrailCheck check;
+    check.hasBudget = false;
+    check.warn = false;
+    check.block = false;
+    check.category = entry.category;
+    check.allocation = entry.allocatedAmount;
+    check.actual = 0.0;
+    check.utilization = 0.0;
+
+    if (check.category.empty()) {
+        return check;
+    }
+
+    check.hasBudget = true;
+    const std::map<std::string, double> actuals = loadActualSpendByCategory();
+    std::map<std::string, double>::const_iterator actualFound = actuals.find(check.category);
+    if (actualFound != actuals.end()) {
+        check.actual = actualFound->second;
+    }
+
+    if (check.allocation <= 0.0) {
+        check.block = check.actual > 0.0;
+        return check;
+    }
+
+    check.utilization = (check.actual / check.allocation) * 100.0;
+    if (check.utilization > 100.0) {
+        check.block = true;
+    } else if (check.utilization >= 90.0) {
+        check.warn = true;
+    }
+
+    return check;
+}
+
+bool confirmBudgetEntryPublishGuardrail(const BudgetEntry& entry, const std::string& actorUsername) {
+    const OverrunGuardrailCheck check = buildBudgetEntryPublishGuardrailCheck(entry);
+    if (!check.hasBudget) {
+        return true;
+    }
+
+    std::ostringstream allocationOut;
+    allocationOut << std::fixed << std::setprecision(2) << check.allocation;
+    std::ostringstream actualOut;
+    actualOut << std::fixed << std::setprecision(2) << check.actual;
+    std::ostringstream utilizationOut;
+    utilizationOut << std::fixed << std::setprecision(1) << check.utilization;
+
+    if (check.block) {
+        std::cout << ui::error("[!] Budget overrun guardrail blocked budget publication.") << "\n";
+        std::cout << "  Category             : " << check.category << "\n";
+        std::cout << "  Projected allocation : PHP " << allocationOut.str() << "\n";
+        std::cout << "  Current actual spend : PHP " << actualOut.str() << "\n";
+        if (check.allocation > 0.0) {
+            std::cout << "  Utilization          : " << utilizationOut.str() << "%\n";
+        }
+
+        logAuditAction("BUDGET_OVERRUN_BLOCKED", entry.entryId, actorUsername);
+        return false;
+    }
+
+    if (!check.warn) {
+        return true;
+    }
+
+    std::cout << ui::warning("[!] Budget overrun warning (>=90% utilization).") << "\n";
+    std::cout << "  Category             : " << check.category << "\n";
+    std::cout << "  Projected allocation : PHP " << allocationOut.str() << "\n";
+    std::cout << "  Current actual spend : PHP " << actualOut.str() << "\n";
+    std::cout << "  Utilization          : " << utilizationOut.str() << "%\n";
+    logAuditAction("BUDGET_OVERRUN_WARNING", entry.entryId, actorUsername);
+
+    if (!ui::confirmAction("Proceed with publish despite high utilization warning?",
+                           "Proceed",
+                           "Cancel Publish")) {
+        logAuditAction("BUDGET_OVERRUN_WARNING_CANCELLED", entry.entryId, actorUsername);
+        return false;
+    }
+
+    return true;
+}
+
 void submitBudgetEntry(const Admin& admin, const std::string& entryType) {
     clearScreen();
     ui::printSectionTitle("SUBMIT BUDGET ENTRY");
@@ -849,6 +1022,23 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
+    BudgetEntry selectedEntry;
+    bool selectedEntryFound = false;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].entryId == entryId) {
+            selectedEntry = entries[i];
+            selectedEntryFound = true;
+            break;
+        }
+    }
+
+    if (!selectedEntryFound) {
+        std::cout << ui::error("[!] Budget entry not found.") << "\n";
+        logAuditAction("BUDGET_APPROVAL_NOT_FOUND", entryId, admin.username);
+        waitForEnter();
+        return;
+    }
+
     std::vector<BudgetApproval> projectedApprovals = approvals;
     for (std::size_t i = 0; i < projectedApprovals.size(); ++i) {
         if (projectedApprovals[i].entryId == entryId &&
@@ -898,6 +1088,10 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         ? "Are you sure you want to approve this budget entry?"
         : "Are you sure you want to reject this budget entry?";
     if (projectedStatus == "published") {
+        if (!confirmBudgetEntryPublishGuardrail(selectedEntry, admin.username)) {
+            waitForEnter();
+            return;
+        }
         confirmQuestion = "All required approvals are complete. Publish this budget entry now?";
     }
 
@@ -1005,6 +1199,312 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         logAuditAction("BUDGET_ENTRY_PUBLISH", entryId, admin.username, publishChainIndex);
     }
 
+    waitForEnter();
+}
+
+void loadMonthlyPublishedDocumentMetrics(const std::string& yearMonth,
+                                         std::map<std::string, double>& amountByCategory,
+                                         int& publishedCount) {
+    amountByCategory.clear();
+    publishedCount = 0;
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    std::string line;
+    bool firstLine = true;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.size() < 8) {
+            continue;
+        }
+
+        const std::string status = toLowerCopy(tokens.size() > 7 ? tokens[7] : "");
+        const std::string uploadDate = tokens.size() > 5 ? tokens[5] : "";
+        if (status != "published" || !isTimestampInYearMonth(uploadDate, yearMonth)) {
+            continue;
+        }
+
+        const std::string category = tokens.size() > 13 && !tokens[13].empty() ? tokens[13] : (tokens.size() > 2 ? tokens[2] : "");
+        double amount = 0.0;
+        if (tokens.size() > 14) {
+            std::stringstream amountIn(tokens[14]);
+            amountIn >> amount;
+        }
+
+        if (!category.empty()) {
+            amountByCategory[category] += amount;
+        }
+        publishedCount++;
+    }
+}
+
+void loadMonthlyDecisionCounts(const std::string& yearMonth,
+                               const std::string& filePrimary,
+                               const std::string& fileFallback,
+                               int& approvedCount,
+                               int& rejectedCount) {
+    approvedCount = 0;
+    rejectedCount = 0;
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, filePrimary, fileFallback)) {
+        return;
+    }
+
+    std::string line;
+    bool firstLine = true;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0 || line.find("entryID|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.size() < 6) {
+            continue;
+        }
+
+        const std::string status = toLowerCopy(tokens[3]);
+        const std::string decidedAt = tokens[5];
+        if (!isTimestampInYearMonth(decidedAt, yearMonth)) {
+            continue;
+        }
+
+        if (status == "approved") {
+            approvedCount++;
+        } else if (status == "rejected") {
+            rejectedCount++;
+        }
+    }
+}
+
+std::vector<MonthlyVarianceRow> buildMonthlyVarianceRows(const std::vector<BudgetRow>& budgets,
+                                                         const std::map<std::string, double>& monthlyActuals) {
+    std::vector<MonthlyVarianceRow> rows;
+
+    for (std::size_t i = 0; i < budgets.size(); ++i) {
+        MonthlyVarianceRow row;
+        row.category = budgets[i].category;
+        row.allocated = budgets[i].amount;
+
+        std::map<std::string, double>::const_iterator found = monthlyActuals.find(row.category);
+        row.monthlyActual = (found != monthlyActuals.end()) ? found->second : 0.0;
+        row.variance = row.allocated - row.monthlyActual;
+        row.utilization = row.allocated > 0.0 ? (row.monthlyActual / row.allocated) * 100.0 : 0.0;
+        rows.push_back(row);
+    }
+
+    std::sort(rows.begin(), rows.end(), [](const MonthlyVarianceRow& left, const MonthlyVarianceRow& right) {
+        return left.category < right.category;
+    });
+    return rows;
+}
+
+bool writeMonthlyTransparencyTxt(const std::string& outputPath,
+                                 const std::string& yearMonth,
+                                 const Admin& admin,
+                                 const std::vector<MonthlyVarianceRow>& varianceRows,
+                                 int publishedDocCount,
+                                 int docApprovedCount,
+                                 int docRejectedCount,
+                                 int budgetApprovedCount,
+                                 int budgetRejectedCount) {
+    std::ofstream out(outputPath);
+    if (!out.is_open()) {
+        return false;
+    }
+
+    out << "PROCURECHAIN MONTHLY TRANSPARENCY REPORT\n";
+    out << "Period       : " << yearMonth << "\n";
+    out << "Generated at : " << getCurrentTimestamp() << "\n";
+    out << "Generated by : " << admin.fullName << " (" << admin.username << ")\n";
+    out << "==============================================================\n";
+    out << "Published documents: " << publishedDocCount << "\n";
+    out << "Document approvals : " << docApprovedCount << "\n";
+    out << "Document rejections: " << docRejectedCount << "\n";
+    out << "Budget approvals   : " << budgetApprovedCount << "\n";
+    out << "Budget rejections  : " << budgetRejectedCount << "\n";
+    out << "==============================================================\n";
+    out << "Category|Allocated|MonthlyActualPublished|Variance|UtilizationPercent\n";
+
+    for (std::size_t i = 0; i < varianceRows.size(); ++i) {
+        out << varianceRows[i].category << "|"
+            << std::fixed << std::setprecision(2) << varianceRows[i].allocated << "|"
+            << std::fixed << std::setprecision(2) << varianceRows[i].monthlyActual << "|"
+            << std::fixed << std::setprecision(2) << varianceRows[i].variance << "|"
+            << std::fixed << std::setprecision(1) << varianceRows[i].utilization << "\n";
+    }
+
+    out.flush();
+    return true;
+}
+
+bool writeMonthlyTransparencyCsv(const std::string& outputPath,
+                                 const std::string& yearMonth,
+                                 const std::vector<MonthlyVarianceRow>& varianceRows,
+                                 int publishedDocCount,
+                                 int docApprovedCount,
+                                 int docRejectedCount,
+                                 int budgetApprovedCount,
+                                 int budgetRejectedCount) {
+    std::ofstream out(outputPath);
+    if (!out.is_open()) {
+        return false;
+    }
+
+    out << "period,category,allocated,monthlyActualPublished,variance,utilizationPercent,publishedDocs,documentApprovals,documentRejections,budgetApprovals,budgetRejections\n";
+    for (std::size_t i = 0; i < varianceRows.size(); ++i) {
+        out << yearMonth << ","
+            << varianceRows[i].category << ","
+            << std::fixed << std::setprecision(2) << varianceRows[i].allocated << ","
+            << std::fixed << std::setprecision(2) << varianceRows[i].monthlyActual << ","
+            << std::fixed << std::setprecision(2) << varianceRows[i].variance << ","
+            << std::fixed << std::setprecision(1) << varianceRows[i].utilization << ","
+            << publishedDocCount << ","
+            << docApprovedCount << ","
+            << docRejectedCount << ","
+            << budgetApprovedCount << ","
+            << budgetRejectedCount << "\n";
+    }
+
+    out.flush();
+    return true;
+}
+
+void generateMonthlyTransparencyReportForAdmin(const Admin& admin) {
+    clearScreen();
+    ui::printSectionTitle("MONTHLY TRANSPARENCY REPORT");
+
+    clearInputBuffer();
+    std::string yearMonth;
+    std::cout << "Reporting period (YYYY-MM): ";
+    std::getline(std::cin, yearMonth);
+    yearMonth = trimCopy(yearMonth);
+
+    if (!isYearMonthTextValid(yearMonth)) {
+        std::cout << ui::error("[!] Invalid period format. Use YYYY-MM.") << "\n";
+        logAuditAction("MONTHLY_TRANSPARENCY_REPORT_FAILED", "BAD_PERIOD", admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<BudgetRow> budgets;
+    if (!loadBudgetRows(budgets) || budgets.empty()) {
+        std::cout << ui::error("[!] No published budget allocations available.") << "\n";
+        logAuditAction("MONTHLY_TRANSPARENCY_REPORT_FAILED", yearMonth, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::map<std::string, double> monthlyActualByCategory;
+    int publishedDocCount = 0;
+    loadMonthlyPublishedDocumentMetrics(yearMonth, monthlyActualByCategory, publishedDocCount);
+
+    int docApprovedCount = 0;
+    int docRejectedCount = 0;
+    loadMonthlyDecisionCounts(yearMonth,
+                              APPROVALS_FILE_PATH_PRIMARY,
+                              APPROVALS_FILE_PATH_FALLBACK,
+                              docApprovedCount,
+                              docRejectedCount);
+
+    int budgetApprovedCount = 0;
+    int budgetRejectedCount = 0;
+    loadMonthlyDecisionCounts(yearMonth,
+                              BUDGET_APPROVALS_FILE_PATH_PRIMARY,
+                              BUDGET_APPROVALS_FILE_PATH_FALLBACK,
+                              budgetApprovedCount,
+                              budgetRejectedCount);
+
+    const std::vector<MonthlyVarianceRow> varianceRows = buildMonthlyVarianceRows(budgets, monthlyActualByCategory);
+
+    std::string stamp = getCurrentTimestamp();
+    for (std::size_t i = 0; i < stamp.size(); ++i) {
+        if (stamp[i] == ' ' || stamp[i] == ':') {
+            stamp[i] = '_';
+        }
+    }
+
+    std::string ymToken = yearMonth;
+    for (std::size_t i = 0; i < ymToken.size(); ++i) {
+        if (ymToken[i] == '-') {
+            ymToken[i] = '_';
+        }
+    }
+
+    const std::string txtName = "monthly_transparency_" + sanitizeFileToken(ymToken + "_" + stamp) + ".txt";
+    const std::string csvName = "monthly_transparency_" + sanitizeFileToken(ymToken + "_" + stamp) + ".csv";
+
+    if (!isSafeExportFileName(txtName) || !isSafeExportFileName(csvName)) {
+        std::cout << ui::error("[!] Unable to build safe export filenames.") << "\n";
+        logAuditAction("MONTHLY_TRANSPARENCY_REPORT_FAILED", yearMonth, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    const std::string txtPath = chooseExportPath(txtName);
+    const std::string csvPath = chooseExportPath(csvName);
+    if (txtPath.empty() || csvPath.empty()) {
+        std::cout << ui::error("[!] Unable to resolve report export paths.") << "\n";
+        logAuditAction("MONTHLY_TRANSPARENCY_REPORT_FAILED", yearMonth, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    if (!writeMonthlyTransparencyTxt(txtPath,
+                                     yearMonth,
+                                     admin,
+                                     varianceRows,
+                                     publishedDocCount,
+                                     docApprovedCount,
+                                     docRejectedCount,
+                                     budgetApprovedCount,
+                                     budgetRejectedCount) ||
+        !writeMonthlyTransparencyCsv(csvPath,
+                                     yearMonth,
+                                     varianceRows,
+                                     publishedDocCount,
+                                     docApprovedCount,
+                                     docRejectedCount,
+                                     budgetApprovedCount,
+                                     budgetRejectedCount)) {
+        std::cout << ui::error("[!] Failed to generate transparency report files.") << "\n";
+        logAuditAction("MONTHLY_TRANSPARENCY_REPORT_FAILED", yearMonth, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::cout << ui::success("[+] Monthly transparency report generated.") << "\n";
+    std::cout << "  Period              : " << yearMonth << "\n";
+    std::cout << "  Published documents : " << publishedDocCount << "\n";
+    std::cout << "  Document approvals  : " << docApprovedCount << "\n";
+    std::cout << "  Document rejections : " << docRejectedCount << "\n";
+    std::cout << "  Budget approvals    : " << budgetApprovedCount << "\n";
+    std::cout << "  Budget rejections   : " << budgetRejectedCount << "\n";
+    std::cout << "  TXT report          : " << txtPath << "\n";
+    std::cout << "  CSV report          : " << csvPath << "\n";
+
+    logAuditAction("MONTHLY_TRANSPARENCY_REPORT_EXPORT", yearMonth, admin.username);
     waitForEnter();
 }
 } // namespace
@@ -1153,6 +1653,7 @@ void manageBudgetsForAdmin(const Admin& admin) {
             std::cout << "  " << ui::info("[6]") << " Reject Budget Entry\n";
         }
         std::cout << "  " << ui::info("[7]") << " View Budget Variance Report\n";
+        std::cout << "  " << ui::info("[8]") << " Generate Monthly Transparency Report (TXT + CSV)\n";
         std::cout << "  " << ui::info("[0]") << " Back to Admin Dashboard\n";
         std::cout << ui::muted("--------------------------------------------------------------") << "\n";
         std::cout << "  Enter your choice: ";
@@ -1177,6 +1678,11 @@ void manageBudgetsForAdmin(const Admin& admin) {
 
         if (choice == 7) {
             viewBudgetVarianceReport(admin.username);
+            continue;
+        }
+
+        if (choice == 8) {
+            generateMonthlyTransparencyReportForAdmin(admin);
             continue;
         }
 

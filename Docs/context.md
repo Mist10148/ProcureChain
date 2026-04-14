@@ -61,6 +61,17 @@ Latest analytics and UX updates:
 - search/filter screens now show recent/available suggestions before input
 - document search supports exact ID, ID prefix, and keyword-guided matching
 
+Latest governance safeguard updates:
+
+- duplicate SHA-256 hash warning on upload now supports cancel/continue/link-as-amendment choices
+- duplicate-link amendment can target any matched status (not only rejected)
+- document status changes are now persisted in a dedicated timeline ledger (data/document_status_history.txt)
+- document detail panel now renders status timeline (who, when, from, to, note)
+- strict conflict-of-interest enforcement blocks uploader from approving/rejecting own document
+- budget overrun guardrails enforce warning at 90% utilization and hard block above 100%
+- overrun guardrails apply to both document publication and budget publication paths
+- budget workspace now generates monthly transparency reports (TXT + CSV) covering published docs, approvals/rejections, and variance
+
 Security, UX, and governance extensions (Phase 9):
 
 - SHA-256 password hashing at rest for all stored credentials
@@ -239,6 +250,8 @@ Budget module supports:
 - unanimous budget approval workflow (Budget Officer + Municipal Administrator)
 - publishing approved budgets to public budget summary
 - variance report comparing allocated vs actual totals from approved/published documents
+- monthly transparency report export (TXT + CSV) by period (YYYY-MM)
+- publication guardrail warnings/blocks based on utilization thresholds (90% warning, >100% block)
 
 ### 8. Audit Trail and Export
 

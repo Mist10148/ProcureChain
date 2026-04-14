@@ -25,8 +25,12 @@ namespace {
 // searching, filtering, status transitions, and approval-request creation.
 const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
+const std::string STATUS_HISTORY_FILE_PATH_PRIMARY = "data/document_status_history.txt";
+const std::string STATUS_HISTORY_FILE_PATH_FALLBACK = "../data/document_status_history.txt";
 const std::string APPROVALS_FILE_PATH_PRIMARY = "data/approvals.txt";
 const std::string APPROVALS_FILE_PATH_FALLBACK = "../data/approvals.txt";
+const std::string BUDGETS_FILE_PATH_PRIMARY = "data/budgets.txt";
+const std::string BUDGETS_FILE_PATH_FALLBACK = "../data/budgets.txt";
 const std::string DOCUMENT_UPLOAD_DIR_PRIMARY = "data/documents";
 const std::string DOCUMENT_UPLOAD_DIR_FALLBACK = "../data/documents";
 const std::string DOCUMENT_SOURCE_UPLOAD_DIR_PRIMARY = "data/uploads";
@@ -45,6 +49,31 @@ struct SearchMatch {
     int score;
 };
 
+struct StatusHistoryRow {
+    std::string docId;
+    std::string timestamp;
+    std::string actorUsername;
+    std::string fromStatus;
+    std::string toStatus;
+    std::string note;
+};
+
+struct BudgetGuardrailCheck {
+    bool hasBudget;
+    bool warn;
+    bool block;
+    std::string category;
+    double allocation;
+    double projectedActual;
+    double projectedUtilization;
+};
+
+enum DuplicateHashAction {
+    DUPLICATE_HASH_CANCEL = 0,
+    DUPLICATE_HASH_CONTINUE = 1,
+    DUPLICATE_HASH_LINK = 2
+};
+
 struct DocumentFilter {
     // Optional fields used to build an in-memory filter pipeline.
     std::string status;
@@ -56,6 +85,8 @@ struct DocumentFilter {
     std::string department;
     std::string uploader;
 };
+
+void clearInputBuffer();
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     // Constant-time path fallback for read operations.
@@ -404,6 +435,368 @@ bool saveDocuments(const std::vector<Document>& docs) {
         writer << serializeDocument(docs[i]) << '\n';
     }
     writer.flush();
+    return true;
+}
+
+void ensureStatusHistoryFileExists() {
+    std::ifstream check;
+    if (openInputFileWithFallback(check, STATUS_HISTORY_FILE_PATH_PRIMARY, STATUS_HISTORY_FILE_PATH_FALLBACK)) {
+        return;
+    }
+
+    std::ofstream createPrimary(STATUS_HISTORY_FILE_PATH_PRIMARY);
+    if (!createPrimary.is_open()) {
+        createPrimary.clear();
+        createPrimary.open(STATUS_HISTORY_FILE_PATH_FALLBACK);
+    }
+
+    if (createPrimary.is_open()) {
+        createPrimary << "docID|timestamp|actorUsername|fromStatus|toStatus|note\n";
+    }
+}
+
+StatusHistoryRow parseStatusHistoryTokens(const std::vector<std::string>& tokens) {
+    StatusHistoryRow row;
+    row.docId = tokens.size() > 0 ? tokens[0] : "";
+    row.timestamp = tokens.size() > 1 ? tokens[1] : "";
+    row.actorUsername = tokens.size() > 2 ? tokens[2] : "";
+    row.fromStatus = tokens.size() > 3 ? tokens[3] : "";
+    row.toStatus = tokens.size() > 4 ? tokens[4] : "";
+    row.note = tokens.size() > 5 ? tokens[5] : "";
+    return row;
+}
+
+std::string sanitizeHistoryNote(const std::string& noteText) {
+    std::string cleaned = trimTagToken(noteText);
+    for (std::size_t i = 0; i < cleaned.size(); ++i) {
+        if (cleaned[i] == '|' || cleaned[i] == '\n' || cleaned[i] == '\r') {
+            cleaned[i] = ' ';
+        }
+    }
+    return trimTagToken(cleaned);
+}
+
+bool appendDocumentStatusHistory(const std::string& docId,
+                                 const std::string& actorUsername,
+                                 const std::string& fromStatus,
+                                 const std::string& toStatus,
+                                 const std::string& noteText) {
+    if (docId.empty() || toStatus.empty()) {
+        return false;
+    }
+
+    ensureStatusHistoryFileExists();
+
+    std::ofstream file;
+    if (!openAppendFileWithFallback(file, STATUS_HISTORY_FILE_PATH_PRIMARY, STATUS_HISTORY_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    file << docId << '|'
+         << getCurrentTimestamp() << '|'
+         << (actorUsername.empty() ? "SYSTEM" : actorUsername) << '|'
+         << fromStatus << '|'
+         << toStatus << '|'
+         << sanitizeHistoryNote(noteText) << '\n';
+
+    file.flush();
+    return true;
+}
+
+std::vector<StatusHistoryRow> loadDocumentStatusHistoryRows(const std::string& docId) {
+    std::vector<StatusHistoryRow> rows;
+    std::ifstream file;
+
+    if (!openInputFileWithFallback(file, STATUS_HISTORY_FILE_PATH_PRIMARY, STATUS_HISTORY_FILE_PATH_FALLBACK)) {
+        return rows;
+    }
+
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        StatusHistoryRow row = parseStatusHistoryTokens(splitPipe(line));
+        if (!docId.empty() && row.docId != docId) {
+            continue;
+        }
+
+        if (!row.docId.empty()) {
+            rows.push_back(row);
+        }
+    }
+
+    std::sort(rows.begin(), rows.end(), [](const StatusHistoryRow& left, const StatusHistoryRow& right) {
+        if (left.timestamp != right.timestamp) {
+            return left.timestamp < right.timestamp;
+        }
+
+        if (left.fromStatus != right.fromStatus) {
+            return left.fromStatus < right.fromStatus;
+        }
+
+        return left.toStatus < right.toStatus;
+    });
+
+    return rows;
+}
+
+void printDocumentStatusHistoryPanel(const std::string& docId) {
+    const std::vector<StatusHistoryRow> rows = loadDocumentStatusHistoryRows(docId);
+    if (rows.empty()) {
+        return;
+    }
+
+    std::cout << "\n" << ui::bold("Status Timeline") << "\n";
+    const std::vector<std::string> headers = {"When", "Actor", "From", "To", "Note"};
+    const std::vector<int> widths = {19, 18, 16, 16, 26};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const std::string fromLabel = rows[i].fromStatus.empty() ? "(none)" : rows[i].fromStatus;
+        const std::string noteLabel = rows[i].note.empty() ? "(none)" : rows[i].note;
+        ui::printTableRow({rows[i].timestamp, rows[i].actorUsername, fromLabel, rows[i].toStatus, noteLabel}, widths);
+    }
+
+    ui::printTableFooter(widths);
+}
+
+std::vector<Document> findDocumentsByHash(const std::vector<Document>& docs, const std::string& hashValue) {
+    std::vector<Document> matches;
+    if (hashValue.empty()) {
+        return matches;
+    }
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (docs[i].hashValue == hashValue) {
+            matches.push_back(docs[i]);
+        }
+    }
+
+    return matches;
+}
+
+bool findDocumentByIdCaseInsensitive(const std::vector<Document>& docs, const std::string& docId, Document& found) {
+    const std::string target = toLowerCopy(trimTagToken(docId));
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (toLowerCopy(docs[i].docId) == target) {
+            found = docs[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+void printDuplicateHashMatches(const std::vector<Document>& matches) {
+    std::cout << "\n" << ui::warning("[!] Duplicate hash detected. Matching records:") << "\n";
+    const std::vector<std::string> headers = {"Doc ID", "Ver", "Status", "Uploader", "Date", "Title"};
+    const std::vector<int> widths = {8, 5, 16, 14, 10, 30};
+    ui::printTableHeader(headers, widths);
+    for (std::size_t i = 0; i < matches.size(); ++i) {
+        ui::printTableRow({matches[i].docId,
+                           std::to_string(matches[i].versionNumber),
+                           matches[i].status,
+                           matches[i].uploader,
+                           matches[i].dateUploaded,
+                           matches[i].title},
+                          widths);
+    }
+    ui::printTableFooter(widths);
+}
+
+DuplicateHashAction promptDuplicateHashAction(const std::vector<Document>& matches, std::string& linkedDocId) {
+    linkedDocId.clear();
+    printDuplicateHashMatches(matches);
+
+    std::cout << "  " << ui::info("[1]") << " Cancel upload\n";
+    std::cout << "  " << ui::info("[2]") << " Continue with new document\n";
+    std::cout << "  " << ui::info("[3]") << " Link as amendment\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+    std::cout << "  Enter your choice: ";
+
+    int choice = 0;
+    std::cin >> choice;
+    if (std::cin.fail()) {
+        std::cin.clear();
+        clearInputBuffer();
+        return DUPLICATE_HASH_CANCEL;
+    }
+
+    clearInputBuffer();
+    if (choice == 2) {
+        return DUPLICATE_HASH_CONTINUE;
+    }
+
+    if (choice == 3) {
+        std::cout << "Enter base Document ID from matches: ";
+        std::getline(std::cin, linkedDocId);
+        linkedDocId = trimTagToken(linkedDocId);
+        return DUPLICATE_HASH_LINK;
+    }
+
+    return DUPLICATE_HASH_CANCEL;
+}
+
+std::map<std::string, double> loadPublishedBudgetAllocations() {
+    std::map<std::string, double> budgets;
+    std::ifstream file;
+
+    if (!openInputFileWithFallback(file, BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK)) {
+        return budgets;
+    }
+
+    std::string line;
+    bool firstLine = true;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("category|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.size() < 2 || tokens[0].empty()) {
+            continue;
+        }
+
+        double amount = 0.0;
+        std::stringstream amountIn(tokens[1]);
+        amountIn >> amount;
+        budgets[tokens[0]] = amount;
+    }
+
+    return budgets;
+}
+
+double computeTrackedActualForCategory(const std::vector<Document>& docs,
+                                       const std::string& category,
+                                       const std::string& excludeDocId) {
+    double total = 0.0;
+
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (!excludeDocId.empty() && docs[i].docId == excludeDocId) {
+            continue;
+        }
+
+        const std::string normalizedStatus = toLowerCopy(docs[i].status);
+        if (normalizedStatus != "approved" && normalizedStatus != "published") {
+            continue;
+        }
+
+        const std::string docBudgetCategory = docs[i].budgetCategory.empty() ? docs[i].category : docs[i].budgetCategory;
+        if (docBudgetCategory != category || docs[i].amount <= 0.0) {
+            continue;
+        }
+
+        total += docs[i].amount;
+    }
+
+    return total;
+}
+
+BudgetGuardrailCheck buildDocumentPublishGuardrailCheck(const std::vector<Document>& docs,
+                                                        const Document& targetDoc) {
+    BudgetGuardrailCheck check;
+    check.hasBudget = false;
+    check.warn = false;
+    check.block = false;
+    check.category = targetDoc.budgetCategory.empty() ? targetDoc.category : targetDoc.budgetCategory;
+    check.allocation = 0.0;
+    check.projectedActual = 0.0;
+    check.projectedUtilization = 0.0;
+
+    if (check.category.empty() || targetDoc.amount <= 0.0) {
+        return check;
+    }
+
+    const std::map<std::string, double> budgets = loadPublishedBudgetAllocations();
+    std::map<std::string, double>::const_iterator found = budgets.find(check.category);
+    if (found == budgets.end()) {
+        return check;
+    }
+
+    check.hasBudget = true;
+    check.allocation = found->second;
+
+    const double actualWithoutTarget = computeTrackedActualForCategory(docs, check.category, targetDoc.docId);
+    check.projectedActual = actualWithoutTarget + targetDoc.amount;
+
+    if (check.allocation <= 0.0) {
+        check.block = check.projectedActual > 0.0;
+        return check;
+    }
+
+    check.projectedUtilization = (check.projectedActual / check.allocation) * 100.0;
+    if (check.projectedUtilization > 100.0) {
+        check.block = true;
+    } else if (check.projectedUtilization >= 90.0) {
+        check.warn = true;
+    }
+
+    return check;
+}
+
+bool confirmDocumentPublishGuardrail(const Document& doc,
+                                     const std::vector<Document>& docs,
+                                     const std::string& actorUsername) {
+    const BudgetGuardrailCheck check = buildDocumentPublishGuardrailCheck(docs, doc);
+    if (!check.hasBudget) {
+        return true;
+    }
+
+    std::ostringstream allocationOut;
+    allocationOut << std::fixed << std::setprecision(2) << check.allocation;
+    std::ostringstream actualOut;
+    actualOut << std::fixed << std::setprecision(2) << check.projectedActual;
+    std::ostringstream utilizationOut;
+    utilizationOut << std::fixed << std::setprecision(1) << check.projectedUtilization;
+
+    if (check.block) {
+        std::cout << ui::error("[!] Budget overrun guardrail blocked this publish transition.") << "\n";
+        std::cout << "  Category            : " << check.category << "\n";
+        std::cout << "  Published allocation: PHP " << allocationOut.str() << "\n";
+        std::cout << "  Projected actual    : PHP " << actualOut.str() << "\n";
+        if (check.allocation > 0.0) {
+            std::cout << "  Projected utilization: " << utilizationOut.str() << "%\n";
+        }
+        logAuditAction("DOC_BUDGET_OVERRUN_BLOCKED", doc.docId, actorUsername.empty() ? "SYSTEM" : actorUsername);
+        return false;
+    }
+
+    if (!check.warn) {
+        return true;
+    }
+
+    std::cout << ui::warning("[!] Budget overrun warning (>=90% utilization) for this publish transition.") << "\n";
+    std::cout << "  Category            : " << check.category << "\n";
+    std::cout << "  Published allocation: PHP " << allocationOut.str() << "\n";
+    std::cout << "  Projected actual    : PHP " << actualOut.str() << "\n";
+    std::cout << "  Projected utilization: " << utilizationOut.str() << "%\n";
+
+    logAuditAction("DOC_BUDGET_OVERRUN_WARNING", doc.docId, actorUsername.empty() ? "SYSTEM" : actorUsername);
+
+    if (!ui::confirmAction("Proceed with publish despite high utilization warning?",
+                           "Proceed",
+                           "Cancel Publish")) {
+        logAuditAction("DOC_BUDGET_OVERRUN_WARNING_CANCELLED", doc.docId, actorUsername.empty() ? "SYSTEM" : actorUsername);
+        return false;
+    }
+
     return true;
 }
 
@@ -1030,6 +1423,8 @@ void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, co
     ui::printTableRow({"Budget Link", "Managed in Budget Workspace (separate consensus flow)"}, widths);
     ui::printTableFooter(widths);
 
+    printDocumentStatusHistoryPanel(doc.docId);
+
     if (allDocs != NULL) {
         printDocumentLineagePanel(doc, *allDocs);
     }
@@ -1336,6 +1731,8 @@ std::string generateNextDocumentId() {
 void ensureSampleDocumentsPresent() {
     // Showcase data is maintained in data/documents.txt, not hardcoded here.
     // This pass only normalizes hashes/serialization for existing rows.
+    ensureStatusHistoryFileExists();
+
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
         return;
@@ -1487,6 +1884,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     std::cout << "  4) It computes SHA-256 from the file (or metadata if no file) and stores it.\n";
     std::cout << "  5) It auto-creates pending approvals based on configured category rules (with safe defaults).\n\n";
     std::cout << "  6) Optional: link this upload as an amendment to a rejected document (v1 -> v2).\n\n";
+    std::cout << "  7) If duplicate hash is found, choose cancel, continue, or link as amendment.\n\n";
 
     clearInputBuffer();
 
@@ -1658,6 +2056,37 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         doc.hashValue = computeDocumentRecordHash(doc);
     }
 
+    const std::vector<Document> duplicateMatches = findDocumentsByHash(docs, doc.hashValue);
+    if (!duplicateMatches.empty()) {
+        logAuditAction("UPLOAD_DOC_DUPLICATE_HASH_DETECTED", doc.docId, admin.username);
+
+        std::string linkedDocId;
+        const DuplicateHashAction action = promptDuplicateHashAction(duplicateMatches, linkedDocId);
+
+        if (action == DUPLICATE_HASH_CANCEL) {
+            std::cout << ui::warning("[!] Upload cancelled due to duplicate hash.") << "\n";
+            logAuditAction("UPLOAD_DOC_DUPLICATE_CANCELLED", doc.docId, admin.username);
+            waitForEnter();
+            return;
+        }
+
+        if (action == DUPLICATE_HASH_LINK) {
+            Document linkedBase;
+            if (!findDocumentByIdCaseInsensitive(duplicateMatches, linkedDocId, linkedBase)) {
+                std::cout << ui::error("[!] Linked base Document ID is not part of duplicate matches.") << "\n";
+                logAuditAction("UPLOAD_DOC_DUPLICATE_LINK_FAILED", doc.docId, admin.username);
+                waitForEnter();
+                return;
+            }
+
+            doc.previousDocId = linkedBase.docId;
+            doc.versionNumber = linkedBase.versionNumber + 1;
+            logAuditAction("UPLOAD_DOC_DUPLICATE_LINKED", doc.docId + "<-" + linkedBase.docId, admin.username);
+        } else {
+            logAuditAction("UPLOAD_DOC_DUPLICATE_CONTINUED", doc.docId, admin.username);
+        }
+    }
+
     docs.push_back(doc);
     if (!saveDocuments(docs)) {
         std::cout << ui::error("[!] Unable to save document record.") << "\n";
@@ -1684,6 +2113,11 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     const int chainIndex = appendBlockchainAction("UPLOAD_HASH:" + doc.hashValue, doc.docId, admin.username);
 
     logAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex);
+    appendDocumentStatusHistory(doc.docId,
+                                admin.username,
+                                "",
+                                doc.status,
+                                "Document uploaded and routed for approvals.");
     if (!doc.previousDocId.empty()) {
         logAuditAction("DOC_AMENDMENT_CREATED", doc.docId + "<-" + doc.previousDocId, admin.username);
     }
@@ -2060,6 +2494,13 @@ void exportDocumentsToTxt(const Admin& admin) {
 }
 
 bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::string& newStatus) {
+    return updateDocumentStatusBySystem(targetDocId, newStatus, "SYSTEM", "");
+}
+
+bool updateDocumentStatusBySystem(const std::string& targetDocId,
+                                  const std::string& newStatus,
+                                  const std::string& actorUsername,
+                                  const std::string& reasonNote) {
     // Used by approval workflows to synchronize consensus outcome to documents.
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
@@ -2067,8 +2508,21 @@ bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::str
     }
 
     bool found = false;
+    std::string previousStatus;
     for (size_t i = 0; i < docs.size(); ++i) {
         if (docs[i].docId == targetDocId) {
+            previousStatus = docs[i].status;
+
+            if (previousStatus == newStatus) {
+                return true;
+            }
+
+            if (toLowerCopy(newStatus) == "published") {
+                if (!confirmDocumentPublishGuardrail(docs[i], docs, actorUsername)) {
+                    return false;
+                }
+            }
+
             docs[i].status = newStatus;
             found = true;
             break;
@@ -2079,7 +2533,16 @@ bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::str
         return false;
     }
 
-    return saveDocuments(docs);
+    if (!saveDocuments(docs)) {
+        return false;
+    }
+
+    appendDocumentStatusHistory(targetDocId,
+                                actorUsername,
+                                previousStatus,
+                                newStatus,
+                                reasonNote);
+    return true;
 }
 
 void updateDocumentStatusForAdmin(const Admin& admin) {
@@ -2138,8 +2601,13 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
         return;
     }
 
-    if (!updateDocumentStatusBySystem(targetDocId, newStatus)) {
-        std::cout << "\n" << ui::error("[!] Document ID not found or update failed.") << "\n";
+    const std::string noteText = "Manual status override by " + admin.role;
+    if (!updateDocumentStatusBySystem(targetDocId, newStatus, admin.username, noteText)) {
+        if (newStatus == "published") {
+            std::cout << "\n" << ui::warning("[!] Publication was blocked by budget overrun guardrail.") << "\n";
+        } else {
+            std::cout << "\n" << ui::error("[!] Document ID not found or update failed.") << "\n";
+        }
         logAuditAction("UPDATE_STATUS_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;

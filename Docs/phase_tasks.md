@@ -37,6 +37,34 @@ This is intended to help collaborators quickly understand the status and next ac
 
 Completed
 
+## Phase 11: Governance Safeguards and Transparency Exports
+
+### Objectives
+
+- prevent duplicate-content ambiguity during document upload
+- preserve explicit status-transition timeline per document
+- enforce conflict-of-interest for approval decisions
+- prevent overrun publication decisions using threshold guardrails
+- generate monthly transparency report artifacts for governance review
+
+### Implemented
+
+- duplicate hash warning on upload with action options: cancel, continue, or link as amendment
+- duplicate-link amendment path allows linking against matched documents regardless of status
+- document status history ledger added (`data/document_status_history.txt`) with `docID|timestamp|actorUsername|fromStatus|toStatus|note`
+- document detail panel now renders status timeline table
+- strict conflict-of-interest guard: uploader cannot approve/reject own document (including delegated owner path)
+- budget overrun guardrails enforced for document publish and budget publish paths
+	- warn at 90% utilization
+	- block above 100% utilization
+- monthly transparency report generator added in Budget Workspace
+	- exports both TXT and CSV by default
+	- summarizes published documents, approval/rejection counts, and variance by category
+
+### Status
+
+Completed
+
 ## Phase 1: Authentication and Role Routing
 
 ### Objectives
@@ -415,5 +443,10 @@ The project has moved beyond baseline CLI CRUD and now includes a governance-foc
 - data backup and restore
 - forced password change after reset
 - delegated approval authority
+- duplicate hash safeguards with amendment-link fallback
+- document status timeline ledger
+- strict uploader conflict-of-interest protection
+- publish-time budget overrun guardrails
+- monthly transparency report export (TXT + CSV)
 
 This places ProcureChain in a strong final-defense state while remaining within the required procedural C++ course scope.

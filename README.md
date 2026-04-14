@@ -19,8 +19,13 @@ It is designed for classroom-level procedural programming and focuses on:
 - Compact and full analytics layout modes with optional paged detail tables
 - Guided search/filter prompts with available-value suggestions and recent record previews
 - Document tagging with normalized comma-separated tags
+- Duplicate SHA-256 hash detection on upload with cancel/continue/link-as-amendment options
 - Ranked full-text search by ID/title/description/category/tags (admin and citizen published view)
+- Document status history timeline (who, when, from, to, note)
 - SHA-256 password hashing at rest for all stored credentials
+- Conflict-of-interest guard: uploader cannot approve or reject own document
+- Budget overrun guardrails (warn at 90%, block above 100%) for document and budget publication paths
+- Monthly transparency report generator (auto TXT + CSV)
 - Optional approval/rejection notes with display in document detail panels
 - Request-for-comment thread for pending approvals (including delegated pending access)
 - Notification inbox for pending actions on login
@@ -68,6 +73,7 @@ High-level process:
 - Document upload supports optional comma-separated tags
 - Source file upload/import is optional (pdf/docx/csv/txt); metadata-only upload is supported
 - Amendment upload supports rejected-document revision flow (v1 to v2 lineage)
+- Duplicate hash warning supports linking upload as amendment to any matched document status
 - Category input uses guided choices with an Other option for custom categories
 - Document input no longer collects budget allocation fields
 - Allowed import extensions: pdf, docx, csv, txt
@@ -80,6 +86,7 @@ High-level process:
 - Approval decision screen shows the current approver's pending document list before input
 - Request-for-comment thread for pending approvals with persistent comment history
 - Publication gate for documents: rejected if any reject, published only with unanimous non-rejected decisions
+- Document publication guardrail checks category budget utilization before publish
 - Super Admin escalation queue lists overdue pending approvals based on rule SLA
 - Approval analytics dashboard
   - rejection rate
@@ -101,7 +108,9 @@ High-level process:
 - Budget and documents are handled in separate workspaces, but both use unanimous consensus publication logic
 - Budget entry fields: fiscal year, category, allocated amount, description
 - Budget publish gate: budget becomes publicly visible only after unanimous approvals
+- Budget publish guardrail warns at 90% utilization and blocks above 100%
 - Published budget summary and budget variance reporting
+- Monthly transparency report export (TXT and CSV) summarizes published docs, approvals, rejections, and variance
 - Budget variance report (allocated vs actual)
 - Timestamped audit trail with chain index and hash chain references
 - CSV export for audit logs
@@ -176,6 +185,10 @@ You can also create new citizen and admin accounts from the Sign Up menu.
   docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags
 
 Note: budgetCategory and amount are retained for compatibility/analytics, but budget inputs are managed in Budget Workspace.
+
+### data/document_status_history.txt
+
+  docID|timestamp|actorUsername|fromStatus|toStatus|note
 
 ### data/approval_rules.txt
 
@@ -256,6 +269,7 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
   - delegation management (Budget Officer, Municipal Administrator)
 - Budget Workspace
   - view published allocations, submit budget entries, approve/reject budget entries, variance report
+  - generate monthly transparency report (TXT + CSV)
 - Audit and Integrity Workspace
   - view audit trail, validate blockchain, verify document integrity, integrity snapshot, blockchain explorer
 - Account Administration Workspace

@@ -36,6 +36,7 @@ struct DocumentContext {
     std::string title;
     std::string category;
     std::string status;
+    std::string uploader;
 };
 
 struct PendingApprovalSlaRow {
@@ -711,10 +712,34 @@ bool loadDocumentContexts(std::map<std::string, DocumentContext>& rows) {
         row.title = tokens.size() > 1 ? tokens[1] : "";
         row.category = tokens.size() > 2 ? tokens[2] : "";
         row.status = tokens.size() > 7 ? tokens[7] : "pending_approval";
+        row.uploader = tokens.size() > 6 ? tokens[6] : "";
         rows[tokens[0]] = row;
     }
 
     return true;
+}
+
+bool isUploaderConflictForDecision(const std::string& docId,
+                                  const std::string& approvalOwnerUsername,
+                                  std::string& outUploader) {
+    outUploader.clear();
+
+    std::map<std::string, DocumentContext> docs;
+    if (!loadDocumentContexts(docs)) {
+        return false;
+    }
+
+    std::map<std::string, DocumentContext>::const_iterator found = docs.find(docId);
+    if (found == docs.end()) {
+        return false;
+    }
+
+    outUploader = found->second.uploader;
+    if (outUploader.empty()) {
+        return false;
+    }
+
+    return toLowerCopy(outUploader) == toLowerCopy(approvalOwnerUsername);
 }
 
 int computePendingDaysFromCreatedAt(const std::string& createdAt) {
@@ -811,6 +836,15 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     if (!resolvePendingDecisionOwner(rows, admin.username, targetDocId, ownerUsername)) {
         std::cout << ui::error("[!] No pending approval record found for this document and account.") << "\n";
         logAuditAction("APPROVAL_NOT_FOUND", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
+    std::string uploaderUsername;
+    if (isUploaderConflictForDecision(targetDocId, ownerUsername, uploaderUsername)) {
+        std::cout << ui::error("[!] Conflict of interest: uploader cannot approve or reject this document.") << "\n";
+        std::cout << "  Document uploader: " << uploaderUsername << "\n";
+        logAuditAction("COI_APPROVAL_BLOCKED", targetDocId, admin.username);
         waitForEnter();
         return;
     }
@@ -937,8 +971,13 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
         nextDocStatus = "published";
     }
 
-    if (!updateDocumentStatusBySystem(targetDocId, nextDocStatus)) {
-        std::cout << ui::error("[!] Decision saved, but document status update failed.") << "\n";
+    const std::string syncNote = approve ? "Approval decision applied." : "Rejection decision applied.";
+    if (!updateDocumentStatusBySystem(targetDocId, nextDocStatus, admin.username, syncNote)) {
+        if (nextDocStatus == "published") {
+            std::cout << ui::warning("[!] Decision saved, but publication was blocked by budget guardrail.") << "\n";
+        } else {
+            std::cout << ui::error("[!] Decision saved, but document status update failed.") << "\n";
+        }
         logAuditAction("APPROVAL_STATUS_SYNC_FAILED", targetDocId, admin.username);
         waitForEnter();
         return;
