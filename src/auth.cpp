@@ -4,6 +4,7 @@
 #include "../include/audit.h"
 #include "../include/blockchain.h"
 #include "../include/budget.h"
+#include "../include/delegation.h"
 #include "../include/documents.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
@@ -1276,6 +1277,19 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
                     continue;
                 }
 
+                if (typeChoice == 2 && choice == 2) {
+                    const int revokedCount = revokeDelegationsForUsername(username);
+                    if (revokedCount < 0) {
+                        std::cout << ui::warning("[!] Account deactivated, but delegation cleanup failed.") << "\n";
+                        logAuditAction("DELEGATION_REVOKE_FAILED", username, admin.username);
+                    } else if (revokedCount > 0) {
+                        const std::string target = username + " [count=" + std::to_string(revokedCount) + "]";
+                        logAuditAction("DELEGATIONS_AUTO_REVOKED", target, admin.username);
+                        std::cout << ui::muted("[i] Revoked ") << revokedCount
+                                  << ui::muted(" active delegation(s) involving this account.") << "\n";
+                    }
+                }
+
                 const std::string action = (choice == 2) ? "ACCOUNT_DEACTIVATED" : "ACCOUNT_REACTIVATED";
                 logAuditAction(action, username, admin.username);
                 std::cout << ui::success("[+] Account status updated successfully.") << "\n";
@@ -1365,6 +1379,17 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
                 std::cout << ui::error("[!] Hard delete failed or username not found.") << "\n";
                 waitForEnter();
                 continue;
+            }
+
+            const int revokedCount = revokeDelegationsForUsername(username);
+            if (revokedCount < 0) {
+                std::cout << ui::warning("[!] Account deleted, but delegation cleanup failed.") << "\n";
+                logAuditAction("DELEGATION_REVOKE_FAILED", username, admin.username);
+            } else if (revokedCount > 0) {
+                const std::string target = username + " [count=" + std::to_string(revokedCount) + "]";
+                logAuditAction("DELEGATIONS_AUTO_REVOKED", target, admin.username);
+                std::cout << ui::muted("[i] Revoked ") << revokedCount
+                          << ui::muted(" active delegation(s) involving this account.") << "\n";
             }
 
             logAuditAction("ACCOUNT_DELETED", username, admin.username);

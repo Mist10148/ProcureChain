@@ -3,6 +3,7 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/blockchain.h"
+#include "../include/delegation.h"
 #include "../include/ui.h"
 
 #include <algorithm>
@@ -648,6 +649,65 @@ bool getPendingBudgetApprovalIdsForApproverInternal(const std::string& approverU
     return true;
 }
 
+void collectPendingBudgetRowsForDecision(const std::vector<BudgetApproval>& rows,
+                                         const std::string& approverUsername,
+                                         std::vector<BudgetApproval>& directRows,
+                                         std::vector<BudgetApproval>& delegatedRows) {
+    directRows.clear();
+    delegatedRows.clear();
+
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].approverUsername == approverUsername && rows[i].status == "pending") {
+            directRows.push_back(rows[i]);
+        }
+    }
+
+    const std::vector<Delegation> delegations = getActiveDelegationsFor(approverUsername);
+    std::set<std::string> delegatedKeys;
+    for (std::size_t d = 0; d < delegations.size(); ++d) {
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].approverUsername != delegations[d].delegatorUsername || rows[i].status != "pending") {
+                continue;
+            }
+
+            const std::string key = rows[i].entryId + "|" + rows[i].approverUsername + "|" + rows[i].role;
+            if (!delegatedKeys.insert(key).second) {
+                continue;
+            }
+
+            delegatedRows.push_back(rows[i]);
+        }
+    }
+}
+
+bool resolvePendingBudgetDecisionOwner(const std::vector<BudgetApproval>& rows,
+                                       const std::string& approverUsername,
+                                       const std::string& entryId,
+                                       std::string& ownerUsername) {
+    ownerUsername.clear();
+
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].entryId == entryId && rows[i].approverUsername == approverUsername && rows[i].status == "pending") {
+            ownerUsername = approverUsername;
+            return true;
+        }
+    }
+
+    const std::vector<Delegation> delegations = getActiveDelegationsFor(approverUsername);
+    for (std::size_t d = 0; d < delegations.size(); ++d) {
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].entryId == entryId &&
+                rows[i].approverUsername == delegations[d].delegatorUsername &&
+                rows[i].status == "pending") {
+                ownerUsername = delegations[d].delegatorUsername;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool isFiscalYearValid(const std::string& fiscalYear) {
     if (fiscalYear.size() != 4) {
         return false;
@@ -1062,13 +1122,13 @@ void viewPendingBudgetEntriesForApprover(const Admin& admin) {
         entryLookup[entries[i].entryId] = entries[i];
     }
 
-    std::vector<std::vector<std::string>> tableRows;
-    for (std::size_t i = 0; i < approvals.size(); ++i) {
-        if (approvals[i].approverUsername != admin.username || approvals[i].status != "pending") {
-            continue;
-        }
+    std::vector<BudgetApproval> directRows;
+    std::vector<BudgetApproval> delegatedRows;
+    collectPendingBudgetRowsForDecision(approvals, admin.username, directRows, delegatedRows);
 
-        std::map<std::string, BudgetEntry>::const_iterator entryIt = entryLookup.find(approvals[i].entryId);
+    std::vector<std::vector<std::string>> tableRows;
+    for (std::size_t i = 0; i < directRows.size(); ++i) {
+        std::map<std::string, BudgetEntry>::const_iterator entryIt = entryLookup.find(directRows[i].entryId);
         if (entryIt == entryLookup.end()) {
             continue;
         }
@@ -1076,12 +1136,31 @@ void viewPendingBudgetEntriesForApprover(const Admin& admin) {
         std::ostringstream amountOut;
         amountOut << std::fixed << std::setprecision(2) << entryIt->second.allocatedAmount;
 
-        tableRows.push_back({approvals[i].entryId,
+        tableRows.push_back({directRows[i].entryId,
+                             directRows[i].role,
                              entryIt->second.entryType,
                              entryIt->second.fiscalYear,
                              entryIt->second.category,
                              amountOut.str(),
-                             approvals[i].status});
+                             "Direct"});
+    }
+
+    for (std::size_t i = 0; i < delegatedRows.size(); ++i) {
+        std::map<std::string, BudgetEntry>::const_iterator entryIt = entryLookup.find(delegatedRows[i].entryId);
+        if (entryIt == entryLookup.end()) {
+            continue;
+        }
+
+        std::ostringstream amountOut;
+        amountOut << std::fixed << std::setprecision(2) << entryIt->second.allocatedAmount;
+
+        tableRows.push_back({delegatedRows[i].entryId,
+                             delegatedRows[i].role,
+                             entryIt->second.entryType,
+                             entryIt->second.fiscalYear,
+                             entryIt->second.category,
+                             amountOut.str(),
+                             "Delegated"});
     }
 
     if (tableRows.empty()) {
@@ -1091,8 +1170,8 @@ void viewPendingBudgetEntriesForApprover(const Admin& admin) {
         return;
     }
 
-    const std::vector<std::string> headers = {"Entry ID", "Type", "Fiscal Year", "Category", "Amount", "Status"};
-    const std::vector<int> widths = {10, 18, 12, 22, 12, 10};
+    const std::vector<std::string> headers = {"Entry ID", "Role", "Type", "Fiscal Year", "Category", "Amount", "Via"};
+    const std::vector<int> widths = {10, 24, 18, 12, 22, 12, 10};
     ui::printTableHeader(headers, widths);
     for (std::size_t i = 0; i < tableRows.size(); ++i) {
         ui::printTableRow(tableRows[i], widths);
@@ -1117,24 +1196,28 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
-    std::vector<BudgetApproval> pendingForUser;
-    for (std::size_t i = 0; i < approvals.size(); ++i) {
-        if (approvals[i].approverUsername == admin.username && approvals[i].status == "pending") {
-            pendingForUser.push_back(approvals[i]);
-        }
-    }
+    std::vector<BudgetApproval> directRows;
+    std::vector<BudgetApproval> delegatedRows;
+    collectPendingBudgetRowsForDecision(approvals, admin.username, directRows, delegatedRows);
 
-    if (pendingForUser.empty()) {
+    if (directRows.empty() && delegatedRows.empty()) {
         std::cout << ui::warning("[!] No pending budget approvals for your account.") << "\n";
         logAuditAction("BUDGET_APPROVAL_NOT_FOUND", "N/A", admin.username);
         waitForEnter();
         return;
     }
 
-    std::cout << "\n" << ui::bold("Available Pending Budget Entry IDs") << "\n";
-    for (std::size_t i = 0; i < pendingForUser.size(); ++i) {
-        std::cout << "  - " << pendingForUser[i].entryId << "\n";
+    std::cout << "\n" << ui::bold("Available Pending Budget Decisions") << "\n";
+    const std::vector<std::string> pendingHeaders = {"Entry ID", "Role", "Created", "Via"};
+    const std::vector<int> pendingWidths = {10, 24, 19, 12};
+    ui::printTableHeader(pendingHeaders, pendingWidths);
+    for (std::size_t i = 0; i < directRows.size(); ++i) {
+        ui::printTableRow({directRows[i].entryId, directRows[i].role, directRows[i].createdAt, "Direct"}, pendingWidths);
     }
+    for (std::size_t i = 0; i < delegatedRows.size(); ++i) {
+        ui::printTableRow({delegatedRows[i].entryId, delegatedRows[i].role, delegatedRows[i].createdAt, "Delegated"}, pendingWidths);
+    }
+    ui::printTableFooter(pendingWidths);
 
     clearInputBuffer();
     std::string entryId;
@@ -1165,10 +1248,18 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
+    std::string ownerUsername;
+    if (!resolvePendingBudgetDecisionOwner(approvals, admin.username, entryId, ownerUsername)) {
+        std::cout << ui::error("[!] No pending approval found for this budget entry and account.") << "\n";
+        logAuditAction("BUDGET_APPROVAL_NOT_FOUND", entryId, admin.username);
+        waitForEnter();
+        return;
+    }
+
     std::vector<BudgetApproval> projectedApprovals = approvals;
     for (std::size_t i = 0; i < projectedApprovals.size(); ++i) {
         if (projectedApprovals[i].entryId == entryId &&
-            projectedApprovals[i].approverUsername == admin.username &&
+            projectedApprovals[i].approverUsername == ownerUsername &&
             projectedApprovals[i].status == "pending") {
             projectedApprovals[i].status = approve ? "approved" : "rejected";
             break;
@@ -1230,10 +1321,15 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
         return;
     }
 
+    std::string actingOnBehalfOf;
+    if (ownerUsername != admin.username) {
+        actingOnBehalfOf = ownerUsername;
+    }
+
     bool updated = false;
     const std::string now = getCurrentTimestamp();
     for (std::size_t i = 0; i < approvals.size(); ++i) {
-        if (approvals[i].entryId == entryId && approvals[i].approverUsername == admin.username && approvals[i].status == "pending") {
+        if (approvals[i].entryId == entryId && approvals[i].approverUsername == ownerUsername && approvals[i].status == "pending") {
             approvals[i].status = approve ? "approved" : "rejected";
             approvals[i].decidedAt = now;
 
@@ -1312,17 +1408,29 @@ void applyBudgetApprovalDecision(const Admin& admin, bool approve) {
     std::cout << "\nDecision Saved: " << ui::consensusStatus(approve ? "approved" : "rejected") << "\n";
     std::cout << "Consensus Result: " << ui::consensusStatus(nextStatus) << "\n";
 
+    if (!actingOnBehalfOf.empty()) {
+        std::cout << "  " << ui::muted("(Acting on behalf of " + actingOnBehalfOf + " via delegation)") << "\n";
+    }
+
+    const std::string auditActor = actingOnBehalfOf.empty()
+        ? admin.username
+        : admin.username + " (on behalf of " + actingOnBehalfOf + ")";
+
     if (approve) {
-        const int chainIndex = appendBlockchainAction("BUDGET_APPROVE", entryId, admin.username);
-        logAuditAction("BUDGET_ENTRY_APPROVED", entryId, admin.username, chainIndex);
+        const std::string action = actingOnBehalfOf.empty() ? "BUDGET_APPROVE" : "BUDGET_APPROVE_DELEGATED";
+        const std::string auditAction = actingOnBehalfOf.empty() ? "BUDGET_ENTRY_APPROVED" : "BUDGET_ENTRY_APPROVED_DELEGATED";
+        const int chainIndex = appendBlockchainAction(action, entryId, admin.username);
+        logAuditAction(auditAction, entryId, auditActor, chainIndex);
     } else {
-        const int chainIndex = appendBlockchainAction("BUDGET_REJECT", entryId, admin.username);
-        logAuditAction("BUDGET_ENTRY_REJECTED", entryId, admin.username, chainIndex);
+        const std::string action = actingOnBehalfOf.empty() ? "BUDGET_REJECT" : "BUDGET_REJECT_DELEGATED";
+        const std::string auditAction = actingOnBehalfOf.empty() ? "BUDGET_ENTRY_REJECTED" : "BUDGET_ENTRY_REJECTED_DELEGATED";
+        const int chainIndex = appendBlockchainAction(action, entryId, admin.username);
+        logAuditAction(auditAction, entryId, auditActor, chainIndex);
     }
 
     if (nextStatus == "published") {
         const int publishChainIndex = appendBlockchainAction("BUDGET_PUBLISH", entryId, admin.username);
-        logAuditAction("BUDGET_ENTRY_PUBLISH", entryId, admin.username, publishChainIndex);
+        logAuditAction("BUDGET_ENTRY_PUBLISH", entryId, auditActor, publishChainIndex);
     }
 
     waitForEnter();

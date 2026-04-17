@@ -106,10 +106,15 @@ bool saveDelegations(const std::vector<Delegation>& delegations) {
     return true;
 }
 
+bool isAdminActiveWithUsername(const std::string& username);
+
 bool isDelegationActive(const Delegation& d) {
     if (d.status != "active") { return false; }
     const std::string today = getTodayDate();
-    return today >= d.startDate && today <= d.endDate;
+    if (!(today >= d.startDate && today <= d.endDate)) { return false; }
+    if (!isAdminActiveWithUsername(d.delegatorUsername)) { return false; }
+    if (!isAdminActiveWithUsername(d.delegateeUsername)) { return false; }
+    return true;
 }
 
 bool isApproverRole(const std::string& role) {
@@ -342,6 +347,39 @@ std::vector<Delegation> getActiveDelegationsFor(const std::string& delegateeUser
         }
     }
     return result;
+}
+
+int revokeDelegationsForUsername(const std::string& username) {
+    if (username.empty()) {
+        return 0;
+    }
+
+    std::vector<Delegation> all;
+    if (!loadDelegations(all)) {
+        return -1;
+    }
+
+    int revokedCount = 0;
+    for (size_t i = 0; i < all.size(); ++i) {
+        if (all[i].status != "active") {
+            continue;
+        }
+
+        if (all[i].delegatorUsername == username || all[i].delegateeUsername == username) {
+            all[i].status = "revoked";
+            revokedCount++;
+        }
+    }
+
+    if (revokedCount == 0) {
+        return 0;
+    }
+
+    if (!saveDelegations(all)) {
+        return -1;
+    }
+
+    return revokedCount;
 }
 
 void runDelegationManagement(const Admin& admin) {

@@ -15,6 +15,7 @@ struct Delegation {
 
 void ensureDelegationFileExists();
 std::vector<Delegation> getActiveDelegationsFor(const std::string& delegateeUsername);
+int revokeDelegationsForUsername(const std::string& username);
 void runDelegationManagement(const Admin& admin);
 
 #endif

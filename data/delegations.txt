@@ -1,1 +1,3 @@
 delegatorUsername|delegateeUsername|startDate|endDate|status
+budget_admin|mun_admin|2026-04-10|2026-04-30|active
+budget_admin|mun_admin|2026-04-10|2026-04-30|active
