@@ -65,6 +65,38 @@ Completed
 
 Completed
 
+## Phase 12: AI Summarization and Dynamic Node Evolution
+
+### Objectives
+
+- add AI summarizer actions in citizen/admin document detail screens
+- support audit-trail document drill-down for citizen transparency flow
+- migrate blockchain from fixed node count to dynamic `5 + total admins`
+- add Super Admin hard-delete for admin accounts with node cleanup
+- surface tamper alerts in notification inboxes
+
+### Implemented (In Progress)
+
+- added Python Gemini summarizer runner under ai_summarizer/scripts
+- added AI runtime workspace folders for input/output manipulation
+- added summary cache file schema at data/summarizer.txt
+- integrated document detail summary actions (view cached, generate/refresh)
+- added citizen public-audit drill-down to open published document detail
+- migrated blockchain, verification, analytics, and backup to dynamic node paths
+- added deterministic per-admin node naming and orphan cleanup
+- added hard-delete admin workflow and linked node removal
+- added tamper alert persistence and inbox rendering
+
+### Remaining Validation
+
+- full compile and role smoke test for citizen/admin/super-admin flows
+- Gemini dependency and API-key failure fallback verification
+- tamper scenario simulation and inbox visibility verification
+
+### Status
+
+In Progress
+
 ## Phase 1: Authentication and Role Routing
 
 ### Objectives

@@ -13,7 +13,10 @@ It is designed for classroom-level procedural programming and focuses on:
 - Budget consensus workflow and published budget projection
 - Audit trail logging and CSV export
 - Simulated blockchain consistency checks
-- Blockchain explorer across 5 nodes with divergence/tamper detection
+- Blockchain explorer across dynamic nodes (5 base + total admins) with divergence/tamper detection
+- AI summarizer integration via Python + Gemini for document detail screens
+- Public audit-trail drill-down into published document detail
+- Tamper alert persistence and inbox visibility for admin/citizen roles
 - Governance reporting and account lifecycle administration
 - Admin Command Center with grouped workspaces and analytics hub
 - Compact and full analytics layout modes with optional paged detail tables
@@ -51,7 +54,7 @@ High-level process:
 6. Citizens can view published documents.
 7. Citizens can search a published document and verify its SHA-256 hash against blockchain records.
 8. Every important action is written to a hash-linked audit log.
-9. Key events are appended to five blockchain node files and can be validated for consistency.
+9. Key events are appended to dynamic blockchain node files and can be validated for consistency.
 10. Governance dashboards provide approval, budget, audit, integrity, and executive analytics.
 11. Admin navigation is grouped into overview plus role-gated workspaces.
 
@@ -63,10 +66,13 @@ High-level process:
   - list accounts
   - deactivate/reactivate accounts
   - reset password with generated temporary password (forces password change on next login)
+  - hard-delete admin account (removes linked admin node)
 - SHA-256 password hashing at rest (plaintext passwords auto-migrated on startup)
 - Forced password change after Super Admin password reset
 - Published document viewing for citizens
 - Citizen published document search by document ID or keyword
+- Citizen public-audit drill-down to open published document detail
+- AI summary actions in document detail (view cached, generate/refresh)
 - Citizen published document hash verification (stored hash, recomputed hash, blockchain presence)
 - Admin document upload, search, full listing, and status update
 - Document upload requires title, category, and description
@@ -118,9 +124,10 @@ High-level process:
   - export filtered
   - validated date range and safe filename checks
   - filter-value suggestions shown before filtered export input
-- Simulated blockchain append and validation across 5 node files
+- Simulated blockchain append and validation across dynamic node files
 - Blockchain explorer: per-node integrity, consensus matrix, per-block agreement, tamper alerts
 - Audit-to-blockchain linking for blockchain-backed actions
+- Tamper alerts stored in data/tamper_alerts.txt and shown in notification inboxes
 - Optional approval/rejection notes attached to decisions (shown in document detail panel)
 - Notification inbox shown on login and available as menu option
 - In-app help system with role-specific guidance
@@ -131,6 +138,9 @@ High-level process:
 
 - Windows with PowerShell
 - C++ compiler (g++ recommended, such as MSYS2 MinGW)
+- Python 3 for AI summarizer flow
+- Python packages for summarizer flow: google-generativeai, pypdf, python-docx
+- GEMINI_API_KEY environment variable (for AI summary generation)
 
 Optional check:
 
@@ -142,13 +152,13 @@ Optional check:
 
 Open PowerShell in the project folder and run:
 
-    g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp src/analytics.cpp src/notifications.cpp src/help.cpp src/backup.cpp src/delegation.cpp -o procurechain.exe
+    g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp src/analytics.cpp src/notifications.cpp src/help.cpp src/backup.cpp src/delegation.cpp src/summarizer.cpp -o procurechain.exe
     .\procurechain.exe
 
 ### Option B: Run from src folder
 
     cd src
-    g++ -std=c++17 main.cpp auth.cpp documents.cpp verification.cpp budget.cpp audit.cpp approvals.cpp blockchain.cpp ui.cpp analytics.cpp notifications.cpp help.cpp backup.cpp delegation.cpp -o ..\procurechain.exe
+    g++ -std=c++17 main.cpp auth.cpp documents.cpp verification.cpp budget.cpp audit.cpp approvals.cpp blockchain.cpp ui.cpp analytics.cpp notifications.cpp help.cpp backup.cpp delegation.cpp summarizer.cpp -o ..\procurechain.exe
     cd ..
     .\procurechain.exe
 
@@ -226,11 +236,16 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 
   timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
 
-### data/blockchain/node1_chain.txt
-### data/blockchain/node2_chain.txt
-### data/blockchain/node3_chain.txt
-### data/blockchain/node4_chain.txt
-### data/blockchain/node5_chain.txt
+### data/summarizer.txt
+
+  docID|updatedAt|status|model|summaryFile|sourceFile|error
+
+### data/tamper_alerts.txt
+
+  timestamp|severity|source|targetID|detail|actor|visibility
+
+### data/blockchain/node1_chain.txt to node5_chain.txt (base nodes)
+### data/blockchain/node_admin_<username>_chain.txt (admin-linked nodes)
 
     index|timestamp|action|documentID|actor|previousHash|currentHash
 

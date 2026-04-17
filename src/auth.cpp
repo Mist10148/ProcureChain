@@ -2,6 +2,7 @@
 
 #include "../include/approvals.h"
 #include "../include/audit.h"
+#include "../include/blockchain.h"
 #include "../include/budget.h"
 #include "../include/documents.h"
 #include "../include/ui.h"
@@ -516,6 +517,36 @@ bool updateAdminStatus(const std::string& username, const std::string& newStatus
     return saveAdmins(admins);
 }
 
+bool deleteAdminAccountByUsername(const std::string& username) {
+    std::vector<Admin> admins;
+    if (!loadAdmins(admins)) {
+        return false;
+    }
+
+    bool removed = false;
+    for (std::size_t i = 0; i < admins.size(); ++i) {
+        if (admins[i].username != username) {
+            continue;
+        }
+
+        admins.erase(admins.begin() + i);
+        removed = true;
+        break;
+    }
+
+    if (!removed) {
+        return false;
+    }
+
+    if (!saveAdmins(admins)) {
+        return false;
+    }
+
+    const bool nodeRemoved = removeBlockchainNodeForAdmin(username);
+    ensureBlockchainNodeFilesExist();
+    return nodeRemoved;
+}
+
 bool hasMustChangePasswordFlag(const std::string& username) {
     std::ifstream file;
     if (!openInputFileWithFallback(file, PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK)) {
@@ -917,6 +948,8 @@ bool signUpAdmin() {
         return false;
     }
 
+    ensureBlockchainNodeFilesExist();
+
     logAuditAction("SIGNUP_ADMIN", newAdmin.adminId, newAdmin.username);
     std::cout << ui::success("[+] Admin account created successfully. Your Admin ID is ") << newAdmin.adminId << ".\n";
     std::cout << ui::success("[+] Assigned Role: ") << newAdmin.role << "\n";
@@ -1085,6 +1118,7 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
         std::cout << "  " << ui::info("[2]") << " Deactivate account\n";
         std::cout << "  " << ui::info("[3]") << " Reactivate account\n";
         std::cout << "  " << ui::info("[4]") << " Reset account password\n";
+        std::cout << "  " << ui::info("[5]") << " Hard delete admin account\n";
         std::cout << "  " << ui::info("[0]") << " Back to Admin Dashboard\n";
         std::cout << ui::muted("--------------------------------------------------------------") << "\n";
         std::cout << "  Enter your choice: ";
@@ -1204,6 +1238,44 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
             logAuditAction("ACCOUNT_PASSWORD_RESET", username, admin.username);
             std::cout << ui::success("[+] Temporary password generated: ") << generated << "\n";
             std::cout << ui::muted("[i] Share this securely and ask the user to change it after login.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 5) {
+            clearInputBuffer();
+            std::string username;
+            std::cout << "Target admin username: ";
+            std::getline(std::cin, username);
+
+            if (username.empty()) {
+                std::cout << ui::warning("[!] Username is required.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (username == admin.username) {
+                std::cout << ui::warning("[!] You cannot hard-delete your current session account.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (!ui::confirmAction("Hard-delete admin account '" + username + "'? This cannot be undone.",
+                                   "Confirm Delete",
+                                   "Cancel")) {
+                std::cout << ui::warning("[!] Hard delete cancelled.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (!deleteAdminAccountByUsername(username)) {
+                std::cout << ui::error("[!] Hard delete failed or username not found.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            logAuditAction("ACCOUNT_DELETED", username, admin.username);
+            std::cout << ui::success("[+] Admin account deleted successfully.") << "\n";
             waitForEnter();
             continue;
         }

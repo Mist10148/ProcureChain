@@ -72,6 +72,19 @@ Latest governance safeguard updates:
 - overrun guardrails apply to both document publication and budget publication paths
 - budget workspace now generates monthly transparency reports (TXT + CSV) covering published docs, approvals/rejections, and variance
 
+Latest AI and integrity-evolution updates:
+
+- AI summary workflow added for document detail screens (citizen and admin)
+- Python Gemini runner added under ai_summarizer/scripts with runtime workspace folders
+- summary cache metadata persisted in data/summarizer.txt
+- public audit trail now supports document drill-down by target document ID
+- blockchain node topology is dynamic: base five nodes plus one node per admin row
+- admin-linked node files are deterministic per username token
+- Super Admin account lifecycle now includes hard-delete admin action
+- hard-delete removes the linked admin node file and re-syncs dynamic topology
+- tamper detections are persisted in data/tamper_alerts.txt
+- inbox views now surface recent tamper alerts for admins and citizens
+
 Security, UX, and governance extensions (Phase 9):
 
 - SHA-256 password hashing at rest for all stored credentials

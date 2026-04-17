@@ -4,6 +4,7 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/blockchain.h"
+#include "../include/summarizer.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -87,6 +88,7 @@ struct DocumentFilter {
 };
 
 void clearInputBuffer();
+void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, const std::vector<Document>* allDocs);
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
     // Constant-time path fallback for read operations.
@@ -1397,6 +1399,96 @@ std::vector<ApprovalChainRow> loadApprovalChainRows(const std::string& docId) {
     return rows;
 }
 
+std::string buildSummaryFallbackText(const Document& doc) {
+    std::ostringstream out;
+    out << "Document ID: " << doc.docId << "\n";
+    out << "Title: " << doc.title << "\n";
+    out << "Category: " << doc.category << "\n";
+    out << "Tags: " << (doc.tags.empty() ? "(none)" : doc.tags) << "\n";
+    out << "Description: " << doc.description << "\n";
+    out << "Department: " << doc.department << "\n";
+    out << "Date Uploaded: " << doc.dateUploaded << "\n";
+    out << "Uploader: " << doc.uploader << "\n";
+    out << "Status: " << doc.status << "\n";
+    out << "Hash: " << doc.hashValue << "\n";
+    out << "Version: v" << doc.versionNumber << "\n";
+    out << "Previous Version: " << (doc.previousDocId.empty() ? "(root)" : doc.previousDocId) << "\n";
+    return out.str();
+}
+
+void printDocumentSummaryResult(const DocumentSummaryResult& result) {
+    std::cout << "\n" << ui::bold("AI Document Summary") << "\n";
+    std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+    std::cout << "  Document ID : " << result.docId << "\n";
+    std::cout << "  Updated At  : " << (result.updatedAt.empty() ? "(not available)" : result.updatedAt) << "\n";
+    std::cout << "  Model       : " << (result.model.empty() ? "(not available)" : result.model) << "\n";
+    std::cout << "  Source      : " << (result.fromCache ? "cache" : "fresh run") << "\n";
+    std::cout << "  Status      : " << (result.success ? "READY" : "UNAVAILABLE") << "\n";
+    if (!result.message.empty()) {
+        std::cout << "  Note        : " << result.message << "\n";
+    }
+
+    if (!result.summary.empty()) {
+        std::cout << "\n" << result.summary << "\n";
+    } else {
+        std::cout << "\n" << ui::warning("[!] No summary text available yet.") << "\n";
+    }
+}
+
+void runDocumentSummaryPanel(const Document& doc, const std::string& actor) {
+    int choice = -1;
+
+    do {
+        std::cout << "\n" << ui::bold("AI Summary Actions") << "\n";
+        std::cout << "  " << ui::info("[1]") << " View cached AI summary\n";
+        std::cout << "  " << ui::info("[2]") << " Generate/Refresh AI summary\n";
+        std::cout << "  " << ui::info("[0]") << " Back\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        std::cin >> choice;
+        if (std::cin.fail()) {
+            std::cin.clear();
+            clearInputBuffer();
+            std::cout << ui::warning("[!] Invalid choice.") << "\n";
+            continue;
+        }
+
+        if (choice == 1) {
+            const DocumentSummaryResult result = getDocumentSummary(doc.docId);
+            printDocumentSummaryResult(result);
+            logAuditAction("DOC_AI_SUMMARY_VIEW", doc.docId, actor);
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 2) {
+            const DocumentSummaryResult result = generateDocumentSummary(doc.docId,
+                                                                         doc.filePath,
+                                                                         buildSummaryFallbackText(doc),
+                                                                         true);
+            printDocumentSummaryResult(result);
+            logAuditAction(result.success ? "DOC_AI_SUMMARY_REFRESH_OK" : "DOC_AI_SUMMARY_REFRESH_FAIL",
+                           doc.docId,
+                           actor);
+            waitForEnter();
+            continue;
+        }
+
+        if (choice != 0) {
+            std::cout << ui::warning("[!] Invalid choice.") << "\n";
+        }
+    } while (choice != 0);
+}
+
+void showDocumentDetailWithSummary(const Document& doc,
+                                   bool includeApprovalChain,
+                                   const std::vector<Document>* allDocs,
+                                   const std::string& actor) {
+    printDocumentDetailPanel(doc, includeApprovalChain, allDocs);
+    runDocumentSummaryPanel(doc, actor);
+}
+
 void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, const std::vector<Document>* allDocs) {
     std::ostringstream sizeOut;
     sizeOut << doc.fileSizeBytes;
@@ -1830,7 +1922,7 @@ void searchPublishedDocumentForCitizen(const std::string& actor) {
 
     Document found;
     if (findExactDocumentById(published, query, found)) {
-        printDocumentDetailPanel(found, true, &published);
+        showDocumentDetailWithSummary(found, true, &published, actor);
         logAuditAction("SEARCH_PUBLISHED_DOC", found.docId, actor);
         waitForEnter();
         return;
@@ -1859,7 +1951,7 @@ void searchPublishedDocumentForCitizen(const std::string& actor) {
 
     Document selected;
     if (findDocumentInMatchesById(matches, selectedDocId, selected)) {
-        printDocumentDetailPanel(selected, true, &published);
+        showDocumentDetailWithSummary(selected, true, &published, actor);
         logAuditAction("SEARCH_PUBLISHED_DOC", selected.docId, actor);
         waitForEnter();
         return;
@@ -1867,6 +1959,44 @@ void searchPublishedDocumentForCitizen(const std::string& actor) {
 
     std::cout << "\n" << ui::warning("[!] Selected Document ID is not in the ranked results.") << "\n";
     logAuditAction("SEARCH_PUBLISHED_DOC_NOT_FOUND", selectedDocId, actor);
+    waitForEnter();
+}
+
+void viewPublishedDocumentDetailForCitizenById(const std::string& docId, const std::string& actor) {
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
+        std::cout << ui::error("[!] Unable to open documents file.") << "\n";
+        logAuditAction("AUDIT_DOC_DRILLDOWN_FAILED", docId, actor);
+        waitForEnter();
+        return;
+    }
+
+    std::vector<Document> published;
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (toLowerCopy(docs[i].status) == "published") {
+            published.push_back(docs[i]);
+        }
+    }
+
+    if (published.empty()) {
+        std::cout << ui::warning("[!] No published documents are available.") << "\n";
+        logAuditAction("AUDIT_DOC_DRILLDOWN_EMPTY", docId, actor);
+        waitForEnter();
+        return;
+    }
+
+    Document found;
+    if (!findExactDocumentById(published, docId, found)) {
+        std::cout << ui::warning("[!] Published document not found for audit drill-down.") << "\n";
+        logAuditAction("AUDIT_DOC_DRILLDOWN_NOT_FOUND", docId, actor);
+        waitForEnter();
+        return;
+    }
+
+    clearScreen();
+    ui::printSectionTitle("PUBLISHED DOCUMENT DETAIL (AUDIT DRILL-DOWN)");
+    showDocumentDetailWithSummary(found, true, &published, actor);
+    logAuditAction("AUDIT_DOC_DRILLDOWN_VIEW", found.docId, actor);
     waitForEnter();
 }
 
@@ -2207,7 +2337,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 
     Document exact;
     if (findExactDocumentById(docs, query, exact)) {
-        printDocumentDetailPanel(exact, true, &docs);
+        showDocumentDetailWithSummary(exact, true, &docs, admin.username);
         logAuditAction("SEARCH_DOC", exact.docId, admin.username);
         waitForEnter();
         return;
@@ -2236,7 +2366,7 @@ void searchDocumentByIdForAdmin(const Admin& admin) {
 
     Document selected;
     if (findDocumentInMatchesById(matches, selectedDocId, selected)) {
-        printDocumentDetailPanel(selected, true, &docs);
+        showDocumentDetailWithSummary(selected, true, &docs, admin.username);
         logAuditAction("SEARCH_DOC", selected.docId, admin.username);
         waitForEnter();
         return;

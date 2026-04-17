@@ -2,4 +2,40 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: CN005
 Title: Flood Control Pump Procurement
 Category: Contract
-Status note: Pending approval chain
+Department: Disaster Risk Reduction and Management Office
+Contract Draft Date: 2026-02-03
+
+Parties:
+- Procuring Entity: City Government
+- Contractor: Delta Hydro-Mechanical Solutions
+
+Contract Scope:
+Supply and installation of portable and fixed flood-control pump units for
+identified high-risk catchment zones.
+
+Contract Deliverables:
+1. High-capacity portable pumps, 10 units
+2. Fixed station pumps with control panels, 4 units
+3. Initial spare parts kit and emergency consumables
+4. Operator and maintenance training for DRRM personnel
+
+Contract Amount:
+PHP 14,400,000 inclusive of delivery, installation, and testing.
+
+Duration and Milestones:
+- Effective date: upon notice to proceed
+- Delivery completion: within 35 calendar days
+- System acceptance test: within 7 days after installation
+
+Service Levels:
+- Maximum response time for critical defects: 24 hours
+- Preventive maintenance: monthly for first 6 months
+- Warranty period: 24 months from acceptance
+
+Compliance Clauses:
+- Supplier must pass safety and commissioning inspections
+- All equipment shall meet required capacity and certification standards
+- Delays are subject to liquidated damages based on contract terms
+
+Status Note:
+Pending approval chain while legal and technical clarifications are under review.

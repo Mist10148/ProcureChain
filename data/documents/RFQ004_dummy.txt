@@ -2,4 +2,40 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: RFQ004
 Title: Community Wi-Fi Expansion Lots 1-3
 Category: RFQ
-Status note: Rejected due to evaluation findings
+Issuing Unit: ICT Development Office
+Release Date: 2026-01-28
+
+Project Objective:
+Procure managed internet and hotspot equipment services to expand free community
+Wi-Fi access across 18 barangay centers.
+
+Requested Quotations Include:
+1. Outdoor access points with weather protection, 60 units
+2. Core gateway appliances with bandwidth management, 6 units
+3. Fiber backhaul setup and configuration services
+4. 12-month managed maintenance and monitoring support
+
+Technical Requirements:
+- Minimum aggregate throughput of 1 Gbps per lot
+- VLAN segmentation for public and admin traffic
+- Built-in content filtering and abuse-prevention controls
+- Uptime target of 99.5% monthly availability
+
+Commercial Requirements:
+- Breakdown of hardware, labor, and subscription costs
+- Price validity for at least 60 calendar days
+- Payment terms aligned with government procurement policies
+
+Evaluation Criteria:
+- 40% technical compliance
+- 35% total evaluated cost
+- 15% implementation timeline
+- 10% after-sales support capability
+
+Status Note:
+This RFQ cycle was rejected due to non-compliant technical submissions in Lot 2
+and incomplete proof of support coverage in two bidder proposals.
+
+Follow-up Action:
+Prepare revised RFQ package with clarified minimum specs and stricter document
+checklist prior to re-posting.

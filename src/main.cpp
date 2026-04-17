@@ -419,7 +419,7 @@ void runAuditIntegrityWorkspace(const Admin& admin) {
     actionCodes.push_back(4);
     actionLabels.push_back("Integrity Snapshot (Visual)");
     actionCodes.push_back(5);
-    actionLabels.push_back("Blockchain Explorer (5 Nodes)");
+    actionLabels.push_back("Blockchain Explorer (Dynamic Nodes)");
 
     int choice = -1;
 

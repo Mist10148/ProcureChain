@@ -2,4 +2,32 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: PO008
 Title: Citizen Service Center Renovation
 Category: Purchase Order
-Package: Queueing system and fit-out works
+Department: Public Service Delivery Office
+Vendor: CivicBuild Interiors and Systems
+PO Date: 2026-03-10
+
+Procurement Package:
+Queueing system installation, client waiting area fit-out, service counters,
+and accessibility upgrades for the one-stop citizen service center.
+
+Work Components:
+1. Renovation of 6 service counters with digital display integration
+2. Queue management kiosks and overhead announcement panels
+3. Seating, wayfinding signs, and PWD-friendly pathway improvements
+4. Network and power outlet expansion for service terminals
+
+Commercial Breakdown:
+- Interior fit-out works: PHP 4,800,000
+- Queueing system hardware/software: PHP 2,100,000
+- Electrical and network works: PHP 650,000
+- Total purchase order amount: PHP 7,550,000
+
+Execution Timeline:
+- Site handover: 2026-03-15
+- Construction and system installation: 45 calendar days
+- User acceptance testing: 5 working days
+
+Quality and Acceptance:
+- Materials must meet approved construction specifications
+- Queueing system must support at least 8 service lanes
+- Final acceptance requires successful end-to-end service simulation

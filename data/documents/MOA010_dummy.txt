@@ -2,4 +2,42 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: MOA010
 Title: Solar Streetlight Pilot
 Category: Memorandum of Agreement
-Status note: Rejected after review
+Lead Office: City Planning and Development Office
+Draft Date: 2026-01-30
+
+Parties to the Agreement:
+- City Government
+- GreenGrid Renewable Solutions Cooperative
+
+Program Objective:
+Pilot deployment of solar-powered streetlights in low-visibility pedestrian zones
+to improve public safety and reduce power consumption.
+
+Scope and Obligations:
+City Government shall:
+1. Provide approved installation sites and permits
+2. Assign focal personnel for implementation monitoring
+3. Coordinate barangay-level community orientation
+
+Cooperative shall:
+1. Supply and install 120 solar streetlight units
+2. Provide maintenance support for 18 months
+3. Submit quarterly performance and uptime reports
+
+Pilot Budget Context:
+- Equipment and installation estimate: PHP 6,900,000
+- Monitoring and maintenance estimate: PHP 700,000
+- Total pilot value reference: PHP 7,600,000
+
+Key Milestones:
+- Site validation: within 15 days of MOA signing
+- Installation completion: within 60 days
+- Performance review checkpoint: 6 months after activation
+
+Review Outcome Note:
+This MOA draft was rejected after legal and financial review due to unresolved
+asset-ownership transfer clauses and incomplete warranty penalty provisions.
+
+Recommended Revision Focus:
+- Clarify ownership and turnover responsibilities
+- Add measurable uptime obligations and non-performance penalties

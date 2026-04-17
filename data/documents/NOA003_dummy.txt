@@ -2,5 +2,38 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: NOA003
 Title: Public Health Cold-Chain Equipment
 Category: Notice of Award
-Deliverables: Vaccine refrigerator and freezer units
-Deployment: Rural health stations
+Issuing Office: City Health Office
+Award Date: 2026-03-05
+
+Awarded Supplier:
+Meditech Biomedical Systems Corporation
+
+Project Coverage:
+Supply, delivery, installation, and commissioning of vaccine storage equipment
+for 12 rural health stations.
+
+Awarded Deliverables:
+1. Vaccine refrigerators, WHO-compliant, 24 units
+2. Medical-grade freezers, 12 units
+3. Temperature data loggers with alarm feature, 36 units
+4. Initial maintenance kit and operator training package
+
+Financial Summary:
+- Equipment package: PHP 9,600,000
+- Installation and calibration: PHP 1,100,000
+- Training and maintenance onboarding: PHP 450,000
+- Total award amount: PHP 11,150,000
+
+Implementation Timeline:
+- Contract signing target: 2026-03-12
+- Delivery completion: within 45 calendar days
+- Commissioning and training: within 10 days after delivery
+
+Conditions of Award:
+- Supplier must provide at least 2-year warranty coverage
+- Preventive maintenance schedule required every quarter
+- Equipment serial numbers must be recorded in asset inventory log
+
+Governance Notes:
+This award follows the approved recommendation of the Bids and Awards Committee
+and is subject to post-qualification verification and final contract execution.

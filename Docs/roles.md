@@ -32,6 +32,9 @@ Citizen accounts are transparency users (read-only for governance data).
 
 - View published procurement documents
 - Search published document by ID or keyword
+- Open published document detail from public audit trail drill-down
+- View cached AI summary for selected published documents
+- Generate/refresh AI summary for selected published documents
 - Verify published document hash and blockchain registration
 - View procurement budgets
 - View audit trail
@@ -51,10 +54,11 @@ Citizen accounts are transparency users (read-only for governance data).
 1. Login as Citizen.
 2. Open Published Documents to inspect publicly available records.
 3. Use Search Published Document when a specific record trace is needed.
-4. Use Verify Published Document Hash to validate stored and recomputed hash values.
-5. Open Budget Summary to review published budget allocations.
-6. Open Audit Trail for accountability review and optional CSV export.
-7. Logout.
+4. Open document detail and run AI summary actions when plain-language context is needed.
+5. Use Verify Published Document Hash to validate stored and recomputed hash values.
+6. Open Budget Summary to review published budget allocations.
+7. Open Audit Trail for accountability review, CSV export, and document drill-down.
+8. Logout.
 
 ## Super Admin SOP
 
@@ -81,6 +85,7 @@ Super Admin is the governance and platform-control role.
   - List all accounts
   - Deactivate/reactivate accounts
   - Reset account passwords
+  - Hard-delete admin accounts with linked node cleanup
 
 ### Not Allowed / Special Rule
 
@@ -94,7 +99,8 @@ Super Admin is the governance and platform-control role.
 4. Use Audit and Integrity tools for trust checks.
 5. Use Approvals Workspace to monitor escalation queue and configure approval rules.
 6. Use Account Administration for account lifecycle tasks.
-6. Logout after completion.
+7. Review Notification Inbox for tamper alerts and pending governance actions.
+8. Logout after completion.
 
 ## Procurement Officer SOP
 
@@ -245,6 +251,29 @@ Municipal Administrator is a second required approver role.
 3. Enter period using YYYY-MM.
 4. System exports both TXT and CSV reports by default.
 5. Reports include published document count, approval/rejection counts, and variance by category.
+
+## AI Summary SOP (Citizen and Admin)
+
+1. Open a document detail panel from search results (or public audit drill-down for citizen users).
+2. Enter AI Summary Actions.
+3. Select View Cached AI Summary to read the latest available summary without re-running Python.
+4. Select Generate/Refresh AI Summary to run the Gemini-backed Python summarizer.
+5. If generation fails, read the returned error and use cached summary fallback when available.
+
+## Tamper Alert SOP
+
+1. Open Notification Inbox and review tamper alert counts.
+2. Admin roles should follow up using Audit and Integrity workspace checks.
+3. Citizen users can cross-check affected documents through public audit and verification tools.
+4. Governance response actions must be completed through normal audit-logged workflows.
+
+## Public Audit Drill-Down SOP (Citizen)
+
+1. Open Public Audit Trail and apply filters as needed.
+2. Choose Open Published Document Detail.
+3. Select a document ID listed in the current timeline targets.
+4. Review the full document detail, lineage, and approval chain.
+5. Use AI Summary Actions for plain-language interpretation support.
 
 ## Account Lifecycle SOP (Super Admin)
 

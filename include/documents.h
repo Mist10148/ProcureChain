@@ -29,6 +29,7 @@ std::string generateNextDocumentId();
 void ensureSampleDocumentsPresent();
 void showPublishedDocuments(const std::string& actor);
 void searchPublishedDocumentForCitizen(const std::string& actor);
+void viewPublishedDocumentDetailForCitizenById(const std::string& docId, const std::string& actor);
 void uploadDocumentAsAdmin(const Admin& admin);
 void viewAllDocumentsForAdmin(const Admin& admin);
 void searchDocumentByIdForAdmin(const Admin& admin);

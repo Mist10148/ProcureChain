@@ -1,4 +1,5 @@
 #include "../include/backup.h"
+#include "../include/blockchain.h"
 #include "../include/ui.h"
 #include "../include/audit.h"
 
@@ -22,12 +23,6 @@ const std::vector<std::string> DATA_FILES = {
     "approval_rules.txt", "approval_comments.txt", "budgets.txt", "budget_entries.txt",
     "budget_approvals.txt", "audit_log.txt", "password_flags.txt",
     "delegations.txt"
-};
-
-const std::vector<std::string> BLOCKCHAIN_FILES = {
-    "blockchain/node1_chain.txt", "blockchain/node2_chain.txt",
-    "blockchain/node3_chain.txt", "blockchain/node4_chain.txt",
-    "blockchain/node5_chain.txt"
 };
 
 std::string resolveDataDir() {
@@ -96,6 +91,7 @@ void runBackupWorkspace(const Admin& admin) {
             const std::string dataDir = resolveDataDir();
             const std::string backupTs = generateBackupTimestamp();
             const std::string backupPath = dataDir + "/" + BACKUP_DIR_NAME + "/" + backupTs;
+            const std::vector<std::string> blockchainFiles = getBlockchainNodeRelativeFiles();
 
             std::filesystem::create_directories(backupPath + "/blockchain");
 
@@ -107,9 +103,9 @@ void runBackupWorkspace(const Admin& admin) {
                     if (copyFile(src, dst)) { copied++; }
                 }
             }
-            for (size_t i = 0; i < BLOCKCHAIN_FILES.size(); ++i) {
-                const std::string src = dataDir + "/" + BLOCKCHAIN_FILES[i];
-                const std::string dst = backupPath + "/" + BLOCKCHAIN_FILES[i];
+            for (size_t i = 0; i < blockchainFiles.size(); ++i) {
+                const std::string src = dataDir + "/" + blockchainFiles[i];
+                const std::string dst = backupPath + "/" + blockchainFiles[i];
                 if (std::filesystem::exists(src)) {
                     if (copyFile(src, dst)) { copied++; }
                 }
@@ -167,6 +163,7 @@ void runBackupWorkspace(const Admin& admin) {
             if (restoreChoice == 0) { continue; }
 
             const std::string selectedBackup = backupsBase + "/" + backupDirs[static_cast<size_t>(restoreChoice - 1)];
+            const std::vector<std::string> blockchainFiles = getBlockchainNodeRelativeFiles();
 
             clearInputBuffer();
             std::cout << "\n" << ui::warning("[!] WARNING: This will overwrite all current data files.") << "\n";
@@ -188,10 +185,11 @@ void runBackupWorkspace(const Admin& admin) {
                     if (copyFile(src, dst)) { restored++; }
                 }
             }
-            for (size_t i = 0; i < BLOCKCHAIN_FILES.size(); ++i) {
-                const std::string src = selectedBackup + "/" + BLOCKCHAIN_FILES[i];
-                const std::string dst = dataDir + "/" + BLOCKCHAIN_FILES[i];
+            for (size_t i = 0; i < blockchainFiles.size(); ++i) {
+                const std::string src = selectedBackup + "/" + blockchainFiles[i];
+                const std::string dst = dataDir + "/" + blockchainFiles[i];
                 if (std::filesystem::exists(src)) {
+                    std::filesystem::create_directories(std::filesystem::path(dst).parent_path());
                     if (copyFile(src, dst)) { restored++; }
                 }
             }

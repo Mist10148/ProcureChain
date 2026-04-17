@@ -2,4 +2,35 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: PR007
 Title: Urban Greening Tools and Seedlings
 Category: Purchase Request
-Status note: Awaiting final approver decision
+Department: Environment and Natural Resources Office
+Prepared Date: 2026-01-22
+
+Request Purpose:
+Support the city urban greening campaign by providing tools and plant materials
+for barangay-led tree planting and roadside beautification.
+
+Requested Items:
+1. Tree seedlings (native species), 8,000 units
+2. Ornamental shrubs, 5,500 units
+3. Digging tools set, 220 kits
+4. Organic fertilizer packs, 4,000 bags
+
+Cost Estimate:
+- Seedlings and shrubs: PHP 1,450,000
+- Tools and logistics: PHP 620,000
+- Fertilizer and planting support materials: PHP 310,000
+- Total requested budget: PHP 2,380,000
+
+Implementation Notes:
+- Planting will prioritize flood-prone and heat-vulnerable corridors
+- Barangay volunteers will be assigned per cluster for maintenance
+- Survival monitoring will be conducted every 45 days
+
+Risk Considerations:
+- Risk: low survival rate during dry weeks
+	Mitigation: include watering schedule and replacement stock
+- Risk: delayed delivery of seedlings
+	Mitigation: split orders among accredited nurseries
+
+Status Note:
+Awaiting final approver decision before purchase order issuance.

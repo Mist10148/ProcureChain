@@ -44,6 +44,11 @@ Implemented in code:
 - Notification inbox and in-app help
 - Backup/restore workspace (Super Admin)
 - Delegation management for Budget Officer and Municipal Administrator
+- AI summarizer integration (Python + Gemini) for document detail views with cache support
+- Citizen public-audit drill-down to open document detail directly from timeline entries
+- Dynamic blockchain node topology: base five nodes plus one node per admin record
+- Super Admin hard-delete for admin accounts with linked node cleanup
+- Tamper alert notifications surfaced in admin and citizen inbox views
 
 ## 3. Target Users
 
@@ -105,6 +110,11 @@ Can:
 15. Notification inbox and role-specific help.
 16. Backup/restore operations for Super Admin.
 17. Delegated approval authority with date-range control.
+18. AI-generated document summary with cached read and manual refresh options.
+19. Public audit timeline drill-down to published document detail views.
+20. Dynamic node count rule: total nodes = 5 + total admins.
+21. Tamper alert persistence and inbox notification rendering.
+22. Super Admin hard-delete admin action with deterministic node file cleanup.
 
 ## 5. System Flow
 
@@ -121,6 +131,7 @@ Can:
 - View Audit Trail
 - Search Published Document (ID or Keyword)
 - Verify Published Document Hash
+- Open published document detail from public audit trail and run AI summary actions
 - Notification Inbox
 - Help
 - Logout
@@ -168,14 +179,14 @@ Can:
 - data/password_flags.txt: username|mustChangePassword
 - data/delegations.txt: delegatorUsername|delegateeUsername|startDate|endDate|status
 - data/audit_log.txt: timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
+- data/summarizer.txt: docID|updatedAt|status|model|summaryFile|sourceFile|error
+- data/tamper_alerts.txt: timestamp|severity|source|targetID|detail|actor|visibility
 
 ### 6.2 Blockchain Files
 
-- data/blockchain/node1_chain.txt
-- data/blockchain/node2_chain.txt
-- data/blockchain/node3_chain.txt
-- data/blockchain/node4_chain.txt
-- data/blockchain/node5_chain.txt
+- Base nodes: data/blockchain/node1_chain.txt to data/blockchain/node5_chain.txt
+- Admin-linked nodes: data/blockchain/node_admin_<username>_chain.txt
+- Effective node count rule: 5 + total rows in data/admins.txt
 
 Node row format: index|timestamp|action|documentID|actor|previousHash|currentHash
 
@@ -246,9 +257,19 @@ This section preserves the concise PRD above while adding the fuller implementat
 - Blockchain-backed actions can store chainIndex in audit rows.
 - Audit screen supports CSV export for all rows and filtered rows.
 - Filtered export validates date-range bounds and filename safety.
-- Blockchain writes are replicated across five node files.
+- Blockchain writes are replicated across dynamic node files: base five plus admin-linked nodes.
 - Validation checks both per-node linkage integrity and cross-node consistency.
 - Explorer view surfaces first mismatch index and per-block consensus diagnostics.
+- Tamper detections emit public alert rows consumed by notification inboxes.
+
+### 9.8 AI Summary Pipeline and Drill-Down
+
+- Document detail views (citizen and admin) expose AI summary actions:
+  - view cached summary
+  - generate/refresh summary via Python Gemini runner
+- Selected document input is copied into ai_summarizer workspace before Python execution.
+- Summary cache metadata is persisted in data/summarizer.txt and loaded by the CLI.
+- Public audit trail includes document drill-down to open published detail + summary actions.
 
 ### 9.5 Security and Access Controls
 

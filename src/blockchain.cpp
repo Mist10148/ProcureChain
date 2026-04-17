@@ -2,15 +2,19 @@
 
 #include "../include/audit.h"
 #include "../include/auth.h"
+#include "../include/notifications.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -39,13 +43,25 @@ struct NodeValidationResult {
     std::vector<BlockRow> rows;
 };
 
-const std::vector<NodePath> NODE_PATHS = {
-    {"data/blockchain/node1_chain.txt", "../data/blockchain/node1_chain.txt"},
-    {"data/blockchain/node2_chain.txt", "../data/blockchain/node2_chain.txt"},
-    {"data/blockchain/node3_chain.txt", "../data/blockchain/node3_chain.txt"},
-    {"data/blockchain/node4_chain.txt", "../data/blockchain/node4_chain.txt"},
-    {"data/blockchain/node5_chain.txt", "../data/blockchain/node5_chain.txt"}
-};
+const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
+const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
+
+std::string sanitizeAdminToken(std::string value) {
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(value[i]);
+        if (std::isalnum(c) == 0) {
+            value[i] = '_';
+        } else if (value[i] >= 'A' && value[i] <= 'Z') {
+            value[i] = static_cast<char>(value[i] + ('a' - 'A'));
+        }
+    }
+
+    if (value.empty()) {
+        value = "admin";
+    }
+
+    return value;
+}
 
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
     // Idempotent file bootstrap for each blockchain node file.
@@ -84,6 +100,91 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
     file.clear();
     file.open(fallbackPath);
     return file.is_open();
+}
+
+bool loadAdminUsernames(std::vector<std::string>& usernames) {
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    usernames.clear();
+    std::set<std::string> unique;
+
+    std::string line;
+    bool firstLine = true;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("adminID|") == 0) {
+                continue;
+            }
+        }
+
+        std::stringstream parser(line);
+        std::string token;
+        std::vector<std::string> tokens;
+        while (std::getline(parser, token, '|')) {
+            tokens.push_back(token);
+        }
+
+        if (tokens.size() < 3 || tokens[2].empty()) {
+            continue;
+        }
+
+        unique.insert(tokens[2]);
+    }
+
+    usernames.assign(unique.begin(), unique.end());
+    std::sort(usernames.begin(), usernames.end());
+    return true;
+}
+
+NodePath buildAdminNodePath(const std::string& username) {
+    const std::string safe = sanitizeAdminToken(username);
+    NodePath path;
+    path.primaryPath = "data/blockchain/node_admin_" + safe + "_chain.txt";
+    path.fallbackPath = "../data/blockchain/node_admin_" + safe + "_chain.txt";
+    return path;
+}
+
+std::vector<NodePath> buildNodePaths() {
+    std::vector<NodePath> paths;
+    paths.push_back({"data/blockchain/node1_chain.txt", "../data/blockchain/node1_chain.txt"});
+    paths.push_back({"data/blockchain/node2_chain.txt", "../data/blockchain/node2_chain.txt"});
+    paths.push_back({"data/blockchain/node3_chain.txt", "../data/blockchain/node3_chain.txt"});
+    paths.push_back({"data/blockchain/node4_chain.txt", "../data/blockchain/node4_chain.txt"});
+    paths.push_back({"data/blockchain/node5_chain.txt", "../data/blockchain/node5_chain.txt"});
+
+    std::vector<std::string> usernames;
+    if (loadAdminUsernames(usernames)) {
+        for (std::size_t i = 0; i < usernames.size(); ++i) {
+            paths.push_back(buildAdminNodePath(usernames[i]));
+        }
+    }
+
+    return paths;
+}
+
+std::vector<std::string> buildNodeRelativeFiles() {
+    const std::vector<NodePath> paths = buildNodePaths();
+    std::vector<std::string> out;
+    out.reserve(paths.size());
+
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        const std::string prefix = "data/";
+        if (paths[i].primaryPath.find(prefix) == 0) {
+            out.push_back(paths[i].primaryPath.substr(prefix.size()));
+        } else {
+            out.push_back(paths[i].primaryPath);
+        }
+    }
+
+    return out;
 }
 
 bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
@@ -234,12 +335,14 @@ void synchronizeEmptyNodesFromReference() {
     // from a consistent baseline before live writes happen.
     std::string referenceData;
 
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        if (!hasDataRows(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+    const std::vector<NodePath> nodePaths = buildNodePaths();
+
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        if (!hasDataRows(nodePaths[i].primaryPath, nodePaths[i].fallbackPath)) {
             continue;
         }
 
-        referenceData = readFullFileWithFallback(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath);
+        referenceData = readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath);
         if (!referenceData.empty()) {
             break;
         }
@@ -249,13 +352,13 @@ void synchronizeEmptyNodesFromReference() {
         return;
     }
 
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        if (hasDataRows(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        if (hasDataRows(nodePaths[i].primaryPath, nodePaths[i].fallbackPath)) {
             continue;
         }
 
         std::ofstream nodeWriter;
-        if (!openWriteFileWithFallback(nodeWriter, NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+        if (!openWriteFileWithFallback(nodeWriter, nodePaths[i].primaryPath, nodePaths[i].fallbackPath)) {
             continue;
         }
 
@@ -302,8 +405,59 @@ void migrateNodeChainToSha256(const NodePath& nodePath) {
 }
 
 void migrateAllNodesToSha256() {
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        migrateNodeChainToSha256(NODE_PATHS[i]);
+    const std::vector<NodePath> nodePaths = buildNodePaths();
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        migrateNodeChainToSha256(nodePaths[i]);
+    }
+}
+
+void removeOrphanAdminNodeFiles(const std::vector<NodePath>& activePaths) {
+    std::set<std::string> activePrimary;
+    std::set<std::string> activeFallback;
+    for (std::size_t i = 0; i < activePaths.size(); ++i) {
+        activePrimary.insert(activePaths[i].primaryPath);
+        activeFallback.insert(activePaths[i].fallbackPath);
+    }
+
+    const std::string primaryDir = "data/blockchain";
+    const std::string fallbackDir = "../data/blockchain";
+    std::error_code ec;
+
+    if (std::filesystem::exists(primaryDir, ec)) {
+        for (std::filesystem::directory_iterator it(primaryDir, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+            if (!it->is_regular_file()) {
+                continue;
+            }
+            const std::string name = it->path().filename().string();
+            if (name.find("node_admin_") != 0 || name.rfind("_chain.txt") == std::string::npos) {
+                continue;
+            }
+            const std::string full = it->path().string();
+            if (activePrimary.find(full) != activePrimary.end()) {
+                continue;
+            }
+            std::filesystem::remove(it->path(), ec);
+            ec.clear();
+        }
+    }
+
+    ec.clear();
+    if (std::filesystem::exists(fallbackDir, ec)) {
+        for (std::filesystem::directory_iterator it(fallbackDir, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+            if (!it->is_regular_file()) {
+                continue;
+            }
+            const std::string name = it->path().filename().string();
+            if (name.find("node_admin_") != 0 || name.rfind("_chain.txt") == std::string::npos) {
+                continue;
+            }
+            const std::string full = it->path().string();
+            if (activeFallback.find(full) != activeFallback.end()) {
+                continue;
+            }
+            std::filesystem::remove(it->path(), ec);
+            ec.clear();
+        }
     }
 }
 } // namespace
@@ -311,8 +465,12 @@ void migrateAllNodesToSha256() {
 void ensureBlockchainNodeFilesExist() {
     // Startup integrity bootstrap for all simulated nodes.
     const std::string header = "index|timestamp|action|documentID|actor|previousHash|currentHash";
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        ensureFileWithHeader(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath, header);
+    const std::vector<NodePath> nodePaths = buildNodePaths();
+
+    removeOrphanAdminNodeFiles(nodePaths);
+
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        ensureFileWithHeader(nodePaths[i].primaryPath, nodePaths[i].fallbackPath, header);
     }
     seedBlockchainIfAllEmpty();
     synchronizeEmptyNodesFromReference();
@@ -327,8 +485,13 @@ int appendBlockchainAction(const std::string& action, const std::string& docId, 
     // Complexity is O(n + k), n=rows in chain, k=node count.
     ensureBlockchainNodeFilesExist();
 
+    const std::vector<NodePath> nodePaths = buildNodePaths();
+    if (nodePaths.empty()) {
+        return -1;
+    }
+
     std::ifstream nodeReader;
-    if (!openInputFileWithFallback(nodeReader, NODE_PATHS[0].primaryPath, NODE_PATHS[0].fallbackPath)) {
+    if (!openInputFileWithFallback(nodeReader, nodePaths[0].primaryPath, nodePaths[0].fallbackPath)) {
         return -1;
     }
 
@@ -360,11 +523,11 @@ int appendBlockchainAction(const std::string& action, const std::string& docId, 
     const std::string row = source + "|" + currentHash;
 
     std::vector<std::ofstream> nodeWriters;
-    nodeWriters.reserve(NODE_PATHS.size());
+    nodeWriters.reserve(nodePaths.size());
 
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
         std::ofstream nodeWriter;
-        if (!openAppendFileWithFallback(nodeWriter, NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath)) {
+        if (!openAppendFileWithFallback(nodeWriter, nodePaths[i].primaryPath, nodePaths[i].fallbackPath)) {
             return -1;
         }
 
@@ -388,15 +551,17 @@ void validateBlockchainNodes(const std::string& actor) {
 
     ensureBlockchainNodeFilesExist();
 
+    const std::vector<NodePath> nodePaths = buildNodePaths();
+
     std::vector<NodeValidationResult> nodeResults;
-    nodeResults.reserve(NODE_PATHS.size());
+    nodeResults.reserve(nodePaths.size());
 
     std::vector<std::string> nodeData;
-    nodeData.reserve(NODE_PATHS.size());
+    nodeData.reserve(nodePaths.size());
 
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        nodeResults.push_back(validateSingleChainDetailed(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath));
-        nodeData.push_back(readFullFileWithFallback(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath));
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        nodeResults.push_back(validateSingleChainDetailed(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+        nodeData.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
     }
 
     bool sameContent = !nodeData.empty() && !nodeData[0].empty();
@@ -431,6 +596,12 @@ void validateBlockchainNodes(const std::string& actor) {
         logAuditAction("BLOCKCHAIN_VALIDATE_OK", "MULTI", actor);
     } else {
         std::cout << "\n" << ui::error("[!] Blockchain validation failed (inconsistency or tamper detected).") << "\n";
+        logTamperAlert("HIGH",
+                       "BLOCKCHAIN_VALIDATE",
+                       "MULTI",
+                       "Validation failed due to chain inconsistency or tamper indicators.",
+                       actor,
+                       "PUBLIC");
         logAuditAction("BLOCKCHAIN_VALIDATE_FAIL", "MULTI", actor);
     }
 
@@ -439,15 +610,17 @@ void validateBlockchainNodes(const std::string& actor) {
 
 void viewBlockchainExplorer(const std::string& actor) {
     clearScreen();
-    ui::printSectionTitle("BLOCKCHAIN EXPLORER (5 NODE CONSENSUS)");
+    ui::printSectionTitle("BLOCKCHAIN EXPLORER (DYNAMIC NODE CONSENSUS)");
 
     ensureBlockchainNodeFilesExist();
 
-    std::vector<NodeValidationResult> nodeResults;
-    nodeResults.reserve(NODE_PATHS.size());
+    const std::vector<NodePath> nodePaths = buildNodePaths();
 
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        nodeResults.push_back(validateSingleChainDetailed(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath));
+    std::vector<NodeValidationResult> nodeResults;
+    nodeResults.reserve(nodePaths.size());
+
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        nodeResults.push_back(validateSingleChainDetailed(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
     }
 
     std::vector<BlockRow> emptyReference;
@@ -554,11 +727,59 @@ void viewBlockchainExplorer(const std::string& actor) {
 
     if (tamperedNodes > 0) {
         std::cout << "\n" << ui::error("[!] Explorer detected tampering or divergence across node files.") << "\n";
+        logTamperAlert("HIGH",
+                       "BLOCKCHAIN_EXPLORER",
+                       std::to_string(tamperedNodes) + "_nodes",
+                       "Explorer detected diverging blockchain node replicas.",
+                       actor,
+                       "PUBLIC");
         logAuditAction("BLOCKCHAIN_EXPLORER_TAMPER_ALERT", std::to_string(tamperedNodes), actor);
     } else {
-        std::cout << "\n" << ui::success("[+] Explorer confirms all 5 nodes are synchronized and valid.") << "\n";
-        logAuditAction("BLOCKCHAIN_EXPLORER_OK", "5_nodes", actor);
+        std::cout << "\n" << ui::success("[+] Explorer confirms all ") << nodeResults.size()
+                  << ui::success(" nodes are synchronized and valid.") << "\n";
+        logAuditAction("BLOCKCHAIN_EXPLORER_OK", std::to_string(nodeResults.size()) + "_nodes", actor);
     }
 
     waitForEnter();
+}
+
+std::vector<BlockchainNodePath> getBlockchainNodePaths() {
+    const std::vector<NodePath> internal = buildNodePaths();
+    std::vector<BlockchainNodePath> out;
+    out.reserve(internal.size());
+
+    for (std::size_t i = 0; i < internal.size(); ++i) {
+        BlockchainNodePath row;
+        row.primaryPath = internal[i].primaryPath;
+        row.fallbackPath = internal[i].fallbackPath;
+        out.push_back(row);
+    }
+
+    return out;
+}
+
+std::vector<std::string> getBlockchainNodeRelativeFiles() {
+    return buildNodeRelativeFiles();
+}
+
+bool removeBlockchainNodeForAdmin(const std::string& adminUsername) {
+    const NodePath path = buildAdminNodePath(adminUsername);
+
+    std::error_code ec;
+    if (std::filesystem::exists(path.primaryPath, ec)) {
+        std::filesystem::remove(path.primaryPath, ec);
+        if (ec) {
+            return false;
+        }
+    }
+
+    ec.clear();
+    if (std::filesystem::exists(path.fallbackPath, ec)) {
+        std::filesystem::remove(path.fallbackPath, ec);
+        if (ec) {
+            return false;
+        }
+    }
+
+    return true;
 }

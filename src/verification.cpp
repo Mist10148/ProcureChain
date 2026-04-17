@@ -2,6 +2,8 @@
 
 #include "../include/audit.h"
 #include "../include/auth.h"
+#include "../include/blockchain.h"
+#include "../include/notifications.h"
 #include "../include/ui.h"
 
 #include <algorithm>
@@ -22,9 +24,6 @@ const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 const std::string VERIFY_FOLDER_PATH_PRIMARY = "data/verify";
 const std::string VERIFY_FOLDER_PATH_FALLBACK = "../data/verify";
-const std::string BLOCKCHAIN_NODE_PRIMARY_PREFIX = "data/blockchain/node";
-const std::string BLOCKCHAIN_NODE_FALLBACK_PREFIX = "../data/blockchain/node";
-const int BLOCKCHAIN_NODE_COUNT = 5;
 
 struct VerificationHint {
     std::string docId;
@@ -73,12 +72,6 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-}
-
-bool openBlockchainNodeInput(std::ifstream& file, int nodeIndex) {
-    const std::string primary = BLOCKCHAIN_NODE_PRIMARY_PREFIX + std::to_string(nodeIndex) + "_chain.txt";
-    const std::string fallback = BLOCKCHAIN_NODE_FALLBACK_PREFIX + std::to_string(nodeIndex) + "_chain.txt";
-    return openInputFileWithFallback(file, primary, fallback);
 }
 
 std::string resolveDirectoryPathWithFallback(const std::string& primaryPath, const std::string& fallbackPath) {
@@ -432,9 +425,11 @@ std::string computeFileHashSha256(const std::string& filePath) {
 }
 
 bool verifyDocumentHashAgainstBlockchain(const std::string& hashValue, const std::string& docId) {
-    for (int node = 1; node <= BLOCKCHAIN_NODE_COUNT; ++node) {
+    const std::vector<BlockchainNodePath> nodePaths = getBlockchainNodePaths();
+
+    for (std::size_t node = 0; node < nodePaths.size(); ++node) {
         std::ifstream file;
-        if (!openBlockchainNodeInput(file, node)) {
+        if (!openInputFileWithFallback(file, nodePaths[node].primaryPath, nodePaths[node].fallbackPath)) {
             continue;
         }
 
@@ -530,6 +525,12 @@ void verifyDocumentIntegrity(const std::string& actor) {
         } else {
             std::cout << ui::error("[TAMPERED]") << "\n";
             std::cout << ui::error("Hash mismatch or chain mismatch detected. Investigate possible alteration.") << "\n";
+            logTamperAlert("HIGH",
+                           "VERIFY_ADMIN",
+                           doc.docId,
+                           "Admin verification detected hash or blockchain mismatch.",
+                           actor,
+                           "PUBLIC");
             logAuditAction("VERIFY_DOC_TAMPERED", doc.docId, actor);
         }
         std::cout << ui::bold("====================================") << "\n";
@@ -661,6 +662,12 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
     } else if (!hashMatch) {
         std::cout << ui::error("[TAMPERED]") << "\n";
         std::cout << ui::error("Hash mismatch detected. The submitted file may have been altered.") << "\n";
+        logTamperAlert("HIGH",
+                       "VERIFY_CITIZEN",
+                       doc.docId,
+                       "Citizen verification detected hash mismatch for submitted candidate file.",
+                       actor,
+                       "PUBLIC");
         logAuditAction("VERIFY_DOC_TAMPERED", doc.docId, actor);
     } else if (!hasVerifyCandidate) {
         std::cout << ui::warning("[INCOMPLETE]") << "\n";

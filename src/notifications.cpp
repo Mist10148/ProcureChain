@@ -18,6 +18,18 @@ const std::string DOCUMENTS_FILE_PATH_PRIMARY = "data/documents.txt";
 const std::string DOCUMENTS_FILE_PATH_FALLBACK = "../data/documents.txt";
 const std::string APPROVAL_RULES_FILE_PATH_PRIMARY = "data/approval_rules.txt";
 const std::string APPROVAL_RULES_FILE_PATH_FALLBACK = "../data/approval_rules.txt";
+const std::string TAMPER_ALERTS_FILE_PATH_PRIMARY = "data/tamper_alerts.txt";
+const std::string TAMPER_ALERTS_FILE_PATH_FALLBACK = "../data/tamper_alerts.txt";
+
+struct TamperAlertRow {
+    std::string timestamp;
+    std::string severity;
+    std::string source;
+    std::string targetId;
+    std::string detail;
+    std::string actor;
+    std::string visibility;
+};
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primary, const std::string& fallback) {
     file.open(primary);
@@ -129,7 +141,140 @@ int countRecentPublishedDocuments(int withinDays) {
     return count;
 }
 
+std::string resolveTamperAlertsPath() {
+    std::ifstream primary(TAMPER_ALERTS_FILE_PATH_PRIMARY);
+    if (primary.is_open()) {
+        return TAMPER_ALERTS_FILE_PATH_PRIMARY;
+    }
+
+    std::ifstream fallback(TAMPER_ALERTS_FILE_PATH_FALLBACK);
+    if (fallback.is_open()) {
+        return TAMPER_ALERTS_FILE_PATH_FALLBACK;
+    }
+
+    std::ofstream createPrimary(TAMPER_ALERTS_FILE_PATH_PRIMARY);
+    if (createPrimary.is_open()) {
+        createPrimary << "timestamp|severity|source|targetID|detail|actor|visibility\n";
+        createPrimary.flush();
+        return TAMPER_ALERTS_FILE_PATH_PRIMARY;
+    }
+
+    std::ofstream createFallback(TAMPER_ALERTS_FILE_PATH_FALLBACK);
+    if (createFallback.is_open()) {
+        createFallback << "timestamp|severity|source|targetID|detail|actor|visibility\n";
+        createFallback.flush();
+        return TAMPER_ALERTS_FILE_PATH_FALLBACK;
+    }
+
+    return "";
+}
+
+std::vector<TamperAlertRow> loadTamperAlerts() {
+    std::vector<TamperAlertRow> rows;
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, TAMPER_ALERTS_FILE_PATH_PRIMARY, TAMPER_ALERTS_FILE_PATH_FALLBACK)) {
+        return rows;
+    }
+
+    std::string line;
+    bool firstLine = true;
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("timestamp|") == 0) {
+                continue;
+            }
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        if (tokens.size() < 7) {
+            continue;
+        }
+
+        TamperAlertRow row;
+        row.timestamp = tokens[0];
+        row.severity = tokens[1];
+        row.source = tokens[2];
+        row.targetId = tokens[3];
+        row.detail = tokens[4];
+        row.actor = tokens[5];
+        row.visibility = tokens[6];
+        rows.push_back(row);
+    }
+
+    return rows;
+}
+
+int countRecentTamperAlerts(int withinDays, bool publicOnly) {
+    const std::vector<TamperAlertRow> rows = loadTamperAlerts();
+    int count = 0;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (publicOnly && toLowerCopy(rows[i].visibility) != "public") {
+            continue;
+        }
+        if (daysSinceTimestamp(rows[i].timestamp) <= withinDays) {
+            count++;
+        }
+    }
+    return count;
+}
+
+std::vector<TamperAlertRow> collectRecentTamperAlerts(int limit, bool publicOnly) {
+    std::vector<TamperAlertRow> rows = loadTamperAlerts();
+    std::vector<TamperAlertRow> filtered;
+
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (publicOnly && toLowerCopy(rows[i].visibility) != "public") {
+            continue;
+        }
+        filtered.push_back(rows[i]);
+    }
+
+    if (filtered.size() > static_cast<std::size_t>(limit)) {
+        filtered.erase(filtered.begin(), filtered.end() - limit);
+    }
+
+    return filtered;
+}
+
 } // namespace
+
+void logTamperAlert(const std::string& severity,
+                    const std::string& source,
+                    const std::string& targetId,
+                    const std::string& detail,
+                    const std::string& actor,
+                    const std::string& visibility) {
+    const std::string path = resolveTamperAlertsPath();
+    if (path.empty()) {
+        return;
+    }
+
+    std::ofstream out(path, std::ios::app);
+    if (!out.is_open()) {
+        return;
+    }
+
+    std::string safeDetail = detail;
+    for (std::size_t i = 0; i < safeDetail.size(); ++i) {
+        if (safeDetail[i] == '|' || safeDetail[i] == '\n' || safeDetail[i] == '\r') {
+            safeDetail[i] = ' ';
+        }
+    }
+
+    out << getCurrentTimestamp() << '|'
+        << severity << '|'
+        << source << '|'
+        << targetId << '|'
+        << safeDetail << '|'
+        << actor << '|'
+        << visibility << '\n';
+    out.flush();
+}
 
 void showAdminNotificationInbox(const Admin& admin) {
     clearScreen();
@@ -141,6 +286,7 @@ void showAdminNotificationInbox(const Admin& admin) {
     int overdueDocs = 0;
     int pendingBudgets = 0;
     int overdueBudgets = 0;
+    const int recentTamperAlerts = countRecentTamperAlerts(30, false);
 
     // Count pending document approvals
     {
@@ -208,6 +354,18 @@ void showAdminNotificationInbox(const Admin& admin) {
         std::cout << "\n";
     }
 
+    if (recentTamperAlerts > 0) {
+        hasNotifications = true;
+        std::cout << "  " << ui::error("[!]") << " " << recentTamperAlerts
+                  << " tamper alert(s) logged in the last 30 days\n";
+
+        const std::vector<TamperAlertRow> recent = collectRecentTamperAlerts(3, false);
+        for (std::size_t i = 0; i < recent.size(); ++i) {
+            std::cout << "     - [" << recent[i].severity << "] " << recent[i].source
+                      << " | Target " << recent[i].targetId << " | " << recent[i].timestamp << "\n";
+        }
+    }
+
     if (!hasNotifications) {
         std::cout << "  " << ui::success("[+] No pending actions. You are all caught up!") << "\n";
     }
@@ -223,10 +381,23 @@ void showCitizenNotificationInbox(const User& citizen) {
     std::cout << "  " << ui::muted("Notifications for: ") << citizen.fullName << "\n\n";
 
     int recentPublished = countRecentPublishedDocuments(7);
+    int recentTamperAlerts = countRecentTamperAlerts(30, true);
 
     if (recentPublished > 0) {
         std::cout << "  " << ui::info("[i]") << " " << recentPublished << " new document(s) published in the last 7 days.\n";
-    } else {
+    }
+
+    if (recentTamperAlerts > 0) {
+        std::cout << "  " << ui::warning("[!]") << " " << recentTamperAlerts
+                  << " public tamper alert(s) were posted in the last 30 days.\n";
+        const std::vector<TamperAlertRow> recent = collectRecentTamperAlerts(2, true);
+        for (std::size_t i = 0; i < recent.size(); ++i) {
+            std::cout << "     - " << recent[i].source << " | Target " << recent[i].targetId
+                      << " | " << recent[i].timestamp << "\n";
+        }
+    }
+
+    if (recentPublished <= 0 && recentTamperAlerts <= 0) {
         std::cout << "  " << ui::success("[+] No new updates. You are all caught up!") << "\n";
     }
 

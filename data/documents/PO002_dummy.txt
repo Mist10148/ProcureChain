@@ -2,6 +2,44 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: PO002
 Title: Road Rehabilitation Contract Package A
 Category: Purchase Order
-Scope: Asphalt overlay for priority road segments
-Vendor status: Awarded
 Department: Engineering Department
+Vendor: North Valley Infrastructure Builders, Inc.
+PO Date: 2026-02-18
+
+Project Description:
+Implementation of asphalt overlay and pothole restoration across four priority road
+segments with high public transport usage.
+
+Ordered Works:
+1. Surface milling and clearing, 12,500 square meters
+2. Asphalt overlay, 50 mm thickness, 12,500 square meters
+3. Thermoplastic road markings and lane repainting
+4. Drain inlet clearing and shoulder stabilization
+
+Contract Cost:
+- Civil works package: PHP 18,200,000
+- Traffic management and safety controls: PHP 1,300,000
+- Quality assurance and testing: PHP 450,000
+- Total PO amount: PHP 19,950,000
+
+Milestone Schedule:
+- Notice to proceed: 2026-02-24
+- Mobilization completion: 2026-03-02
+- Main works completion: 2026-04-25
+- Final punch list and turnover: 2026-05-03
+
+Payment Terms:
+- 20% mobilization payment upon approved work program
+- 60% progress billing based on verified accomplishments
+- 20% retention release after final acceptance
+
+Performance and Compliance:
+- Contractor must submit weekly accomplishment reports
+- Materials must pass DPWH laboratory testing standards
+- Work zones must include compliant safety signage and barriers
+
+Risk and Controls:
+- Risk: weather disruption during paving operations
+	Control: schedule critical overlays during low-rainfall windows
+- Risk: traffic congestion complaints
+	Control: off-peak lane closures and public advisory postings

@@ -1,6 +1,7 @@
 #include "../include/audit.h"
 
 #include "../include/auth.h"
+#include "../include/documents.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -955,6 +956,36 @@ void printPublicTimeline(const std::vector<AuditEntry>& entries) {
     std::cout << ui::info("--------------------------------------------------------------") << "\n";
 }
 
+std::vector<std::string> collectPublicDocumentTargets(const std::vector<AuditEntry>& entries) {
+    std::vector<std::string> out;
+
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        const std::string targetType = toLowerCopy(entries[i].targetType);
+        if (targetType != "documents" && targetType != "document") {
+            continue;
+        }
+
+        if (entries[i].targetId.empty()) {
+            continue;
+        }
+
+        bool exists = false;
+        for (std::size_t j = 0; j < out.size(); ++j) {
+            if (out[j] == entries[i].targetId) {
+                exists = true;
+                break;
+            }
+        }
+
+        if (!exists) {
+            out.push_back(entries[i].targetId);
+        }
+    }
+
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 void printInternalAuditTable(const std::vector<AuditEntry>& entries) {
     const std::vector<std::string> headers = {"Timestamp", "Action", "Type", "Target", "Actor", "Role", "Outcome", "Visibility", "Chain", "Hash"};
     const std::vector<int> widths = {19, 20, 10, 12, 18, 18, 10, 10, 7, 14};
@@ -1219,6 +1250,7 @@ void viewPublicAuditTrail(const std::string& actorUsername) {
 
         std::cout << "\n" << ui::info("[1]") << " Export displayed public CSV\n";
         std::cout << "  " << ui::info("[2]") << " Change filters\n";
+        std::cout << "  " << ui::info("[3]") << " Open published document detail\n";
         std::cout << "  " << ui::info("[0]") << " Back\n";
         std::cout << ui::muted("--------------------------------------------------------------") << "\n";
         std::cout << "  Enter your choice: ";
@@ -1238,6 +1270,33 @@ void viewPublicAuditTrail(const std::string& actorUsername) {
 
         if (choice == 2) {
             shouldPromptFilters = true;
+            continue;
+        }
+
+        if (choice == 3) {
+            const std::vector<std::string> documentTargets = collectPublicDocumentTargets(filtered);
+            if (documentTargets.empty()) {
+                std::cout << ui::warning("[!] No document IDs are available in the current timeline view.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            std::cout << "\n" << ui::bold("Available Document IDs") << "\n";
+            for (std::size_t i = 0; i < documentTargets.size(); ++i) {
+                std::cout << "  - " << documentTargets[i] << "\n";
+            }
+
+            clearInputBuffer();
+            std::string docId;
+            std::cout << "Enter Document ID to open (blank to cancel): ";
+            std::getline(std::cin, docId);
+
+            docId = trimCopy(docId);
+            if (docId.empty()) {
+                continue;
+            }
+
+            viewPublishedDocumentDetailForCitizenById(docId, actorUsername);
             continue;
         }
 

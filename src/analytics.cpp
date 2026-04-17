@@ -2,6 +2,7 @@
 
 #include "../include/audit.h"
 #include "../include/auth.h"
+#include "../include/blockchain.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -30,19 +31,6 @@ const std::string BUDGETS_FILE_PATH_PRIMARY = "data/budgets.txt";
 const std::string BUDGETS_FILE_PATH_FALLBACK = "../data/budgets.txt";
 const std::string AUDIT_FILE_PATH_PRIMARY = "data/audit_log.txt";
 const std::string AUDIT_FILE_PATH_FALLBACK = "../data/audit_log.txt";
-
-struct NodePath {
-    std::string primaryPath;
-    std::string fallbackPath;
-};
-
-const std::vector<NodePath> NODE_PATHS = {
-    {"data/blockchain/node1_chain.txt", "../data/blockchain/node1_chain.txt"},
-    {"data/blockchain/node2_chain.txt", "../data/blockchain/node2_chain.txt"},
-    {"data/blockchain/node3_chain.txt", "../data/blockchain/node3_chain.txt"},
-    {"data/blockchain/node4_chain.txt", "../data/blockchain/node4_chain.txt"},
-    {"data/blockchain/node5_chain.txt", "../data/blockchain/node5_chain.txt"}
-};
 
 struct DocumentRow {
     std::string docId;
@@ -1743,10 +1731,11 @@ void renderIntegrityStatus(const Admin& admin, const AnalyticsWindow& window) {
 
     std::vector<bool> nodeValid;
     std::vector<std::string> nodeData;
+    const std::vector<BlockchainNodePath> nodePaths = getBlockchainNodePaths();
 
-    for (std::size_t i = 0; i < NODE_PATHS.size(); ++i) {
-        nodeValid.push_back(validateSingleChain(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath));
-        nodeData.push_back(readFullFileWithFallback(NODE_PATHS[i].primaryPath, NODE_PATHS[i].fallbackPath));
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        nodeValid.push_back(validateSingleChain(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+        nodeData.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
     }
 
     bool sameContent = !nodeData.empty() && !nodeData[0].empty();

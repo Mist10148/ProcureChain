@@ -2,5 +2,39 @@ PROCURECHAIN DUMMY DOCUMENT
 Document ID: ITB009
 Title: Drainage Desilting Equipment Set
 Category: Invitation to Bid
-Bid package: Excavator attachment set
 Department: Engineering Department
+ITB Release Date: 2026-02-07
+
+Bid Package Description:
+Acquisition of specialized drainage desilting equipment and support tools for
+preventive flood mitigation operations.
+
+Required Supply Items:
+1. Excavator-compatible desilting attachments, 6 sets
+2. Mobile sludge transfer pumps, 8 units
+3. Heavy-duty suction hoses and couplers, complete kit
+4. Operator safety package and maintenance starter kit
+
+Approved Budget for Contract:
+PHP 13,200,000
+
+Bid Schedule:
+- Pre-bid conference: 2026-02-15
+- Clarification deadline: 2026-02-20
+- Bid submission deadline: 2026-02-27, 10:00 AM
+- Bid opening: 2026-02-27, 1:00 PM
+
+Eligibility and Technical Requirements:
+- Valid registration and tax clearance documents
+- Proven similar project experience within 5 years
+- Submission of technical brochures and after-sales plan
+- Availability of local maintenance support team
+
+Evaluation Framework:
+- Pass/fail eligibility screening
+- Detailed technical compliance evaluation
+- Financial bid ranking and post-qualification
+
+Contract Performance Conditions:
+- Delivery completion within 30 calendar days from notice to proceed
+- Supplier must conduct operational demonstration and handover training
