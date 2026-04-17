@@ -21,6 +21,8 @@ Current implemented baseline:
 - admin dashboard actions enforce role permissions (Procurement/Budget/Municipal/Super Admin)
 - approval request generation is restricted to designated approver roles
 - approval request generation is category-rule-driven with DEFAULT fallback
+- new document and budget submissions now fan out approval rows to all active admins per required role
+- approval row creation is duplicate-safe per target and approver tuple for new submissions
 - key actions append blockchain transactions (upload/approve/reject/status/budget updates)
 - startup seeding initializes demo admin accounts, approvals, and blockchain starter rows when needed
 - role-based regression scenarios have been executed and validated through data and audit outputs
@@ -32,6 +34,7 @@ Newly implemented governance/reporting slice:
 - approval analytics dashboard (rejection rate, average decision time, throughput by role)
 - budget variance report (allocated vs actual, variance, utilization)
 - account lifecycle admin controls (deactivate/reactivate/reset password)
+- admin deactivate and hard-delete operations are blocked when target accounts still own pending approvals
 - audit-to-blockchain linking via chain index
 - super-admin escalation queue for overdue approvals
 - approval rule management with per-category SLA day thresholds
@@ -178,6 +181,8 @@ Super Admin can:
 - list all citizen and admin accounts
 - deactivate or reactivate accounts
 - reset account password using generated temporary password (forces password change on next login)
+- hard-delete admin accounts (with linked node removal)
+- block deactivation and hard-delete when pending document or budget approvals are assigned to that admin
 
 Inactive accounts are denied at login.
 
@@ -238,6 +243,7 @@ Publication requires decisions from required approver roles.
 Behavior:
 
 - document upload generates pending approval rows
+- pending rows are created for all active admins in each required role (uploader excluded)
 - required approval roles are selected from category rules (or DEFAULT fallback)
 - one rejection marks document rejected
 - all required decisions without rejection publishes document
@@ -270,6 +276,7 @@ Budget module supports:
 
 - submitting budget entries with fiscal year, category, allocated amount, and description
 - unanimous budget approval workflow (Budget Officer + Municipal Administrator)
+- budget pending rows are created for all active Budget Officer and Municipal Administrator accounts (submitter excluded)
 - publishing approved budgets to public budget summary
 - variance report comparing allocated vs actual totals from approved/published documents
 - monthly transparency report export (TXT + CSV) by period (YYYY-MM)

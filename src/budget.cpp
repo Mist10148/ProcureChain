@@ -471,6 +471,50 @@ std::string findActiveAdminUsernameByRole(const std::string& targetRole) {
     return "";
 }
 
+std::vector<std::string> findAllActiveAdminUsernamesByRole(const std::string& targetRole) {
+    std::vector<std::string> usernames;
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
+        return usernames;
+    }
+
+    std::string line;
+    std::getline(file, line);
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        const std::vector<std::string> tokens = splitPipe(line);
+        const std::string username = tokens.size() > 2 ? tokens[2] : "";
+        const std::string role = tokens.size() > 4 ? tokens[4] : "";
+        const std::string status = tokens.size() > 5 ? tokens[5] : "active";
+
+        if (role == targetRole && status == "active" && !username.empty()) {
+            usernames.push_back(username);
+        }
+    }
+
+    return usernames;
+}
+
+bool hasBudgetApprovalTuple(const std::vector<BudgetApproval>& rows,
+                            const std::string& targetEntryId,
+                            const std::string& approverUsername,
+                            const std::string& approverRole) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].entryId == targetEntryId &&
+            rows[i].approverUsername == approverUsername &&
+            rows[i].role == approverRole) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 std::string generateNextBudgetEntryId(const std::vector<BudgetEntry>& entries) {
     int maxNumber = 0;
     for (std::size_t i = 0; i < entries.size(); ++i) {
@@ -495,31 +539,113 @@ bool createBudgetApprovalRequests(const std::string& entryId) {
         return false;
     }
 
-    const std::string budgetOfficer = findActiveAdminUsernameByRole("Budget Officer");
-    const std::string municipalAdmin = findActiveAdminUsernameByRole("Municipal Administrator");
+    std::vector<BudgetEntry> entries;
+    if (!loadBudgetEntries(entries)) {
+        return false;
+    }
 
-    if (budgetOfficer.empty() || municipalAdmin.empty()) {
+    std::string submitter;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].entryId == entryId) {
+            submitter = entries[i].createdBy;
+            break;
+        }
+    }
+
+    if (submitter.empty()) {
+        return false;
+    }
+
+    const std::vector<std::string> budgetOfficers = findAllActiveAdminUsernamesByRole("Budget Officer");
+    const std::vector<std::string> municipalAdmins = findAllActiveAdminUsernamesByRole("Municipal Administrator");
+
+    std::vector<std::string> eligibleBudgetOfficers;
+    std::vector<std::string> eligibleMunicipalAdmins;
+
+    for (std::size_t i = 0; i < budgetOfficers.size(); ++i) {
+        if (budgetOfficers[i] != submitter) {
+            eligibleBudgetOfficers.push_back(budgetOfficers[i]);
+        }
+    }
+
+    for (std::size_t i = 0; i < municipalAdmins.size(); ++i) {
+        if (municipalAdmins[i] != submitter) {
+            eligibleMunicipalAdmins.push_back(municipalAdmins[i]);
+        }
+    }
+
+    if (eligibleBudgetOfficers.empty() || eligibleMunicipalAdmins.empty()) {
         return false;
     }
 
     const std::string now = getCurrentTimestamp();
+    std::vector<BudgetApproval> toCreate;
 
-    BudgetApproval a;
-    a.entryId = entryId;
-    a.approverUsername = budgetOfficer;
-    a.role = "Budget Officer";
-    a.status = "pending";
-    a.createdAt = now;
-    approvals.push_back(a);
+    for (std::size_t i = 0; i < eligibleBudgetOfficers.size(); ++i) {
+        if (hasBudgetApprovalTuple(approvals, entryId, eligibleBudgetOfficers[i], "Budget Officer") ||
+            hasBudgetApprovalTuple(toCreate, entryId, eligibleBudgetOfficers[i], "Budget Officer")) {
+            continue;
+        }
 
-    a.entryId = entryId;
-    a.approverUsername = municipalAdmin;
-    a.role = "Municipal Administrator";
-    a.status = "pending";
-    a.createdAt = now;
-    approvals.push_back(a);
+        BudgetApproval a;
+        a.entryId = entryId;
+        a.approverUsername = eligibleBudgetOfficers[i];
+        a.role = "Budget Officer";
+        a.status = "pending";
+        a.createdAt = now;
+        toCreate.push_back(a);
+    }
+
+    for (std::size_t i = 0; i < eligibleMunicipalAdmins.size(); ++i) {
+        if (hasBudgetApprovalTuple(approvals, entryId, eligibleMunicipalAdmins[i], "Municipal Administrator") ||
+            hasBudgetApprovalTuple(toCreate, entryId, eligibleMunicipalAdmins[i], "Municipal Administrator")) {
+            continue;
+        }
+
+        BudgetApproval a;
+        a.entryId = entryId;
+        a.approverUsername = eligibleMunicipalAdmins[i];
+        a.role = "Municipal Administrator";
+        a.status = "pending";
+        a.createdAt = now;
+        toCreate.push_back(a);
+    }
+
+    for (std::size_t i = 0; i < toCreate.size(); ++i) {
+        approvals.push_back(toCreate[i]);
+    }
+
+    if (toCreate.empty()) {
+        return true;
+    }
 
     return saveBudgetApprovals(approvals);
+}
+
+bool getPendingBudgetApprovalIdsForApproverInternal(const std::string& approverUsername,
+                                                    std::vector<std::string>& outEntryIds) {
+    outEntryIds.clear();
+
+    std::vector<BudgetApproval> rows;
+    if (!loadBudgetApprovals(rows)) {
+        return false;
+    }
+
+    std::map<std::string, bool> seenEntryIds;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].approverUsername != approverUsername || toLowerCopy(rows[i].status) != "pending") {
+            continue;
+        }
+
+        if (seenEntryIds[rows[i].entryId]) {
+            continue;
+        }
+
+        seenEntryIds[rows[i].entryId] = true;
+        outEntryIds.push_back(rows[i].entryId);
+    }
+
+    return true;
 }
 
 bool isFiscalYearValid(const std::string& fiscalYear) {
@@ -1508,6 +1634,11 @@ void generateMonthlyTransparencyReportForAdmin(const Admin& admin) {
     waitForEnter();
 }
 } // namespace
+
+bool getPendingBudgetApprovalIdsForApprover(const std::string& approverUsername,
+                                            std::vector<std::string>& outEntryIds) {
+    return getPendingBudgetApprovalIdsForApproverInternal(approverUsername, outEntryIds);
+}
 
 void ensureBudgetConsensusFilesExist() {
     ensureFileWithHeader(BUDGET_ENTRIES_FILE_PATH_PRIMARY,

@@ -31,5 +31,7 @@ void approveDocumentAsAdmin(const Admin& admin);
 void rejectDocumentAsAdmin(const Admin& admin);
 void addApprovalCommentAsAdmin(const Admin& admin);
 void manageApprovalRulesForAdmin(const Admin& admin);
+bool getPendingDocumentApprovalIdsForApprover(const std::string& approverUsername,
+                                              std::vector<std::string>& outDocIds);
 
 #endif

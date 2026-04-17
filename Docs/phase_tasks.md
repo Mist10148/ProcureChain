@@ -177,6 +177,8 @@ Completed
 ### Implemented
 
 - request generation now uses category-based approval rules with DEFAULT fallback
+- new document uploads create approval rows for all active admins in each required role (uploader excluded)
+- approval row creation is duplicate-safe per (docID, approverUsername, role)
 - per-approver status persistence in approvals.txt
 - request-for-comment thread persistence in approval_comments.txt
 - comment thread action for pending approvals (direct/delegated access)
@@ -222,6 +224,8 @@ Completed
 - budget entry submission using fiscal year, category, allocated amount, and description
 - budget category input now uses guided choices with custom Other fallback
 - budget approvals by Budget Officer and Municipal Administrator
+- new budget submissions create approval rows for all active Budget Officer and Municipal Administrator accounts (submitter excluded)
+- budget approval row creation is duplicate-safe per (entryID, approverUsername, role)
 - budget publication gate (published only after unanimous approvals)
 - published budget summary viewing
 - audit append and audit trail rendering
@@ -306,10 +310,12 @@ Implemented controls (Super Admin):
 - deactivate account
 - reactivate account
 - reset password via generated temporary password
+- deactivate/hard-delete admin operations are blocked when target accounts have pending document or budget approvals
 
 Enforcement:
 
 - inactive accounts are denied during login
+- blocked lifecycle attempts leave approval datasets unchanged and preserve consensus thresholds on pending items
 
 #### 6.5 Audit CSV Export
 

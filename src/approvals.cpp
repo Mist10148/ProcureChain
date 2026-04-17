@@ -1076,6 +1076,23 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
     const std::vector<std::string> fallbackRoles = defaultRequiredRoles();
 
     std::vector<Approval> requests;
+    bool foundEligibleInChosenRule = false;
+
+    const auto hasApprovalTuple = [](const std::vector<Approval>& rows,
+                                     const std::string& targetDocId,
+                                     const std::string& approverUsername,
+                                     const std::string& approverRole) {
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].docId == targetDocId &&
+                rows[i].approverUsername == approverUsername &&
+                rows[i].role == approverRole) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     while (std::getline(adminFile, line)) {
         if (line.empty()) {
             continue;
@@ -1094,6 +1111,12 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
             continue;
         }
 
+        foundEligibleInChosenRule = true;
+        if (hasApprovalTuple(existing, docId, username, role) ||
+            hasApprovalTuple(requests, docId, username, role)) {
+            continue;
+        }
+
         Approval request;
         request.docId = docId;
         request.approverUsername = username;
@@ -1103,7 +1126,7 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
         requests.push_back(request);
     }
 
-    if (requests.empty() && toLowerCopy(trimCopy(chosenRule.category)) != "default") {
+    if (requests.empty() && !foundEligibleInChosenRule && toLowerCopy(trimCopy(chosenRule.category)) != "default") {
         adminFile.clear();
         adminFile.seekg(0);
         std::getline(adminFile, line); // Skip header.
@@ -1123,6 +1146,11 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
             }
 
             if (!roleExistsInRule(fallbackRoles, role)) {
+                continue;
+            }
+
+            if (hasApprovalTuple(existing, docId, username, role) ||
+                hasApprovalTuple(requests, docId, username, role)) {
                 continue;
             }
 
@@ -1147,6 +1175,32 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
     if (saveApprovals(existing)) {
         logAuditAction("APPROVAL_REQUESTS_CREATED", docId, uploader);
     }
+}
+
+bool getPendingDocumentApprovalIdsForApprover(const std::string& approverUsername,
+                                              std::vector<std::string>& outDocIds) {
+    outDocIds.clear();
+
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
+        return false;
+    }
+
+    std::map<std::string, bool> seenDocIds;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].approverUsername != approverUsername || toLowerCopy(rows[i].status) != "pending") {
+            continue;
+        }
+
+        if (seenDocIds[rows[i].docId]) {
+            continue;
+        }
+
+        seenDocIds[rows[i].docId] = true;
+        outDocIds.push_back(rows[i].docId);
+    }
+
+    return true;
 }
 
 void viewPendingApprovalsForAdmin(const Admin& admin) {

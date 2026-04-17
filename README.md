@@ -50,7 +50,7 @@ High-level process:
 
 1. A procurement admin uploads a document with title, category, description, and an optional source file path.
 2. Category is selected from guided choices, with Other for custom input.
-3. Approval requests are created from category-based approval rules.
+3. Approval requests are created from category-based approval rules and include all active admins in each required role.
 4. Approvers approve or reject.
 5. Document is published only when unanimous required approvals are completed.
 6. Citizens can view published documents.
@@ -69,6 +69,7 @@ High-level process:
   - deactivate/reactivate accounts
   - reset password with generated temporary password (forces password change on next login)
   - hard-delete admin account (removes linked admin node)
+  - deactivation and hard-delete are blocked when the target admin has pending assigned approvals
 - SHA-256 password hashing at rest (plaintext passwords auto-migrated on startup)
 - Forced password change after Super Admin password reset
 - Published document viewing for citizens
@@ -91,6 +92,7 @@ High-level process:
 - Advanced document filters by status/date/category/tags/department/uploader
 - Filter suggestion hints (status/category/department/uploader/date) shown before input
 - Approval routing uses configurable per-category rules with a DEFAULT fallback
+- New document uploads create pending rows for every active admin in each required role (excluding the uploader)
 - Approval decision screen shows the current approver's pending document list before input
 - Request-for-comment thread for pending approvals with persistent comment history
 - Publication gate for documents: rejected if any reject, published only with unanimous non-rejected decisions
@@ -113,6 +115,7 @@ High-level process:
   - compact/full layout toggle
   - optional paged detail tables
 - Budget submission and consensus approvals
+- New budget submissions create pending rows for every active Budget Officer and Municipal Administrator (excluding the submitter)
 - Budget and documents are handled in separate workspaces, but both use unanimous consensus publication logic
 - Budget entry fields: fiscal year, category, allocated amount, description
 - Budget publish gate: budget becomes publicly visible only after unanimous approvals

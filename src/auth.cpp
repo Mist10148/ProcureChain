@@ -38,6 +38,7 @@ const size_t MAX_FULLNAME_LENGTH = 60;
 const size_t MAX_USERNAME_LENGTH = 30;
 const size_t MAX_PASSWORD_LENGTH = 50;
 const size_t MIN_PASSWORD_LENGTH = 4;
+const std::size_t MAX_BLOCKED_IDS_TO_SHOW = 10;
 
 struct SeedAdminAccount {
     // Seed records ensure role-based flows are testable on first startup.
@@ -545,6 +546,52 @@ bool deleteAdminAccountByUsername(const std::string& username) {
     const bool nodeRemoved = removeBlockchainNodeForAdmin(username);
     ensureBlockchainNodeFilesExist();
     return nodeRemoved;
+}
+
+bool loadPendingApprovalIdsForAdminAccount(const std::string& username,
+                                           std::vector<std::string>& outDocIds,
+                                           std::vector<std::string>& outBudgetEntryIds) {
+    outDocIds.clear();
+    outBudgetEntryIds.clear();
+
+    if (!getPendingDocumentApprovalIdsForApprover(username, outDocIds)) {
+        return false;
+    }
+
+    if (!getPendingBudgetApprovalIdsForApprover(username, outBudgetEntryIds)) {
+        return false;
+    }
+
+    return true;
+}
+
+std::string buildPendingApprovalBlockTarget(const std::string& username,
+                                            std::size_t pendingDocCount,
+                                            std::size_t pendingBudgetCount) {
+    std::ostringstream target;
+    target << username
+           << " [docPending=" << pendingDocCount
+           << ",budgetPending=" << pendingBudgetCount
+           << "]";
+    return target.str();
+}
+
+void printBlockedPendingIdGroup(const std::string& heading,
+                                const std::vector<std::string>& ids) {
+    if (ids.empty()) {
+        return;
+    }
+
+    std::cout << "  " << heading << " (" << ids.size() << ")" << "\n";
+
+    const std::size_t limit = ids.size() < MAX_BLOCKED_IDS_TO_SHOW ? ids.size() : MAX_BLOCKED_IDS_TO_SHOW;
+    for (std::size_t i = 0; i < limit; ++i) {
+        std::cout << "    - " << ids[i] << "\n";
+    }
+
+    if (ids.size() > limit) {
+        std::cout << "    ... +" << (ids.size() - limit) << " more" << "\n";
+    }
 }
 
 bool hasMustChangePasswordFlag(const std::string& username) {
@@ -1182,6 +1229,30 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
                     continue;
                 }
 
+                if (typeChoice == 2 && choice == 2) {
+                    std::vector<std::string> pendingDocIds;
+                    std::vector<std::string> pendingBudgetEntryIds;
+                    if (!loadPendingApprovalIdsForAdminAccount(username, pendingDocIds, pendingBudgetEntryIds)) {
+                        std::cout << ui::error("[!] Unable to verify pending approvals for this admin account.") << "\n";
+                        logAuditAction("ACCOUNT_DEACTIVATE_BLOCKED_PENDING_CHECK_FAILED", username, admin.username);
+                        waitForEnter();
+                        continue;
+                    }
+
+                    if (!pendingDocIds.empty() || !pendingBudgetEntryIds.empty()) {
+                        std::cout << ui::error("[!] Deactivation blocked: target admin has pending assigned approvals.") << "\n";
+                        printBlockedPendingIdGroup("Pending document approvals", pendingDocIds);
+                        printBlockedPendingIdGroup("Pending budget approvals", pendingBudgetEntryIds);
+                        logAuditAction("ACCOUNT_DEACTIVATE_BLOCKED_PENDING_APPROVALS",
+                                       buildPendingApprovalBlockTarget(username,
+                                                                       pendingDocIds.size(),
+                                                                       pendingBudgetEntryIds.size()),
+                                       admin.username);
+                        waitForEnter();
+                        continue;
+                    }
+                }
+
                 const std::string actionLabel = (choice == 2) ? "deactivate" : "reactivate";
                 const std::string accountTypeLabel = (typeChoice == 1) ? "Citizen" : "Admin";
                 if (!ui::confirmAction("Are you sure you want to " + actionLabel + " this " + accountTypeLabel + " account?",
@@ -1256,6 +1327,28 @@ void manageAccountLifecycleForAdmin(const Admin& admin) {
 
             if (username == admin.username) {
                 std::cout << ui::warning("[!] You cannot hard-delete your current session account.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            std::vector<std::string> pendingDocIds;
+            std::vector<std::string> pendingBudgetEntryIds;
+            if (!loadPendingApprovalIdsForAdminAccount(username, pendingDocIds, pendingBudgetEntryIds)) {
+                std::cout << ui::error("[!] Unable to verify pending approvals for this admin account.") << "\n";
+                logAuditAction("ACCOUNT_DELETE_BLOCKED_PENDING_CHECK_FAILED", username, admin.username);
+                waitForEnter();
+                continue;
+            }
+
+            if (!pendingDocIds.empty() || !pendingBudgetEntryIds.empty()) {
+                std::cout << ui::error("[!] Hard delete blocked: target admin has pending assigned approvals.") << "\n";
+                printBlockedPendingIdGroup("Pending document approvals", pendingDocIds);
+                printBlockedPendingIdGroup("Pending budget approvals", pendingBudgetEntryIds);
+                logAuditAction("ACCOUNT_DELETE_BLOCKED_PENDING_APPROVALS",
+                               buildPendingApprovalBlockTarget(username,
+                                                               pendingDocIds.size(),
+                                                               pendingBudgetEntryIds.size()),
+                               admin.username);
                 waitForEnter();
                 continue;
             }
