@@ -187,8 +187,14 @@ ProcureChain.exe
 ### PowerShell
 
 ```powershell
+<<<<<<< HEAD
 g++ -std=c++17 -Iinclude src/main.cpp src/analytics.cpp src/approvals.cpp src/audit.cpp src/auth.cpp src/backup.cpp src/blockchain.cpp src/budget.cpp src/delegation.cpp src/documents.cpp src/help.cpp src/notifications.cpp src/summarizer.cpp src/ui.cpp src/verification.cpp -o ProcureChain.exe
 .\ProcureChain.exe
+=======
+g++ -std=c++17 -Iinclude main.cpp analytics.cpp approvals.cpp audit.cpp auth.cpp backup.cpp blockchain.cpp
+budget.cpp delegation.cpp documents.cpp help.cpp notifications.cpp summarizer.cpp ui.cpp verification.cpp
+-o ProcureChain.exe
+>>>>>>> 4fa278324dea15180299cfeaa83bf686945c0d5f
 ```
 
 If you prefer placing the executable in `build`, create the folder first and change output to `-o build/ProcureChain.exe`.
