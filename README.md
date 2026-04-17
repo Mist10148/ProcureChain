@@ -175,13 +175,23 @@ Shell environment variables still take precedence.
 
 ## Build and Run (C++)
 
-Open PowerShell in the project root:
+Important: run these commands from the `ProcureChain` root folder (the folder that contains `README.md`, `src`, and `include`).
+
+### Command Prompt (cmd)
+
+```bat
+g++ -std=c++17 -Iinclude src/main.cpp src/analytics.cpp src/approvals.cpp src/audit.cpp src/auth.cpp src/backup.cpp src/blockchain.cpp src/budget.cpp src/delegation.cpp src/documents.cpp src/help.cpp src/notifications.cpp src/summarizer.cpp src/ui.cpp src/verification.cpp -o ProcureChain.exe
+ProcureChain.exe
+```
+
+### PowerShell
 
 ```powershell
-New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++17 (Get-ChildItem src/*.cpp | ForEach-Object { $_.FullName }) -o build/procurechain.exe
-.\build\procurechain.exe
+g++ -std=c++17 -Iinclude src/main.cpp src/analytics.cpp src/approvals.cpp src/audit.cpp src/auth.cpp src/backup.cpp src/blockchain.cpp src/budget.cpp src/delegation.cpp src/documents.cpp src/help.cpp src/notifications.cpp src/summarizer.cpp src/ui.cpp src/verification.cpp -o ProcureChain.exe
+.\ProcureChain.exe
 ```
+
+If you prefer placing the executable in `build`, create the folder first and change output to `-o build/ProcureChain.exe`.
 
 ## Run Python Summarizer Directly (Optional)
 
