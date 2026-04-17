@@ -3,3 +3,14 @@ timestamp|severity|source|targetID|detail|actor|visibility
 2026-04-17 12:24:23|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
 2026-04-17 12:24:38|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
 2026-04-17 12:58:51|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:25:56|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:26:23|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:27:12|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:27:43|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:28:10|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:28:30|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:34:34|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:37:32|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:37:50|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:38:35|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-18 02:43:01|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC

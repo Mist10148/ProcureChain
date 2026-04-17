@@ -1,0 +1,12 @@
+Document ID: CA006
+Title: School Tablet Procurement Batch 1
+Category: Contract Agreement
+Tags: (none)
+Description: Contract agreement for public school learning tablets.
+Department: Education Office
+Date Uploaded: 2026-03-11
+Uploader: proc_admin
+Status: published
+Hash: dc812b0a9b4b6a648b67fa96779aa495d8b4d0759d518a6f2b1ec5efbabd3231
+Version: v1
+Previous Version: (root)

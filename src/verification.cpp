@@ -484,8 +484,9 @@ std::string computeFileHashSha256(const std::string& filePath) {
     return computeSimpleHash(buffer.str());
 }
 
-bool verifyDocumentHashAgainstBlockchain(const std::string& hashValue, const std::string& docId) {
+bool verifyDocumentHashAgainstBlockchain(const std::string& hashValue, const std::string& docId, bool allowUploadActionFallback) {
     const std::vector<BlockchainNodePath> nodePaths = getBlockchainNodePaths();
+    const std::string docIdLower = toLowerCopy(docId);
 
     for (std::size_t node = 0; node < nodePaths.size(); ++node) {
         std::ifstream file;
@@ -509,11 +510,15 @@ bool verifyDocumentHashAgainstBlockchain(const std::string& hashValue, const std
             const std::string action = tokens[2];
             const std::string blockTarget = tokens[3];
 
+            if (toLowerCopy(blockTarget) != docIdLower) {
+                continue;
+            }
+
             if (actionContainsHash(action, hashValue)) {
                 return true;
             }
 
-            if (blockTarget == docId && toLowerCopy(action).find("upload") != std::string::npos) {
+            if (allowUploadActionFallback && toLowerCopy(action).find("upload") != std::string::npos) {
                 return true;
             }
         }
@@ -563,7 +568,7 @@ void verifyDocumentIntegrity(const std::string& actor) {
         std::cout << "  Checking official document record...\n";
         const std::string computedHash = computeVerificationHash(doc);
         std::cout << "  Generating SHA-256 hash...\n";
-        const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId);
+        const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId, true);
         std::cout << "  Validating blockchain registration...\n";
 
         const std::vector<std::string> headers = {"Field", "Value"};
@@ -699,9 +704,12 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
     }
 
     std::cout << "  Comparing hash with official document record...\n";
-    const bool hashMatch = (computedHash == doc.hashValue);
+    const std::string officialHash = computeVerificationHash(doc);
+    const bool hashMatch = (computedHash == officialHash);
+    const bool registryHashMatch = (computedHash == doc.hashValue);
+    const bool registryHashDrift = (!doc.hashValue.empty() && !officialHash.empty() && doc.hashValue != officialHash);
     std::cout << "  Validating blockchain registration...\n";
-    const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(doc.hashValue, doc.docId);
+    const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId, false);
 
     const std::vector<std::string> headers = {"Field", "Value"};
     const std::vector<int> widths = {18, 60};
@@ -709,18 +717,28 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
     ui::printTableRow({"Document ID", doc.docId}, widths);
     ui::printTableRow({"Title", doc.title}, widths);
     ui::printTableRow({"Stored Hash", doc.hashValue}, widths);
+    ui::printTableRow({"Official Hash", officialHash}, widths);
     ui::printTableRow({"Computed Hash", computedHash}, widths);
     ui::printTableRow({"Hash Source", hashSource}, widths);
     ui::printTableRow({"Hash Match", hashMatch ? "YES" : "NO"}, widths);
+    ui::printTableRow({"Registry Match", registryHashMatch ? "YES" : "NO"}, widths);
     ui::printTableRow({"Found on Blockchain", blockchainMatch ? "YES" : "NO"}, widths);
     ui::printTableRow({"Verify Folder File", hasVerifyCandidate ? verifyCandidatePath : "(not found)"}, widths);
     ui::printTableFooter(widths);
 
     std::cout << "\n" << ui::bold("====================================") << "\n";
     std::cout << ui::bold("RESULT") << ": ";
-    if (hashMatch && blockchainMatch && hasVerifyCandidate) {
+    if (!hasVerifyCandidate) {
+        std::cout << ui::warning("[INCOMPLETE]") << "\n";
+        std::cout << ui::warning("No valid candidate file was found in verify folder. Record-only check was shown.") << "\n";
+        logAuditAction("VERIFY_DOC_FILE_MISSING", doc.docId, actor);
+    } else if (hashMatch && blockchainMatch) {
         std::cout << ui::success("[VERIFIED]") << "\n";
         std::cout << ui::success("This document matches the official record and blockchain registration.") << "\n";
+        if (registryHashDrift) {
+            std::cout << ui::warning("Registry hash is out-of-sync with current official file hash.") << "\n";
+            logAuditAction("VERIFY_DOC_REGISTRY_HASH_DRIFT", doc.docId, actor);
+        }
         logAuditAction("VERIFY_DOC_VALID", doc.docId, actor);
     } else if (!hashMatch) {
         std::cout << ui::error("[TAMPERED]") << "\n";
@@ -732,13 +750,13 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
                        actor,
                        "PUBLIC");
         logAuditAction("VERIFY_DOC_TAMPERED", doc.docId, actor);
-    } else if (!hasVerifyCandidate) {
-        std::cout << ui::warning("[INCOMPLETE]") << "\n";
-        std::cout << ui::warning("No valid candidate file was found in verify folder. Record-only check was shown.") << "\n";
-        logAuditAction("VERIFY_DOC_FILE_MISSING", doc.docId, actor);
     } else {
         std::cout << ui::warning("[PARTIAL]") << "\n";
-        std::cout << ui::warning("Hash matches official record, but blockchain registration was not found.") << "\n";
+        std::cout << ui::warning("Hash matches official record, but blockchain registration was not found for the submitted hash.") << "\n";
+        if (registryHashDrift) {
+            std::cout << ui::warning("Registry hash is out-of-sync with current official file hash.") << "\n";
+            logAuditAction("VERIFY_DOC_REGISTRY_HASH_DRIFT", doc.docId, actor);
+        }
         logAuditAction("VERIFY_DOC_CHAIN_MISSING", doc.docId, actor);
     }
     std::cout << ui::bold("====================================") << "\n";

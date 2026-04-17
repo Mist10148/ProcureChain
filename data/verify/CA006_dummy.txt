@@ -4,7 +4,7 @@ Title: School Tablet Procurement Batch 1
 Category: Contract Agreement
 Office: City Education Office
 Agreement Date: 2026-02-14
-de
+
 Program Background:
 The city seeks to support blended learning by procuring classroom tablet devices
 for Grade 6 and Grade 10 students in pilot public schools.
