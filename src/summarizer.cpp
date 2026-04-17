@@ -23,6 +23,10 @@ const std::string SCRIPT_FALLBACK = "../ai_summarizer/scripts/run_gemini_summary
 const std::string PYTHON_PRIMARY = ".venv/Scripts/python.exe";
 const std::string PYTHON_FALLBACK = "../.venv/Scripts/python.exe";
 
+std::string quoteArg(const std::string& value) {
+    return "\"" + value + "\"";
+}
+
 struct SummaryCacheRow {
     std::string docId;
     std::string updatedAt;
@@ -108,14 +112,29 @@ std::string resolveScriptPath() {
     return "";
 }
 
-std::string resolvePythonCommand() {
-    if (std::filesystem::exists(PYTHON_PRIMARY)) {
-        return PYTHON_PRIMARY;
+std::string resolvePythonInvocation() {
+    std::vector<std::filesystem::path> candidates;
+    candidates.push_back(std::filesystem::path(PYTHON_PRIMARY));
+    candidates.push_back(std::filesystem::path(PYTHON_FALLBACK));
+    candidates.push_back(std::filesystem::path(".venv") / "bin" / "python");
+    candidates.push_back(std::filesystem::path("../.venv") / "bin" / "python");
+
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        std::error_code ec;
+        if (!std::filesystem::exists(candidates[i], ec) || ec) {
+            continue;
+        }
+
+        std::filesystem::path commandPath = candidates[i];
+        commandPath.make_preferred();
+        return commandPath.string();
     }
-    if (std::filesystem::exists(PYTHON_FALLBACK)) {
-        return PYTHON_FALLBACK;
-    }
-    return "python";
+
+#ifdef _WIN32
+    return "py -3";
+#else
+    return "python3";
+#endif
 }
 
 std::string sanitizeFileToken(std::string value) {
@@ -335,15 +354,15 @@ DocumentSummaryResult generateDocumentSummary(const std::string& docId,
     }
 
     const std::string outputPath = buildSummaryOutputPath(outputDir, docId);
-        const std::string pythonCommand = resolvePythonCommand();
+    const std::string pythonInvocation = resolvePythonInvocation();
 
     std::ostringstream command;
-        command << "\"" << pythonCommand << "\""
-            << " \"" << scriptPath << "\""
+    command << pythonInvocation
+            << " " << quoteArg(scriptPath)
             << " --doc-id \"" << docId << "\""
-            << " --input-path \"" << inputPath << "\""
-            << " --summary-path \"" << outputPath << "\""
-            << " --cache-path \"" << cachePath << "\""
+            << " --input-path " << quoteArg(inputPath)
+            << " --summary-path " << quoteArg(outputPath)
+            << " --cache-path " << quoteArg(cachePath)
             << " --model \"gemini-3.0-flash\"";
 
     const int code = std::system(command.str().c_str());

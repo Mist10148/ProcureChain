@@ -1,0 +1,17 @@
+**Purpose**  
+Official authorization and award of a contract to begin road repair and maintenance services.
+
+**Key Scope**  
+Execution of "asphalt overlay" works (layering new asphalt over existing pavement) specifically for the area designated as "Package A."
+
+**Budget/Cost Clues**  
+While the specific dollar amount is not listed in this metadata, the document category "Purchase Order" (PO) indicates that municipal funds have been formally committed and a vendor has been selected.
+
+**Timeline Clues**  
+The document was finalized and published on January 18, 2026. As a Purchase Order, this typically signifies the transition from the planning/bidding phase to the active construction phase.
+
+**Risks/Compliance Notes**  
+The designation "Package A" implies this is only one segment of a larger multi-part project; stakeholders should monitor for subsequent packages (B, C, etc.) to assess the total infrastructure spend. The project is managed by the Engineering Department.
+
+**Plain-Language Takeaway**  
+The city has officially hired a contractor and cleared the funds to begin repaving roads for the first stage of the current rehabilitation project.

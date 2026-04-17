@@ -1,3 +1,4 @@
 docID|updatedAt|status|model|summaryFile|sourceFile|error
 CA006|2026-04-17 11:47:54|ok|gemini-3.0-flash|ai_summarizer\workspace\output\CA006_summary.txt|ai_summarizer\workspace\input\CA006_metadata_input.txt|
 PR001|2026-04-17 11:29:26|ok|gemini-3.0-flash|ai_summarizer\workspace\output\PR001_summary.txt|ai_summarizer\workspace\input\PR001_metadata_input.txt|
+PO002|2026-04-17 14:16:51|ok|gemini-3.0-flash|ai_summarizer\workspace\output\PO002_summary.txt|ai_summarizer\workspace\input\PO002_metadata_input.txt|

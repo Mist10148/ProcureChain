@@ -1,0 +1,12 @@
+Document ID: PR007
+Title: Urban Greening Tools and Seedlings
+Category: Purchase Request
+Tags: (none)
+Description: Request for tools and seedlings for city greening program.
+Department: Environment Office
+Date Uploaded: 2026-04-08
+Uploader: proc_admin
+Status: pending_approval
+Hash: 85b7293e6410b6ce92b7b3bad9be946e93fed9eeac0f593af8a866704aea3e20
+Version: v1
+Previous Version: (root)
