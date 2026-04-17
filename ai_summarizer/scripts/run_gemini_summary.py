@@ -210,7 +210,7 @@ def resolve_model_candidates(requested_model: str) -> list[str]:
 
 
 def summarize_with_gemini(text: str, model_name: str) -> str:
-    api_key = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IKizqQ7WSyqtAlcap0UL-4-QjaxGeykCbCm8NMOkeS3g").strip()
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set")
 
