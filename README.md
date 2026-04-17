@@ -178,9 +178,9 @@ Shell environment variables still take precedence.
 Open PowerShell in the project root:
 
 ```powershell
-New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++17 (Get-ChildItem src/*.cpp | ForEach-Object { $_.FullName }) -o build/procurechain.exe
-.\build\procurechain.exe
+g++ -std=c++17 -Iinclude main.cpp analytics.cpp approvals.cpp audit.cpp auth.cpp backup.cpp blockchain.cpp
+budget.cpp delegation.cpp documents.cpp help.cpp notifications.cpp summarizer.cpp ui.cpp verification.cpp
+-o ProcureChain.exe
 ```
 
 ## Run Python Summarizer Directly (Optional)
