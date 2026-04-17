@@ -1822,7 +1822,8 @@ std::string generateNextDocumentId() {
 
 void ensureSampleDocumentsPresent() {
     // Showcase data is maintained in data/documents.txt, not hardcoded here.
-    // This pass only normalizes hashes/serialization for existing rows.
+    // This pass only backfills missing legacy hashes.
+    // Existing hashes must remain immutable so verification can detect tampering reliably.
     ensureStatusHistoryFileExists();
 
     std::vector<Document> docs;
@@ -1831,10 +1832,17 @@ void ensureSampleDocumentsPresent() {
     }
 
     if (!docs.empty()) {
+        bool changed = false;
         for (std::size_t i = 0; i < docs.size(); ++i) {
-            docs[i].hashValue = computeDocumentRecordHash(docs[i]);
+            if (docs[i].hashValue.empty()) {
+                docs[i].hashValue = computeDocumentRecordHash(docs[i]);
+                changed = true;
+            }
         }
-        saveDocuments(docs);
+
+        if (changed) {
+            saveDocuments(docs);
+        }
     }
 }
 
@@ -1971,31 +1979,21 @@ void viewPublishedDocumentDetailForCitizenById(const std::string& docId, const s
         return;
     }
 
-    std::vector<Document> published;
-    for (std::size_t i = 0; i < docs.size(); ++i) {
-        if (toLowerCopy(docs[i].status) == "published") {
-            published.push_back(docs[i]);
-        }
-    }
-
-    if (published.empty()) {
-        std::cout << ui::warning("[!] No published documents are available.") << "\n";
-        logAuditAction("AUDIT_DOC_DRILLDOWN_EMPTY", docId, actor);
-        waitForEnter();
-        return;
-    }
-
     Document found;
-    if (!findExactDocumentById(published, docId, found)) {
-        std::cout << ui::warning("[!] Published document not found for audit drill-down.") << "\n";
+    if (!findExactDocumentById(docs, docId, found)) {
+        std::cout << ui::warning("[!] Document not found for audit drill-down.") << "\n";
         logAuditAction("AUDIT_DOC_DRILLDOWN_NOT_FOUND", docId, actor);
         waitForEnter();
         return;
     }
 
+    if (toLowerCopy(found.status) != "published") {
+        std::cout << ui::warning("[i] This document is visible from public timeline events but is not currently published.") << "\n";
+    }
+
     clearScreen();
-    ui::printSectionTitle("PUBLISHED DOCUMENT DETAIL (AUDIT DRILL-DOWN)");
-    showDocumentDetailWithSummary(found, true, &published, actor);
+    ui::printSectionTitle("DOCUMENT DETAIL (AUDIT DRILL-DOWN)");
+    showDocumentDetailWithSummary(found, true, &docs, actor);
     logAuditAction("AUDIT_DOC_DRILLDOWN_VIEW", found.docId, actor);
     waitForEnter();
 }

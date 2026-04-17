@@ -20,6 +20,9 @@ const std::string WORK_OUTPUT_FALLBACK = "../ai_summarizer/workspace/output";
 const std::string SCRIPT_PRIMARY = "ai_summarizer/scripts/run_gemini_summary.py";
 const std::string SCRIPT_FALLBACK = "../ai_summarizer/scripts/run_gemini_summary.py";
 
+const std::string PYTHON_PRIMARY = ".venv/Scripts/python.exe";
+const std::string PYTHON_FALLBACK = "../.venv/Scripts/python.exe";
+
 struct SummaryCacheRow {
     std::string docId;
     std::string updatedAt;
@@ -103,6 +106,16 @@ std::string resolveScriptPath() {
         return SCRIPT_FALLBACK;
     }
     return "";
+}
+
+std::string resolvePythonCommand() {
+    if (std::filesystem::exists(PYTHON_PRIMARY)) {
+        return PYTHON_PRIMARY;
+    }
+    if (std::filesystem::exists(PYTHON_FALLBACK)) {
+        return PYTHON_FALLBACK;
+    }
+    return "python";
 }
 
 std::string sanitizeFileToken(std::string value) {
@@ -322,13 +335,16 @@ DocumentSummaryResult generateDocumentSummary(const std::string& docId,
     }
 
     const std::string outputPath = buildSummaryOutputPath(outputDir, docId);
+        const std::string pythonCommand = resolvePythonCommand();
 
     std::ostringstream command;
-    command << "python \"" << scriptPath << "\""
+        command << "\"" << pythonCommand << "\""
+            << " \"" << scriptPath << "\""
             << " --doc-id \"" << docId << "\""
             << " --input-path \"" << inputPath << "\""
             << " --summary-path \"" << outputPath << "\""
-            << " --cache-path \"" << cachePath << "\"";
+            << " --cache-path \"" << cachePath << "\""
+            << " --model \"gemini-3.0-flash\"";
 
     const int code = std::system(command.str().c_str());
 

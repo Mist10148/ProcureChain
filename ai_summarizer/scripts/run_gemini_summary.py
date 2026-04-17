@@ -2,9 +2,13 @@
 import argparse
 import csv
 import datetime
+import json
 import os
 import pathlib
+import ssl
 import sys
+import urllib.error
+import urllib.request
 
 HEADER = "docID|updatedAt|status|model|summaryFile|sourceFile|error"
 
@@ -106,32 +110,123 @@ def update_cache(cache_path: pathlib.Path, row: dict) -> None:
     cache_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
 
 
-def summarize_with_gemini(text: str, model_name: str) -> str:
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not set")
-
-    try:
-        import google.generativeai as genai
-    except Exception as exc:
-        raise RuntimeError("google-generativeai package is required") from exc
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name)
-
-    prompt = (
+def build_prompt(text: str) -> str:
+    return (
         "You are summarizing a municipal procurement document for transparency viewers. "
         "Provide a concise summary with sections: Purpose, Key Scope, Budget/Cost Clues, "
         "Timeline Clues, Risks/Compliance Notes, and a 1-sentence Plain-Language Takeaway.\n\n"
         f"Document content:\n{text[:120000]}"
     )
 
-    response = model.generate_content(prompt)
-    output = getattr(response, "text", "") or ""
-    output = output.strip()
-    if not output:
-        raise RuntimeError("Gemini returned empty summary")
-    return output
+
+def extract_rest_text(payload: dict) -> str:
+    candidates = payload.get("candidates") or []
+    for candidate in candidates:
+        content = candidate.get("content") or {}
+        parts = content.get("parts") or []
+        chunks = []
+        for part in parts:
+            text = (part.get("text") or "").strip()
+            if text:
+                chunks.append(text)
+        if chunks:
+            return "\n".join(chunks).strip()
+    return ""
+
+
+def build_ssl_contexts() -> list[ssl.SSLContext]:
+    contexts = []
+
+    # Default context first (best security when local trust store is healthy).
+    contexts.append(ssl.create_default_context())
+
+    try:
+        import certifi
+
+        contexts.append(ssl.create_default_context(cafile=certifi.where()))
+    except Exception:
+        pass
+
+    # Final compatibility fallback for environments with broken CA chains.
+    contexts.append(ssl._create_unverified_context())
+    return contexts
+
+
+def summarize_with_rest(prompt: str, model_name: str, api_key: str) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+    body = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt},
+                ]
+            }
+        ]
+    }
+
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    last_error = None
+    for context in build_ssl_contexts():
+        try:
+            with urllib.request.urlopen(request, timeout=90, context=context) as response:
+                raw = response.read().decode("utf-8", errors="ignore")
+            payload = json.loads(raw)
+            output = extract_rest_text(payload)
+            return output.strip()
+        except urllib.error.HTTPError as exc:
+            details = ""
+            try:
+                details = exc.read().decode("utf-8", errors="ignore").strip()
+            except Exception:
+                details = ""
+            if details:
+                raise RuntimeError(f"Gemini API HTTP {exc.code}: {details}") from exc
+            raise RuntimeError(f"Gemini API HTTP {exc.code}") from exc
+        except urllib.error.URLError as exc:
+            last_error = exc
+            continue
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    raise RuntimeError(f"Gemini API request failed: {last_error}")
+
+
+def resolve_model_candidates(requested_model: str) -> list[str]:
+    normalized = (requested_model or "").strip().lower()
+    if normalized == "gemini-3.0-flash":
+        return [
+            "gemini-3-flash-preview",
+            "gemini-flash-latest",
+            "gemini-2.5-flash",
+        ]
+    return [requested_model]
+
+
+def summarize_with_gemini(text: str, model_name: str) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IKizqQ7WSyqtAlcap0UL-4-QjaxGeykCbCm8NMOkeS3g").strip()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not set")
+
+    prompt = build_prompt(text)
+
+    errors = []
+    for candidate_model in resolve_model_candidates(model_name):
+        try:
+            output = summarize_with_rest(prompt, candidate_model, api_key)
+            if output:
+                return output
+            errors.append(f"{candidate_model}: Gemini API returned empty summary")
+        except Exception as rest_exc:
+            errors.append(f"{candidate_model}: {rest_exc}")
+
+    raise RuntimeError("Gemini generation failed for all model candidates. " + " | ".join(errors[-3:]))
 
 
 def main() -> int:
@@ -140,7 +235,7 @@ def main() -> int:
     parser.add_argument("--input-path", required=True)
     parser.add_argument("--summary-path", required=True)
     parser.add_argument("--cache-path", required=True)
-    parser.add_argument("--model", default="gemini-1.5-flash")
+    parser.add_argument("--model", default="gemini-3.0-flash")
     args = parser.parse_args()
 
     doc_id = args.doc_id.strip()

@@ -1,6 +1,14 @@
 # Context for ProcureChain Collaborators
 
-## Live Status (2026-04-10)
+## Live Status (2026-04-17)
+
+Hotfix updates (2026-04-17):
+
+- citizen verification now detects candidate files from both `data/verify/<DocumentID>/...` and `data/verify/<DocumentID>_...` patterns
+- citizen verification accepts `.pdf`, `.docx`, `.csv`, `.txt`, and extensionless files for compatibility
+- document startup normalization now backfills only missing hashes instead of rewriting all stored hashes
+- summary runner defaults to Gemini 3.0 label with compatible API fallbacks for reliability
+- public audit drill-down now opens document detail for existing IDs even when status is not published
 
 Current implemented baseline:
 

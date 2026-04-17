@@ -5,6 +5,19 @@
 
 ---
 
+## IMPLEMENTATION ADDENDUM (2026-04-17)
+
+- Documentation synchronized with latest implementation fixes.
+- Citizen verification now supports candidate-file discovery from both:
+	- `data/verify/<DocumentID>/...`
+	- `data/verify/<DocumentID>_...`
+- Startup normalization now backfills only missing document hashes and does not overwrite existing canonical hash values.
+- Folder roles are now explicitly separated:
+	- `data/uploads` for admin upload staging
+	- `data/verify` for citizen authenticity checks
+
+---
+
 ## PROPOSED TITLE
 
 **A Proposed Terminal-Based Municipal Procurement Document Tracking System with Simulated Blockchain Verification and Role-Based Governance Using C++**

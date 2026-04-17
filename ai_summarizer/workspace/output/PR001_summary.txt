@@ -1,0 +1,23 @@
+### Summary: Office Supplies Q1 Framework (PR001)
+
+**Purpose**  
+To centralize and streamline the purchasing of everyday office essentials across all municipal departments for the first quarter of 2026, likely to leverage bulk pricing and reduce administrative overhead.
+
+**Key Scope**  
+*   **Target:** All municipal departments.  
+*   **Items:** Office consumables (e.g., paper, toner, stationery, and general desk supplies).  
+*   **Structure:** A "Framework" agreement, establishing a set list of goods and prices for repetitive ordering.
+
+**Budget/Cost Clues**  
+Specific dollar amounts are not listed in this metadata; however, the "Consolidated" nature and "Framework" status suggest a high-volume bulk purchase aimed at reducing the per-unit cost compared to individual department buying.
+
+**Timeline Clues**  
+*   **Effective Period:** Quarter 1 (Q1) of 2026.  
+*   **Document Date:** Published January 12, 2026, suggesting immediate implementation for the winter/spring season.
+
+**Risks/Compliance Notes**  
+*   **Adherence:** Success depends on all departments using this framework rather than making independent, non-contract purchases (off-contract spending).  
+*   **Inventory Management:** Consolidated requests require accurate forecasting to avoid overstocking or mid-quarter shortages.
+
+**Plain-Language Takeaway**  
+The city is bundling its orders for basic office supplies into one big contract for the start of 2026 to save money and simplify the buying process.

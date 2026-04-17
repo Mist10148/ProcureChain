@@ -4,7 +4,7 @@
 
 This document defines who can do what in ProcureChain and the standard operating procedure (SOP) for each role.
 
-It reflects the current implementation as of 2026-04-10.
+It reflects the current implementation as of 2026-04-17.
 
 ## Access Model Summary
 
@@ -56,6 +56,11 @@ Citizen accounts are transparency users (read-only for governance data).
 3. Use Search Published Document when a specific record trace is needed.
 4. Open document detail and run AI summary actions when plain-language context is needed.
 5. Use Verify Published Document Hash to validate stored and recomputed hash values.
+  - Put your own document copy in `data/verify` before running verify.
+  - Supported placement patterns:
+    - `data/verify/<DocumentID>/candidate.ext`
+    - `data/verify/<DocumentID>_candidate.ext`
+    - `data/verify/<DocumentID>.ext`
 6. Open Budget Summary to review published budget allocations.
 7. Open Audit Trail for accountability review, CSV export, and document drill-down.
 8. Logout.

@@ -10,7 +10,7 @@ Out of Scope: OOP redesign, web stack, DBMS, networking, external blockchain ser
 
 ProcureChain is a CLI system that tracks municipal procurement records with role-based controls, consensus approvals, audit traceability, and simulated blockchain integrity checks.
 
-## 2. Current Implementation Status (2026-04-10)
+## 2. Current Implementation Status (2026-04-17)
 
 Implemented in code:
 
@@ -49,6 +49,8 @@ Implemented in code:
 - Dynamic blockchain node topology: base five nodes plus one node per admin record
 - Super Admin hard-delete for admin accounts with linked node cleanup
 - Tamper alert notifications surfaced in admin and citizen inbox views
+- Citizen verify-folder detection supports both `data/verify/<DocumentID>/...` and `data/verify/<DocumentID>_...` patterns
+- Startup hash normalization only backfills missing hashes (prevents accidental canonical hash drift)
 
 ## 3. Target Users
 
@@ -115,6 +117,16 @@ Can:
 20. Dynamic node count rule: total nodes = 5 + total admins.
 21. Tamper alert persistence and inbox notification rendering.
 22. Super Admin hard-delete admin action with deterministic node file cleanup.
+
+## 4.1 Upload and Verify Folder Behavior
+
+- `data/uploads` is an admin upload staging folder.
+- Upload flow copies selected files into `data/documents` and stores canonical hash/path in `data/documents.txt`.
+- `data/verify` is a citizen verification folder for authenticity checks against canonical stored hash.
+- Candidate file discovery for citizen verification accepts:
+  - `data/verify/<DocumentID>/file.ext`
+  - `data/verify/<DocumentID>_file.ext`
+  - `data/verify/<DocumentID>.ext`
 
 ## 5. System Flow
 

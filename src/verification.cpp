@@ -76,6 +76,17 @@ void clearInputBuffer() {
 
 std::string resolveDirectoryPathWithFallback(const std::string& primaryPath, const std::string& fallbackPath) {
     std::error_code ec;
+    if (std::filesystem::exists(primaryPath, ec) && !ec && std::filesystem::is_directory(primaryPath, ec)) {
+        return primaryPath;
+    }
+
+    ec.clear();
+    if (std::filesystem::exists(fallbackPath, ec) && !ec && std::filesystem::is_directory(fallbackPath, ec)) {
+        return fallbackPath;
+    }
+
+    // Only create directories when neither expected location exists yet.
+    ec.clear();
     std::filesystem::create_directories(primaryPath, ec);
     if (!ec) {
         return primaryPath;
@@ -88,6 +99,17 @@ std::string resolveDirectoryPathWithFallback(const std::string& primaryPath, con
     }
 
     return "";
+}
+
+std::string trimCopy(const std::string& value) {
+    const std::string whitespace = " \t\r\n";
+    const std::size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const std::size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
 }
 
 std::string toLowerCopy(std::string value) {
@@ -139,7 +161,8 @@ std::string buildDocumentMetadataHashSource(const VerificationDocument& doc) {
 
 bool isAllowedVerificationExtension(const std::string& extensionWithDot) {
     const std::string ext = toLowerCopy(extensionWithDot);
-    return ext == ".pdf" || ext == ".docx" || ext == ".csv" || ext == ".txt";
+    // Allow no-extension files too, because Windows Explorer can hide/strip extensions during manual copy.
+    return ext.empty() || ext == ".pdf" || ext == ".docx" || ext == ".csv" || ext == ".txt";
 }
 
 bool resolveCandidateVerifyFilePath(const std::string& docId, std::string& outFilePath, std::string& outReason) {
@@ -152,44 +175,81 @@ bool resolveCandidateVerifyFilePath(const std::string& docId, std::string& outFi
         return false;
     }
 
-    const std::filesystem::path verifyDocFolder = std::filesystem::path(verifyBasePath) / docId;
     std::error_code ec;
-    if (!std::filesystem::exists(verifyDocFolder, ec) || ec || !std::filesystem::is_directory(verifyDocFolder, ec)) {
-        outReason = "Missing folder: " + verifyDocFolder.string();
-        return false;
+    const std::filesystem::path verifyBase(verifyBasePath);
+    const std::string docIdLower = toLowerCopy(docId);
+
+    struct Candidate {
+        std::filesystem::path path;
+        std::filesystem::file_time_type time;
+    };
+
+    std::vector<Candidate> eligible;
+
+    const auto collectFromDirectory = [&](const std::filesystem::path& folderPath, bool rootMode) {
+        std::error_code iterEc;
+        for (std::filesystem::directory_iterator it(folderPath, iterEc); !iterEc && it != std::filesystem::directory_iterator(); it.increment(iterEc)) {
+            if (!it->is_regular_file()) {
+                continue;
+            }
+
+            const std::filesystem::path filePath = it->path();
+            if (!isAllowedVerificationExtension(filePath.extension().string())) {
+                continue;
+            }
+
+            if (rootMode) {
+                const std::string stemLower = toLowerCopy(filePath.stem().string());
+                const std::string prefix = docIdLower + "_";
+                if (!(stemLower == docIdLower || stemLower.find(prefix) == 0)) {
+                    continue;
+                }
+            }
+
+            std::error_code timeEc;
+            const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(filePath, timeEc);
+            eligible.push_back({filePath, timeEc ? std::filesystem::file_time_type::min() : writeTime});
+        }
+    };
+
+    // Pattern A: data/verify/<DocumentID>/candidate.ext (case-insensitive folder match).
+    std::filesystem::path directDocFolder = verifyBase / docId;
+    if (std::filesystem::exists(directDocFolder, ec) && !ec && std::filesystem::is_directory(directDocFolder, ec)) {
+        collectFromDirectory(directDocFolder, false);
     }
 
-    std::vector<std::filesystem::path> eligibleFiles;
-    for (std::filesystem::directory_iterator it(verifyDocFolder, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
-        if (!it->is_regular_file()) {
+    ec.clear();
+    for (std::filesystem::directory_iterator it(verifyBase, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        if (!it->is_directory()) {
             continue;
         }
 
-        if (!isAllowedVerificationExtension(it->path().extension().string())) {
+        if (toLowerCopy(it->path().filename().string()) != docIdLower) {
             continue;
         }
 
-        eligibleFiles.push_back(it->path());
+        if (it->path() != directDocFolder) {
+            collectFromDirectory(it->path(), false);
+        }
     }
 
-    if (ec) {
-        outReason = "Unable to read folder: " + verifyDocFolder.string();
+    // Pattern B: data/verify/<DocumentID>_*.ext (or <DocumentID>.ext) directly in verify root.
+    collectFromDirectory(verifyBase, true);
+
+    if (eligible.empty()) {
+        outReason = "No eligible verify file found for " + docId +
+                    " in data/verify/<DocumentID>/ or data/verify/<DocumentID>_*.{pdf,docx,csv,txt}.";
         return false;
     }
 
-    std::sort(eligibleFiles.begin(), eligibleFiles.end());
+    std::sort(eligible.begin(), eligible.end(), [](const Candidate& a, const Candidate& b) {
+        if (a.time != b.time) {
+            return a.time > b.time;
+        }
+        return a.path.string() < b.path.string();
+    });
 
-    if (eligibleFiles.empty()) {
-        outReason = "No eligible file found in " + verifyDocFolder.string() + " (.pdf/.docx/.csv/.txt).";
-        return false;
-    }
-
-    if (eligibleFiles.size() > 1) {
-        outReason = "Multiple files found in " + verifyDocFolder.string() + ". Keep exactly one file.";
-        return false;
-    }
-
-    outFilePath = eligibleFiles[0].string();
+    outFilePath = eligible[0].path.string();
     return true;
 }
 
@@ -580,14 +640,17 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
     printVerificationHints(hints, 10);
     std::cout << "\n" << ui::bold("Verification Input Requirement") << "\n";
     std::cout << "  1) Enter the Published Document ID below.\n";
-    std::cout << "  2) Place exactly one candidate file in: "
-              << ui::muted("data/verify/<DocumentID>/") << "\n";
+    std::cout << "  2) Place a candidate file in either: "
+              << ui::muted("data/verify/<DocumentID>/")
+              << " or "
+              << ui::muted("data/verify/<DocumentID>_*.txt") << "\n";
     std::cout << "  3) Allowed formats: .pdf .docx .csv .txt\n";
     clearInputBuffer();
 
     std::string targetDocId;
     std::cout << "Enter Published Document ID: ";
     std::getline(std::cin, targetDocId);
+    targetDocId = trimCopy(targetDocId);
 
     if (targetDocId.empty()) {
         std::cout << ui::error("[!] Document ID is required.") << "\n";

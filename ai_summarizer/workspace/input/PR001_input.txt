@@ -1,0 +1,50 @@
+PROCURECHAIN DUMMY DOCUMENT
+Document ID: PR001
+Title: Office Supplies Q1 Framework
+Category: Purchase Request
+Department: General Services Office
+Prepared By: Procurement Office
+Date Prepared: 2026-01-12
+
+Executive Summary:
+This purchase request covers recurring office consumables for all city hall departments
+for the first quarter. The request supports uninterrupted records processing, permit
+printing, and public service desk operations.
+
+Scope of Request:
+1. A4 bond paper, 80 gsm, 5,000 reams
+2. Black toner cartridges compatible with approved printer models, 320 units
+3. Legal-size file folders, 15,000 pieces
+4. Archiving labels and transparent sleeves for records management
+
+Estimated Budget Breakdown:
+- Bond paper: PHP 1,500,000
+- Toner cartridges: PHP 960,000
+- Filing materials: PHP 210,000
+- Contingency and delivery: PHP 80,000
+- Total requested amount: PHP 2,750,000
+
+Operational Justification:
+Current stock levels are forecasted to last only until week 2 of February based on
+average consumption from the previous fiscal year. Delayed procurement may result in
+queue backlogs for business permits, civil registry releases, and treasury reports.
+
+Delivery and Timeline:
+- Purchase order target issuance: 2026-02-01
+- Delivery window: 15 calendar days after PO release
+- Inspection and acceptance: within 3 working days after full delivery
+
+Compliance Requirements:
+- All items must comply with government-approved quality standards
+- Bidder must submit product data sheets and sample units for validation
+- Supplier must provide replacement policy for defective items
+
+Risk Notes:
+- Risk: delayed delivery due to supply shortages
+	Mitigation: include liquidated damages clause and staged delivery fallback
+- Risk: incompatible consumables
+	Mitigation: require compatibility matrix during technical evaluation
+
+Acceptance Criteria:
+The request is considered fulfilled when all listed quantities are delivered,
+quality-checked, and accepted by end-user departments with signed receiving reports.

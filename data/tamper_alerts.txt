@@ -1,1 +1,5 @@
 timestamp|severity|source|targetID|detail|actor|visibility
+2026-04-17 12:23:37|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-17 12:24:23|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-17 12:24:38|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC
+2026-04-17 12:58:51|HIGH|VERIFY_CITIZEN|CA006|Citizen verification detected hash mismatch for submitted candidate file.|hellobro|PUBLIC

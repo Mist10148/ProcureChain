@@ -4,7 +4,7 @@
 ProcureChain: Municipal Procurement Document Tracking System  
 Platform: C++ CLI (Procedural)  
 Storage: TXT files in data folder  
-Last Updated: 2026-04-10
+Last Updated: 2026-04-17
 
 ## Purpose of this Document
 
@@ -32,6 +32,27 @@ This is intended to help collaborators quickly understand the status and next ac
 - modular source/header organization under src and include
 - startup bootstrap checks for required data files
 - seed-friendly baseline for users, admins, approvals, and blockchain rows
+
+### Status
+
+Completed
+
+## Phase 13: Verification Reliability and Hash Stability Hotfixes
+
+### Objectives
+
+- ensure citizen verify-file detection works from practical folder patterns
+- prevent startup logic from rewriting canonical document hashes
+- align docs and user guidance for upload vs verify folder usage
+
+### Implemented
+
+- verify candidate discovery now supports:
+	- `data/verify/<DocumentID>/...`
+	- `data/verify/<DocumentID>_...`
+	- extensionless candidate files for compatibility
+- startup document normalization now only backfills missing hashes (no blanket rewrite)
+- markdown documentation refreshed to describe upload staging vs citizen verification folders
 
 ### Status
 

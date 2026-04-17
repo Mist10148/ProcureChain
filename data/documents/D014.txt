@@ -1,0 +1,56 @@
+SENTINEL: Reflecting on the Future of Computing Through Predictive Disaster 
+Warning Technology 
+The Philippines is no stranger to natural disasters. Every year, the country faces an average 
+of twenty typhoons, sits directly on the Pacific Ring of Fire, and deals with constant threats 
+from volcanic eruptions, earthquakes, and flash floods. Growing up here, it almost feels routine 
+to see news coverage of communities being devastated by a storm surge or a landslide. But 
+the more you think about it, the more it becomes clear that many of those casualties did not 
+have to happen. The problem is rarely just the disaster itself. More often, it is the fact that 
+people did not know it was coming until it was already too late to do anything about it. 
+This is the problem that got me thinking about what the future of computing could realistically 
+look like. Existing warning systems in the country, while functional, still carry a significant gap 
+between detection and delivery. PAGASA and PHIVOLCS monitor seismic and atmospheric 
+activity, but that information does not always reach ordinary citizens fast enough to be 
+actionable. A typhoon bulletin broadcast on the radio does not help a farming family in a remote 
+barangay with no signal. A text alert sent thirty minutes after shaking has already started is not 
+really a warning anymore. The core issue is the delay between when a disaster begins forming 
+and when the people most at risk are actually told to move. 
+From this problem, I imagined a system I would call SENTINEL, which stands for Smart 
+Environmental Network for Threat Intelligence and Natural Emergency Localized Intervention. 
+The main objective of this concept is to design a predictive early warning platform that detects 
+the early signs of natural disasters in the moments before they fully materialize, and delivers 
+localized alerts to communities in real time. More specifically, the system would aim to monitor 
+seismic, atmospheric, and hydrological conditions simultaneously, use a machine learning 
+model trained on historical disaster data to identify precursor patterns, and push warnings 
+through multiple channels including SMS and community-level audio alerts, even in areas with 
+limited connectivity. 
+The idea behind SENTINEL is actually straightforward when you break it down. Most warning 
+systems today work by detecting something after it has already started. An earthquake triggers 
+a sensor, the data gets sent to a server, the server processes it, and then an alert goes out. 
+By that point, the shaking has already begun. What SENTINEL tries to do differently is catch 
+the moment just before that, by recognizing the smaller signals that usually come first. 
+Earthquakes produce P-waves that travel faster than the destructive waves that follow. 
+Typhoons show specific pressure and temperature patterns before they fully organize into a 
+storm. Flash floods have upstream rainfall thresholds that can be monitored hours in advance. 
+The technology to detect these things already exists in some form. The gap is in making a 
+system intelligent enough to recognize them quickly and connected enough to warn the right 
+people in time. 
+One concept from class that really clicked for me in this context is edge computing. Instead of 
+routing all sensor data to a distant cloud server, edge computing allows analysis to happen 
+locally, right at the source. For a country where rural communities are often the most 
+vulnerable but also the most disconnected from internet infrastructure, this matters 
+enormously. SENTINEL is built around this principle, using mesh networking so that devices 
+can pass alerts between each other even without an active internet connection, ensuring the 
+warning reaches a barangay at the foot of a volcano regardless of signal strength. 
+There is also the question of trust, which I think gets overlooked in a lot of technology 
+discussions. If a system sends out a false alarm and causes a widespread panic, people stop 
+listening to it. That is why SENTINEL would include a multi-layer verification process before 
+any alert is broadcast, cross-referencing sensor data with satellite readings and historical 
+baselines to filter out noise and reduce false positives. 
+What this reflection really comes down to for me is the idea that computing is most powerful 
+when it is directed at something that genuinely matters to people. Disaster response in the 
+Philippines has always felt reactive, rebuilding after the fact and waiting for the next one. 
+SENTINEL represents a shift in that thinking, using technology not to record what happened 
+or manage what is happening, but to speak up a few moments before it does. In a country 
+where those few moments can mean the difference between life and death, that is exactly 
+what the future of computing should look like. 

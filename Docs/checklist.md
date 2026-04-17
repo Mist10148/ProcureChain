@@ -3,7 +3,7 @@
 ## Project
 ProcureChain: Municipal Procurement Document Tracking System  
 Type: C++ CLI (Procedural)  
-Validation Date: 2026-04-10
+Validation Date: 2026-04-17
 
 ## How to Use this Checklist
 
@@ -73,6 +73,8 @@ Evidence notes:
 - [x] View published documents (citizen only view).
 - [x] Citizen can search published document by ID or keyword and inspect full detail panel.
 - [x] Citizen hash verification compares stored vs recomputed hash and checks blockchain presence.
+- [x] Citizen verification accepts candidate files from `data/verify/<DocumentID>/...` and `data/verify/<DocumentID>_...` patterns.
+- [x] Citizen verification accepts `.pdf`, `.docx`, `.csv`, `.txt`, and extensionless candidate files.
 - [x] Manual status update path is available (role-gated).
 - [x] Document detail panel displays status history timeline (who/when/from/to/note).
 

@@ -1,0 +1,12 @@
+Document ID: PR001
+Title: Office Supplies Q1 Framework
+Category: Purchase Request
+Tags: (none)
+Description: Consolidated office consumables for all departments.
+Department: Procurement Office
+Date Uploaded: 2026-01-12
+Uploader: proc_admin
+Status: published
+Hash: 8b7dab6d4e68e801ddff523a11234170cdc90508b72ed39b7d1ba1b569f2ee04
+Version: v1
+Previous Version: (root)

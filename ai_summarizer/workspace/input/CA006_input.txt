@@ -1,0 +1,41 @@
+PROCURECHAIN DUMMY DOCUMENT
+Document ID: CA006
+Title: School Tablet Procurement Batch 1
+Category: Contract Agreement
+Office: City Education Office
+Agreement Date: 2026-02-14
+
+Program Background:
+The city seeks to support blended learning by procuring classroom tablet devices
+for Grade 6 and Grade 10 students in pilot public schools.
+
+Agreement Scope:
+1. Supply of 1,200 education-grade tablet units
+2. Device management software subscription, 12 months
+3. Protective cases and charging carts
+4. Teacher orientation and basic troubleshooting workshop
+
+Financial Terms:
+- Hardware package: PHP 10,800,000
+- Software and device management: PHP 1,200,000
+- Training and deployment support: PHP 350,000
+- Total agreement value: PHP 12,350,000
+
+Delivery Plan:
+- Batch 1 (600 units): within 20 calendar days
+- Batch 2 (600 units): within 40 calendar days
+- Full deployment target: before start of Q3 class cycle
+
+Minimum Technical Standards:
+- Battery life minimum of 10 hours
+- Device OS must support managed classroom mode
+- Warranty coverage of at least 18 months
+
+Data Protection and Use:
+- Devices must implement user access controls
+- Pre-installed apps limited to approved educational tools
+- Student data collection must follow privacy rules
+
+Beneficiary Impact:
+The initial deployment targets 8 pilot schools and is expected to improve access
+to digital modules, especially in sections with limited printed materials.

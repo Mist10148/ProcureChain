@@ -2,6 +2,8 @@
 
 ProcureChain is a C++ command-line municipal procurement tracking system.
 
+Documentation updated: 2026-04-17
+
 It is designed for classroom-level procedural programming and focuses on:
 
 - Role-based access for citizens and administrators
@@ -142,6 +144,10 @@ High-level process:
 - Python packages for summarizer flow: google-generativeai, pypdf, python-docx
 - GEMINI_API_KEY environment variable (for AI summary generation)
 
+Install AI summarizer dependencies:
+
+  python -m pip install google-generativeai pypdf python-docx
+
 Optional check:
 
     g++ --version
@@ -152,15 +158,16 @@ Optional check:
 
 Open PowerShell in the project folder and run:
 
-    g++ -std=c++17 src/main.cpp src/auth.cpp src/documents.cpp src/verification.cpp src/budget.cpp src/audit.cpp src/approvals.cpp src/blockchain.cpp src/ui.cpp src/analytics.cpp src/notifications.cpp src/help.cpp src/backup.cpp src/delegation.cpp src/summarizer.cpp -o procurechain.exe
-    .\procurechain.exe
+  New-Item -ItemType Directory -Force build | Out-Null
+  g++ -std=c++17 (Get-ChildItem src/*.cpp | ForEach-Object { $_.FullName }) -o build/procurechain.exe
+  .\build\procurechain.exe
 
 ### Option B: Run from src folder
 
     cd src
-    g++ -std=c++17 main.cpp auth.cpp documents.cpp verification.cpp budget.cpp audit.cpp approvals.cpp blockchain.cpp ui.cpp analytics.cpp notifications.cpp help.cpp backup.cpp delegation.cpp summarizer.cpp -o ..\procurechain.exe
+  g++ -std=c++17 (Get-ChildItem *.cpp | ForEach-Object { $_.FullName }) -o ..\build\procurechain.exe
     cd ..
-    .\procurechain.exe
+  .\build\procurechain.exe
 
 ### Notes
 
@@ -168,6 +175,30 @@ Open PowerShell in the project folder and run:
 - Existing legacy rows are loaded with backward-compatible parsing.
 - Writes persist the current expanded schema.
 - When seed files are empty, realistic mock records are generated for documents, approvals, budgets, budget consensus, and hash-linked audit rows.
+
+## Upload and Verify Folder Workflow
+
+ProcureChain uses different folders for two separate purposes:
+
+### data/uploads (upload staging)
+
+- Use this as a staging area for files to be uploaded by admins.
+- During upload, the app copies the chosen source file into `data/documents` and stores the resulting hash and file path in `data/documents.txt`.
+- After upload succeeds, `data/uploads` is no longer part of verification logic.
+
+### data/verify (citizen authenticity check)
+
+- Citizens place their own copy of a published document here before running Verify.
+- Supported placement patterns:
+  - `data/verify/<DocumentID>/candidate_file.ext`
+  - `data/verify/<DocumentID>_candidate_file.ext`
+  - `data/verify/<DocumentID>.ext`
+- Allowed file types: `.pdf`, `.docx`, `.csv`, `.txt` (and no-extension files for compatibility).
+- Verify result rules:
+  - `VERIFIED`: candidate hash matches stored record and blockchain registration is found.
+  - `TAMPERED`: candidate hash does not match stored record.
+  - `PARTIAL`: hash matches but blockchain registration is missing.
+  - `INCOMPLETE`: no valid candidate file was found in `data/verify`.
 
 ## Quick Login Accounts
 
@@ -234,7 +265,7 @@ Note: budgetCategory and amount are retained for compatibility/analytics, but bu
 
 ### data/audit_log.txt
 
-  timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
+  timestamp|action|targetType|targetID|actorUsername|actorRole|outcome|visibility|chainIndex|previousHash|currentHash
 
 ### data/summarizer.txt
 

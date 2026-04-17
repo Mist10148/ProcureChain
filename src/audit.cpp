@@ -940,9 +940,14 @@ void printPublicTimeline(const std::vector<AuditEntry>& entries) {
     std::cout << "\n" << ui::bold("Transparency Timeline") << "\n";
 
     for (std::size_t i = 0; i < entries.size(); ++i) {
+        const std::string targetTypeLower = toLowerCopy(entries[i].targetType);
+        const std::string publicDocumentId =
+            (targetTypeLower == "documents" || targetTypeLower == "document") ? entries[i].targetId : "N/A";
+
         std::cout << ui::info("--------------------------------------------------------------") << "\n";
         std::cout << "  " << ui::bold(formatPublicActionLabel(entries[i])) << "  " << formatOutcomeBadge(entries[i].outcome) << "\n";
         std::cout << "  Target       : " << entries[i].targetId << " (" << entries[i].targetType << ")\n";
+        std::cout << "  Document ID  : " << publicDocumentId << "\n";
         std::cout << "  Actor Role   : " << ui::roleLabel(entries[i].actorRole) << "\n";
         std::cout << "  Timestamp    : " << entries[i].timestamp << "\n";
         std::cout << "  Chain Index  : " << (entries[i].chainIndex.empty() ? "N/A" : ("#" + entries[i].chainIndex)) << "\n";
@@ -1250,7 +1255,7 @@ void viewPublicAuditTrail(const std::string& actorUsername) {
 
         std::cout << "\n" << ui::info("[1]") << " Export displayed public CSV\n";
         std::cout << "  " << ui::info("[2]") << " Change filters\n";
-        std::cout << "  " << ui::info("[3]") << " Open published document detail\n";
+        std::cout << "  " << ui::info("[3]") << " Open document detail\n";
         std::cout << "  " << ui::info("[0]") << " Back\n";
         std::cout << ui::muted("--------------------------------------------------------------") << "\n";
         std::cout << "  Enter your choice: ";
@@ -1288,7 +1293,7 @@ void viewPublicAuditTrail(const std::string& actorUsername) {
 
             clearInputBuffer();
             std::string docId;
-            std::cout << "Enter Document ID to open (blank to cancel): ";
+            std::cout << "Enter Document ID to open detail (blank to cancel): ";
             std::getline(std::cin, docId);
 
             docId = trimCopy(docId);

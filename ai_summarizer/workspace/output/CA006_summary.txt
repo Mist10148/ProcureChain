@@ -1,0 +1,19 @@
+**Purpose**
+To formalize the initial purchase and distribution of learning tablets for public school students through the municipal Education Office.
+
+**Key Scope**
+The procurement covers "Batch 1" of a tablet rollout, suggesting a phased delivery of hardware intended specifically for educational use rather than general administrative purposes.
+
+**Budget/Cost Clues**
+While a specific dollar amount is not listed in the metadata, the designation "Batch 1" indicates this is a partial expenditure of a larger multi-phase budget. As a "Contract Agreement," the final pricing has been negotiated and locked in.
+
+**Timeline Clues**
+The document was finalized and published on March 11, 2026. Given the "Batch 1" status, delivery and implementation are likely scheduled for the 2026 academic year.
+
+**Risks/Compliance Notes**
+*   **Phasing Risk:** Success depends on the timely execution of subsequent batches to ensure equitable access across all schools.
+*   **Version Control:** This is version 1 (root), meaning no amendments or price adjustments have been logged in the system yet.
+*   **Technical Specs:** As a contract for hardware, compliance will hinge on the tablets meeting specific educational software requirements.
+
+**Plain-Language Takeaway**
+The city has officially signed a contract to begin buying the first group of tablets for public school students as part of a multi-stage hardware rollout.
