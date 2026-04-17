@@ -15,6 +15,8 @@
 - Folder roles are now explicitly separated:
 	- `data/uploads` for admin upload staging
 	- `data/verify` for citizen authenticity checks
+- AI summarizer dependencies are now tracked in `ai_summarizer/requirements.txt` for reproducible setup.
+- Gemini key handling is environment-first (`GEMINI_API_KEY`) with optional project-root `.env` loading.
 
 ---
 

@@ -14,10 +14,33 @@ Last updated: 2026-04-17
 
 - Environment variable: GEMINI_API_KEY
 - Requested model label from C++ flow: `gemini-3.0-flash` (with compatible API fallback candidates)
-- Python packages:
-  - google-generativeai
-  - pypdf
-  - python-docx
+- Python dependencies from `ai_summarizer/requirements.txt`
+
+## Setup
+
+From the project root:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r ai_summarizer\requirements.txt
+```
+
+Set `GEMINI_API_KEY` using one option:
+
+```powershell
+$env:GEMINI_API_KEY = "your_api_key_here"
+```
+
+Or use `.env` in project root:
+
+```powershell
+Copy-Item .env.example .env
+# edit .env and set GEMINI_API_KEY
+```
+
+The runner explicitly loads `.env` when `python-dotenv` is installed.
 
 ## Relationship to data/uploads and data/verify
 

@@ -190,7 +190,7 @@ Can:
 - data/budget_approvals.txt: entryID|approverUsername|role|status|createdAt|decidedAt|note
 - data/password_flags.txt: username|mustChangePassword
 - data/delegations.txt: delegatorUsername|delegateeUsername|startDate|endDate|status
-- data/audit_log.txt: timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
+- data/audit_log.txt: timestamp|action|targetType|targetID|actorUsername|actorRole|outcome|visibility|chainIndex|previousHash|currentHash
 - data/summarizer.txt: docID|updatedAt|status|model|summaryFile|sourceFile|error
 - data/tamper_alerts.txt: timestamp|severity|source|targetID|detail|actor|visibility
 
@@ -208,6 +208,8 @@ Node row format: index|timestamp|action|documentID|actor|previousHash|currentHas
 - Preserve backward-compatible loading for older rows.
 - Keep CLI prompts clear and deterministic.
 - Maintain auditability for governance actions.
+- Keep Python summarizer setup reproducible via `ai_summarizer/requirements.txt`.
+- Keep Gemini secrets in environment variables (shell or explicitly loaded `.env`).
 
 ## 8. Success Criteria
 
@@ -369,7 +371,7 @@ This section preserves the concise PRD above while adding the fuller implementat
 - data/budget_approvals.txt: entryID|approverUsername|role|status|createdAt|decidedAt|note
 - data/password_flags.txt: username|mustChangePassword
 - data/delegations.txt: delegatorUsername|delegateeUsername|startDate|endDate|status
-- data/audit_log.txt: timestamp|action|targetID|actor|chainIndex|previousHash|currentHash
+- data/audit_log.txt: timestamp|action|targetType|targetID|actorUsername|actorRole|outcome|visibility|chainIndex|previousHash|currentHash
 - data/blockchain/nodeX_chain.txt: index|timestamp|action|documentID|actor|previousHash|currentHash
 
 ## 12. Role Capability Snapshot

@@ -136,40 +136,67 @@ High-level process:
 - Data backup and restore (Super Admin, timestamped backup folders)
 - Delegated approval authority (Budget Officer, Municipal Administrator can delegate to another admin for a date range)
 
-## Requirements
+## Prerequisites
 
 - Windows with PowerShell
 - C++ compiler (g++ recommended, such as MSYS2 MinGW)
-- Python 3 for AI summarizer flow
-- Python packages for summarizer flow: google-generativeai, pypdf, python-docx
-- GEMINI_API_KEY environment variable (for AI summary generation)
+- Python 3.10+
 
-Install AI summarizer dependencies:
+## Reproducible Python Setup (AI Summarizer)
 
-  python -m pip install google-generativeai pypdf python-docx
+From the project root:
 
-Optional check:
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r ai_summarizer\requirements.txt
+```
 
-    g++ --version
+## GEMINI_API_KEY Setup
 
-## How To Build and Run
+Use one of these options:
 
-### Option A: Run from project root (recommended)
+1. Set it in your shell (recommended for quick testing):
 
-Open PowerShell in the project folder and run:
+```powershell
+$env:GEMINI_API_KEY = "your_api_key_here"
+```
 
-  New-Item -ItemType Directory -Force build | Out-Null
-  g++ -std=c++17 (Get-ChildItem src/*.cpp | ForEach-Object { $_.FullName }) -o build/procurechain.exe
-  .\build\procurechain.exe
+2. Use a local `.env` file (already ignored by git):
 
-### Option B: Run from src folder
+```powershell
+Copy-Item .env.example .env
+# then edit .env and set GEMINI_API_KEY
+```
 
-    cd src
-  g++ -std=c++17 (Get-ChildItem *.cpp | ForEach-Object { $_.FullName }) -o ..\build\procurechain.exe
-    cd ..
-  .\build\procurechain.exe
+The summarizer runner explicitly loads `.env` when `python-dotenv` is installed.
+Shell environment variables still take precedence.
 
-### Notes
+## Build and Run (C++)
+
+Open PowerShell in the project root:
+
+```powershell
+New-Item -ItemType Directory -Force build | Out-Null
+g++ -std=c++17 (Get-ChildItem src/*.cpp | ForEach-Object { $_.FullName }) -o build/procurechain.exe
+.\build\procurechain.exe
+```
+
+## Run Python Summarizer Directly (Optional)
+
+You normally trigger this from the C++ app document-detail screen. To run manually:
+
+```powershell
+.\.venv\Scripts\python.exe ai_summarizer\scripts\run_gemini_summary.py `
+  --doc-id PR001 `
+  --input-path ai_summarizer\workspace\input\PR001_input.txt `
+  --summary-path ai_summarizer\workspace\output\PR001_summary.txt `
+  --cache-path data\summarizer.txt `
+  --model gemini-3.0-flash
+```
+
+## Runtime Notes
 
 - On startup, the system ensures required files and headers exist.
 - Existing legacy rows are loaded with backward-compatible parsing.

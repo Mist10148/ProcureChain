@@ -13,6 +13,22 @@ import urllib.request
 HEADER = "docID|updatedAt|status|model|summaryFile|sourceFile|error"
 
 
+def load_dotenv_if_available() -> None:
+    """Load .env from project root when python-dotenv is installed.
+
+    Environment variables already set in the shell keep precedence.
+    """
+    try:
+        from dotenv import load_dotenv
+    except Exception:
+        return
+
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    dotenv_path = repo_root / ".env"
+    if dotenv_path.exists():
+        load_dotenv(dotenv_path=dotenv_path, override=False)
+
+
 def sanitize_field(value: str) -> str:
     return value.replace("|", "/").replace("\n", " ").replace("\r", " ").strip()
 
@@ -230,6 +246,8 @@ def summarize_with_gemini(text: str, model_name: str) -> str:
 
 
 def main() -> int:
+    load_dotenv_if_available()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--doc-id", required=True)
     parser.add_argument("--input-path", required=True)

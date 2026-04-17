@@ -1,6 +1,6 @@
 # Context for ProcureChain Collaborators
 
-## Live Status (2026-04-17)
+## Live Status (2026-04-17, verified)
 
 Hotfix updates (2026-04-17):
 
@@ -27,7 +27,6 @@ Current implemented baseline:
 
 Newly implemented governance/reporting slice:
 
-- advanced document filters (status, exact date, date range, category, tags, department, uploader)
 - advanced document filters (status, exact date, date range, category, tags, department, uploader)
 - audit CSV export (all rows and filtered rows)
 - approval analytics dashboard (rejection rate, average decision time, throughput by role)
@@ -92,6 +91,8 @@ Latest AI and integrity-evolution updates:
 - hard-delete removes the linked admin node file and re-syncs dynamic topology
 - tamper detections are persisted in data/tamper_alerts.txt
 - inbox views now surface recent tamper alerts for admins and citizens
+- Python summarizer environment is now reproducible through ai_summarizer/requirements.txt
+- GEMINI_API_KEY can be supplied from shell environment or a root .env file loaded by the runner
 
 Security, UX, and governance extensions (Phase 9):
 

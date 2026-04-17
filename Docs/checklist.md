@@ -305,38 +305,38 @@ Evidence notes:
 
 ### 10.8 AI Summarizer Integration
 
-- [ ] Python summarizer script exists under ai_summarizer/scripts.
-- [ ] AI workspace input/output folders are available and writable.
-- [ ] data/summarizer.txt is generated and maintained.
-- [ ] Citizen document detail can view cached summary.
-- [ ] Citizen document detail can generate/refresh summary.
-- [ ] Admin document detail can view cached summary.
-- [ ] Admin document detail can generate/refresh summary.
-- [ ] Failure path shows error and falls back to cached summary when present.
+- [x] Python summarizer script exists under ai_summarizer/scripts.
+- [x] AI workspace input/output folders are available and writable.
+- [x] data/summarizer.txt is generated and maintained.
+- [x] Citizen document detail can view cached summary.
+- [x] Citizen document detail can generate/refresh summary.
+- [x] Admin document detail can view cached summary.
+- [x] Admin document detail can generate/refresh summary.
+- [x] Failure path shows error and falls back to cached summary when present.
 
 ### 10.9 Public Audit Drill-Down
 
-- [ ] Public audit trail includes open-document drill-down action.
-- [ ] Drill-down accepts document ID from visible timeline targets.
-- [ ] Drill-down opens published document detail panel.
-- [ ] Drill-down supports AI summary actions.
+- [x] Public audit trail includes open-document drill-down action.
+- [x] Drill-down accepts document ID from visible timeline targets.
+- [x] Drill-down opens published document detail panel.
+- [x] Drill-down supports AI summary actions.
 
 ### 10.10 Dynamic Blockchain Nodes and Admin Lifecycle
 
-- [ ] Node count follows formula: 5 + total admins rows.
-- [ ] Admin-linked node files are deterministic per username.
-- [ ] Blockchain explorer reflects dynamic node count.
-- [ ] Verification and analytics use dynamic node list.
-- [ ] Backup/restore includes dynamic node files.
-- [ ] Super Admin hard-delete removes admin account row.
-- [ ] Hard-delete removes linked admin node file.
+- [x] Node count follows formula: 5 + total admins rows.
+- [x] Admin-linked node files are deterministic per username.
+- [x] Blockchain explorer reflects dynamic node count.
+- [x] Verification and analytics use dynamic node list.
+- [x] Backup/restore includes dynamic node files.
+- [x] Super Admin hard-delete removes admin account row.
+- [x] Hard-delete removes linked admin node file.
 
 ### 10.11 Tamper Alerts in Inbox
 
-- [ ] Tamper detections write rows to data/tamper_alerts.txt.
-- [ ] Admin inbox shows tamper alert count and recent entries.
-- [ ] Citizen inbox shows public tamper alert count and recent entries.
-- [ ] Tamper alert actions are audit-logged where applicable.
+- [x] Tamper detections write rows to data/tamper_alerts.txt.
+- [x] Admin inbox shows tamper alert count and recent entries.
+- [x] Citizen inbox shows public tamper alert count and recent entries.
+- [x] Tamper alert actions are audit-logged where applicable.
 
 ---
 

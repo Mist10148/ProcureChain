@@ -6,6 +6,12 @@ This document defines who can do what in ProcureChain and the standard operating
 
 It reflects the current implementation as of 2026-04-17.
 
+## Runtime Setup Note
+
+- AI summarizer dependencies are managed from `ai_summarizer/requirements.txt`.
+- `GEMINI_API_KEY` must be provided via shell environment or project-root `.env`.
+- Root `.gitignore` excludes `.env` and `.env.*` (except `.env.example`).
+
 ## Access Model Summary
 
 ProcureChain has two account groups:

@@ -107,8 +107,10 @@ Completed
 - added deterministic per-admin node naming and orphan cleanup
 - added hard-delete admin workflow and linked node removal
 - added tamper alert persistence and inbox rendering
+- added reproducible Python dependency file at ai_summarizer/requirements.txt
+- added root .gitignore and .env.example for safe GEMINI_API_KEY handling
 
-### Remaining Validation
+### Remaining Validation (Demo Rehearsal)
 
 - full compile and role smoke test for citizen/admin/super-admin flows
 - Gemini dependency and API-key failure fallback verification
@@ -116,7 +118,7 @@ Completed
 
 ### Status
 
-In Progress
+Completed (implementation) / Demo validation pending
 
 ## Phase 1: Authentication and Role Routing
 
