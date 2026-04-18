@@ -40,6 +40,12 @@ bool updateDocumentStatusBySystem(const std::string& docId,
                                   const std::string& newStatus,
                                   const std::string& actorUsername,
                                   const std::string& reasonNote);
+bool updateDocumentStatusBySystem(const std::string& docId,
+                                  const std::string& newStatus,
+                                  const std::string& actorUsername,
+                                  const std::string& reasonNote,
+                                  std::string* previousStatusOut,
+                                  bool allowInteractiveGuardrail);
 void updateDocumentStatusForAdmin(const Admin& admin);
 
 #endif

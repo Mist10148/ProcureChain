@@ -1,4 +1,5 @@
 #include "../include/summarizer.h"
+#include "../include/storage_utils.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -38,13 +39,7 @@ struct SummaryCacheRow {
 };
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    std::vector<std::string> out;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        out.push_back(token);
-    }
-    return out;
+    return storage::splitPipeRow(line);
 }
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {

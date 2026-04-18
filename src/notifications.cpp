@@ -1,6 +1,7 @@
 #include "../include/notifications.h"
-#include "../include/ui.h"
 #include "../include/audit.h"
+#include "../include/storage_utils.h"
+#include "../include/ui.h"
 
 #include <ctime>
 #include <fstream>
@@ -40,13 +41,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primary, 
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 std::string toLowerCopy(std::string value) {
@@ -254,26 +249,17 @@ void logTamperAlert(const std::string& severity,
         return;
     }
 
-    std::ofstream out(path, std::ios::app);
-    if (!out.is_open()) {
-        return;
-    }
-
-    std::string safeDetail = detail;
-    for (std::size_t i = 0; i < safeDetail.size(); ++i) {
-        if (safeDetail[i] == '|' || safeDetail[i] == '\n' || safeDetail[i] == '\r') {
-            safeDetail[i] = ' ';
-        }
-    }
-
-    out << getCurrentTimestamp() << '|'
-        << severity << '|'
-        << source << '|'
-        << targetId << '|'
-        << safeDetail << '|'
-        << actor << '|'
-        << visibility << '\n';
-    out.flush();
+    storage::appendLineToFileWithFallback(TAMPER_ALERTS_FILE_PATH_PRIMARY,
+                                          TAMPER_ALERTS_FILE_PATH_FALLBACK,
+                                          storage::joinPipeRow({
+                                              getCurrentTimestamp(),
+                                              severity,
+                                              source,
+                                              targetId,
+                                              storage::sanitizeSingleLineInput(detail),
+                                              actor,
+                                              visibility
+                                          }));
 }
 
 void showAdminNotificationInbox(const Admin& admin) {

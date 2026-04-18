@@ -5,6 +5,7 @@
 #include "../include/blockchain.h"
 #include "../include/delegation.h"
 #include "../include/documents.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 
 #include <ctime>
@@ -87,14 +88,7 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    // Linear tokenize pass over one line: O(m), where m is line length.
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 std::string trimCopy(const std::string& value) {
@@ -116,15 +110,7 @@ std::string toLowerCopy(std::string value) {
 }
 
 std::string sanitizeCommentText(const std::string& value) {
-    std::string cleaned = trimCopy(value);
-
-    for (std::size_t i = 0; i < cleaned.size(); ++i) {
-        if (cleaned[i] == '|' || cleaned[i] == '\n' || cleaned[i] == '\r') {
-            cleaned[i] = ' ';
-        }
-    }
-
-    return trimCopy(cleaned);
+    return storage::sanitizeSingleLineInput(value);
 }
 
 std::vector<std::string> defaultRequiredRoles() {
@@ -206,9 +192,9 @@ ApprovalRule parseApprovalRuleTokens(const std::vector<std::string>& tokens) {
 }
 
 std::string serializeApprovalRule(const ApprovalRule& rule) {
-    std::ostringstream out;
-    out << rule.category << "|" << joinRolesCsv(rule.requiredRoles) << "|" << rule.maxDecisionDays;
-    return out.str();
+    std::ostringstream daysOut;
+    daysOut << rule.maxDecisionDays;
+    return storage::joinPipeRow({rule.category, joinRolesCsv(rule.requiredRoles), daysOut.str()});
 }
 
 bool loadApprovalRules(std::vector<ApprovalRule>& rules) {
@@ -245,17 +231,15 @@ bool loadApprovalRules(std::vector<ApprovalRule>& rules) {
 }
 
 bool saveApprovalRules(const std::vector<ApprovalRule>& rules) {
-    std::ofstream writer(resolveDataPath(APPROVAL_RULES_FILE_PATH_PRIMARY, APPROVAL_RULES_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "category|requiredRoles|maxDecisionDays\n";
+    std::vector<std::string> rows;
+    rows.reserve(rules.size());
     for (std::size_t i = 0; i < rules.size(); ++i) {
-        writer << serializeApprovalRule(rules[i]) << '\n';
+        rows.push_back(serializeApprovalRule(rules[i]));
     }
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(APPROVAL_RULES_FILE_PATH_PRIMARY,
+                                              APPROVAL_RULES_FILE_PATH_FALLBACK,
+                                              "category|requiredRoles|maxDecisionDays",
+                                              rows);
 }
 
 ApprovalRule resolveRuleForCategory(const std::string& category) {
@@ -303,8 +287,15 @@ Approval parseApprovalTokens(const std::vector<std::string>& tokens) {
 }
 
 std::string serializeApproval(const Approval& row) {
-    // Keep schema order stable because other modules parse this exact layout.
-    return row.docId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt + "|" + row.note;
+    return storage::joinPipeRow({
+        row.docId,
+        row.approverUsername,
+        row.role,
+        row.status,
+        row.createdAt,
+        row.decidedAt,
+        row.note
+    });
 }
 
 bool loadApprovals(std::vector<Approval>& rows) {
@@ -342,18 +333,36 @@ bool loadApprovals(std::vector<Approval>& rows) {
 }
 
 bool saveApprovals(const std::vector<Approval>& rows) {
-    // Rewrites the whole table each save for a canonical on-disk state: O(n).
-    std::ofstream writer(resolveDataPath(APPROVALS_FILE_PATH_PRIMARY, APPROVALS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
+    std::vector<std::string> serializedRows;
+    serializedRows.reserve(rows.size());
+    for (size_t i = 0; i < rows.size(); ++i) {
+        serializedRows.push_back(serializeApproval(rows[i]));
+    }
+    return storage::writePipeFileWithFallback(APPROVALS_FILE_PATH_PRIMARY,
+                                              APPROVALS_FILE_PATH_FALLBACK,
+                                              "docID|approverUsername|role|status|createdAt|decidedAt|note",
+                                              serializedRows);
+}
+
+bool removeApprovalRequestsForDocumentInternal(const std::string& docId) {
+    if (docId.empty()) {
         return false;
     }
 
-    writer << "docID|approverUsername|role|status|createdAt|decidedAt|note\n";
-    for (size_t i = 0; i < rows.size(); ++i) {
-        writer << serializeApproval(rows[i]) << '\n';
+    std::vector<Approval> rows;
+    if (!loadApprovals(rows)) {
+        return false;
     }
-    writer.flush();
-    return true;
+
+    std::vector<Approval> filteredRows;
+    filteredRows.reserve(rows.size());
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].docId != docId) {
+            filteredRows.push_back(rows[i]);
+        }
+    }
+
+    return saveApprovals(filteredRows);
 }
 
 ApprovalComment parseApprovalCommentTokens(const std::vector<std::string>& tokens) {
@@ -367,7 +376,13 @@ ApprovalComment parseApprovalCommentTokens(const std::vector<std::string>& token
 }
 
 std::string serializeApprovalComment(const ApprovalComment& row) {
-    return row.docId + "|" + row.commenterUsername + "|" + row.commenterRole + "|" + row.createdAt + "|" + row.commentText;
+    return storage::joinPipeRow({
+        row.docId,
+        row.commenterUsername,
+        row.commenterRole,
+        row.createdAt,
+        row.commentText
+    });
 }
 
 bool loadApprovalComments(std::vector<ApprovalComment>& rows) {
@@ -404,17 +419,15 @@ bool loadApprovalComments(std::vector<ApprovalComment>& rows) {
 }
 
 bool saveApprovalComments(const std::vector<ApprovalComment>& rows) {
-    std::ofstream writer(resolveDataPath(APPROVAL_COMMENTS_FILE_PATH_PRIMARY, APPROVAL_COMMENTS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "docID|commenterUsername|commenterRole|createdAt|commentText\n";
+    std::vector<std::string> serializedRows;
+    serializedRows.reserve(rows.size());
     for (std::size_t i = 0; i < rows.size(); ++i) {
-        writer << serializeApprovalComment(rows[i]) << '\n';
+        serializedRows.push_back(serializeApprovalComment(rows[i]));
     }
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(APPROVAL_COMMENTS_FILE_PATH_PRIMARY,
+                                              APPROVAL_COMMENTS_FILE_PATH_FALLBACK,
+                                              "docID|commenterUsername|commenterRole|createdAt|commentText",
+                                              serializedRows);
 }
 
 bool appendApprovalComment(const std::string& docId,
@@ -915,6 +928,7 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
 
     promptAndStoreCommentForDecision(admin, targetDocId, actingOnBehalfOf);
 
+    const std::vector<Approval> originalRows = rows;
     bool updated = false;
     const std::string now = getCurrentTimestamp();
 
@@ -972,7 +986,14 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
     }
 
     const std::string syncNote = approve ? "Approval decision applied." : "Rejection decision applied.";
-    if (!updateDocumentStatusBySystem(targetDocId, nextDocStatus, admin.username, syncNote)) {
+    std::string previousDocStatus;
+    if (!updateDocumentStatusBySystem(targetDocId,
+                                      nextDocStatus,
+                                      admin.username,
+                                      syncNote,
+                                      &previousDocStatus,
+                                      false)) {
+        saveApprovals(originalRows);
         if (nextDocStatus == "published") {
             std::cout << ui::warning("[!] Decision saved, but publication was blocked by budget guardrail.") << "\n";
         } else {
@@ -992,21 +1013,52 @@ void applyApprovalDecision(const Admin& admin, bool approve) {
 
     const std::string auditActor = actingOnBehalfOf.empty() ? admin.username :
         admin.username + " (on behalf of " + actingOnBehalfOf + ")";
+    int chainIndex = -1;
+    if (approve) {
+        chainIndex = appendBlockchainAction(actingOnBehalfOf.empty() ? "APPROVE" : "APPROVE_DELEGATED", targetDocId, admin.username);
+        if (chainIndex < 0 || !tryLogAuditAction("APPROVE_DOC", targetDocId, auditActor, chainIndex)) {
+            updateDocumentStatusBySystem(targetDocId,
+                                         previousDocStatus,
+                                         admin.username,
+                                         "Rollback after approval finalization failure.",
+                                         NULL,
+                                         false);
+            saveApprovals(originalRows);
+            std::cout << ui::error("[!] Approval was rolled back because blockchain/audit finalization failed.") << "\n";
+            waitForEnter();
+            return;
+        }
+    } else {
+        chainIndex = appendBlockchainAction(actingOnBehalfOf.empty() ? "REJECT" : "REJECT_DELEGATED", targetDocId, admin.username);
+        if (chainIndex < 0 || !tryLogAuditAction("REJECT_DOC", targetDocId, auditActor, chainIndex)) {
+            updateDocumentStatusBySystem(targetDocId,
+                                         previousDocStatus,
+                                         admin.username,
+                                         "Rollback after rejection finalization failure.",
+                                         NULL,
+                                         false);
+            saveApprovals(originalRows);
+            std::cout << ui::error("[!] Rejection was rolled back because blockchain/audit finalization failed.") << "\n";
+            waitForEnter();
+            return;
+        }
+    }
+
     if (approve) {
         const std::string action = actingOnBehalfOf.empty() ? "APPROVE" : "APPROVE_DELEGATED";
-        const int chainIndex = appendBlockchainAction(action, targetDocId, admin.username);
-        logAuditAction("APPROVE_DOC", targetDocId, auditActor, chainIndex);
         std::cout << ui::success("[+] Document approved successfully.") << "\n";
     } else {
         const std::string action = actingOnBehalfOf.empty() ? "REJECT" : "REJECT_DELEGATED";
-        const int chainIndex = appendBlockchainAction(action, targetDocId, admin.username);
-        logAuditAction("REJECT_DOC", targetDocId, auditActor, chainIndex);
         std::cout << ui::error("[+] Document denied successfully.") << "\n";
     }
 
     waitForEnter();
 }
 } // namespace
+
+bool removeApprovalRequestsForDocument(const std::string& docId) {
+    return removeApprovalRequestsForDocumentInternal(docId);
+}
 
 void ensureApprovalsDataFileExists() {
     // Ensures header presence, normalizes old rows, and seeds baseline requests.
@@ -1057,12 +1109,12 @@ void ensureApprovalRulesDataFileExists() {
     }
 }
 
-void createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category) {
+bool createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category) {
     // Creates pending requests from category-specific rules with a safe DEFAULT fallback.
     // Complexity: O(a + n), where a=admin rows and n=existing approval rows.
     std::ifstream adminFile;
     if (!openInputFileWithFallback(adminFile, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
-        return;
+        return false;
     }
 
     std::string line;
@@ -1165,16 +1217,18 @@ void createApprovalRequestsForDocument(const std::string& docId, const std::stri
     }
 
     if (requests.empty()) {
-        return;
+        return true;
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
         existing.push_back(requests[i]);
     }
 
-    if (saveApprovals(existing)) {
-        logAuditAction("APPROVAL_REQUESTS_CREATED", docId, uploader);
+    if (!saveApprovals(existing)) {
+        return false;
     }
+
+    return tryLogAuditAction("APPROVAL_REQUESTS_CREATED", docId, uploader);
 }
 
 bool getPendingDocumentApprovalIdsForApprover(const std::string& approverUsername,

@@ -6,6 +6,7 @@
 #include "../include/budget.h"
 #include "../include/delegation.h"
 #include "../include/documents.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -50,16 +51,7 @@ struct SeedAdminAccount {
 };
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    // Single-pass tokenizer: O(m), m = line length.
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
@@ -108,20 +100,7 @@ bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fal
         return true;
     }
 
-    std::ofstream createFile(primaryPath);
-    if (createFile.is_open()) {
-        createFile << headerLine << '\n';
-        return true;
-    }
-
-    createFile.clear();
-    createFile.open(fallbackPath);
-    if (createFile.is_open()) {
-        createFile << headerLine << '\n';
-        return true;
-    }
-
-    return false;
+    return storage::writeTextFileWithFallback(primaryPath, fallbackPath, headerLine + "\n");
 }
 
 std::string normalizeStatus(const std::string& value) {
@@ -239,44 +218,42 @@ bool loadAdmins(std::vector<Admin>& admins) {
 }
 
 bool saveUsers(const std::vector<User>& users) {
-    // Canonical rewrite keeps one header and one normalized row format.
-    std::ofstream writer(resolveDataPath(USERS_FILE_PATH_PRIMARY, USERS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "userID|fullName|username|password|status|updatedAt\n";
+    std::vector<std::string> rows;
+    rows.reserve(users.size());
     for (size_t i = 0; i < users.size(); ++i) {
-        writer << users[i].userId << '|'
-               << users[i].fullName << '|'
-               << users[i].username << '|'
-               << users[i].password << '|'
-               << normalizeStatus(users[i].status) << '|'
-               << users[i].updatedAt << '\n';
+        rows.push_back(storage::joinPipeRow({
+            users[i].userId,
+            storage::sanitizeSingleLineInput(users[i].fullName),
+            storage::sanitizeSingleLineInput(users[i].username),
+            users[i].password,
+            normalizeStatus(users[i].status),
+            users[i].updatedAt
+        }));
     }
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(USERS_FILE_PATH_PRIMARY,
+                                              USERS_FILE_PATH_FALLBACK,
+                                              "userID|fullName|username|password|status|updatedAt",
+                                              rows);
 }
 
 bool saveAdmins(const std::vector<Admin>& admins) {
-    // Canonical rewrite keeps one header and one normalized row format.
-    std::ofstream writer(resolveDataPath(ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "adminID|fullName|username|password|role|status|updatedAt\n";
+    std::vector<std::string> rows;
+    rows.reserve(admins.size());
     for (size_t i = 0; i < admins.size(); ++i) {
-        writer << admins[i].adminId << '|'
-               << admins[i].fullName << '|'
-               << admins[i].username << '|'
-               << admins[i].password << '|'
-               << admins[i].role << '|'
-               << normalizeStatus(admins[i].status) << '|'
-               << admins[i].updatedAt << '\n';
+        rows.push_back(storage::joinPipeRow({
+            admins[i].adminId,
+            storage::sanitizeSingleLineInput(admins[i].fullName),
+            storage::sanitizeSingleLineInput(admins[i].username),
+            admins[i].password,
+            storage::sanitizeSingleLineInput(admins[i].role),
+            normalizeStatus(admins[i].status),
+            admins[i].updatedAt
+        }));
     }
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(ADMINS_FILE_PATH_PRIMARY,
+                                              ADMINS_FILE_PATH_FALLBACK,
+                                              "adminID|fullName|username|password|role|status|updatedAt",
+                                              rows);
 }
 
 void migratePasswordsToHash(std::vector<User>& users, std::vector<Admin>& admins) {
@@ -633,14 +610,15 @@ void setMustChangePasswordFlag(const std::string& username) {
     }
     flags.push_back(std::make_pair(username, std::string("yes")));
 
-    std::ofstream writer(resolveDataPath(PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK));
-    if (writer.is_open()) {
-        writer << "username|mustChangePassword\n";
-        for (size_t i = 0; i < flags.size(); ++i) {
-            writer << flags[i].first << "|" << flags[i].second << "\n";
-        }
-        writer.flush();
+    std::vector<std::string> rows;
+    rows.reserve(flags.size());
+    for (size_t i = 0; i < flags.size(); ++i) {
+        rows.push_back(storage::joinPipeRow({flags[i].first, flags[i].second}));
     }
+    storage::writePipeFileWithFallback(PASSWORD_FLAGS_FILE_PATH_PRIMARY,
+                                       PASSWORD_FLAGS_FILE_PATH_FALLBACK,
+                                       "username|mustChangePassword",
+                                       rows);
 }
 
 void clearMustChangePasswordFlag(const std::string& username) {
@@ -660,14 +638,15 @@ void clearMustChangePasswordFlag(const std::string& username) {
         file.close();
     }
 
-    std::ofstream writer(resolveDataPath(PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK));
-    if (writer.is_open()) {
-        writer << "username|mustChangePassword\n";
-        for (size_t i = 0; i < flags.size(); ++i) {
-            writer << flags[i].first << "|" << flags[i].second << "\n";
-        }
-        writer.flush();
+    std::vector<std::string> rows;
+    rows.reserve(flags.size());
+    for (size_t i = 0; i < flags.size(); ++i) {
+        rows.push_back(storage::joinPipeRow({flags[i].first, flags[i].second}));
     }
+    storage::writePipeFileWithFallback(PASSWORD_FLAGS_FILE_PATH_PRIMARY,
+                                       PASSWORD_FLAGS_FILE_PATH_FALLBACK,
+                                       "username|mustChangePassword",
+                                       rows);
 }
 
 bool forcePasswordChange(const std::string& username, bool isAdmin) {

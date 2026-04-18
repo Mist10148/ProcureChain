@@ -3,6 +3,7 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/notifications.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -125,12 +126,7 @@ bool loadAdminUsernames(std::vector<std::string>& usernames) {
             }
         }
 
-        std::stringstream parser(line);
-        std::string token;
-        std::vector<std::string> tokens;
-        while (std::getline(parser, token, '|')) {
-            tokens.push_back(token);
-        }
+        const std::vector<std::string> tokens = storage::splitPipeRow(line);
 
         if (tokens.size() < 3 || tokens[2].empty()) {
             continue;
@@ -368,23 +364,91 @@ void synchronizeEmptyNodesFromReference() {
 }
 
 bool saveChainRows(const std::string& primaryPath, const std::string& fallbackPath, const std::vector<BlockRow>& rows) {
-    std::ofstream writer;
-    if (!openWriteFileWithFallback(writer, primaryPath, fallbackPath)) {
-        return false;
-    }
-
-    writer << "index|timestamp|action|documentID|actor|previousHash|currentHash\n";
+    std::vector<std::string> serializedRows;
+    serializedRows.reserve(rows.size());
     for (std::size_t i = 0; i < rows.size(); ++i) {
-        writer << rows[i].index << '|'
-               << rows[i].timestamp << '|'
-               << rows[i].action << '|'
-               << rows[i].documentId << '|'
-               << rows[i].actor << '|'
-               << rows[i].previousHash << '|'
-               << rows[i].currentHash << '\n';
+        serializedRows.push_back(storage::joinPipeRow({
+            rows[i].index,
+            rows[i].timestamp,
+            rows[i].action,
+            rows[i].documentId,
+            rows[i].actor,
+            rows[i].previousHash,
+            rows[i].currentHash
+        }));
+    }
+    return storage::writePipeFileWithFallback(primaryPath,
+                                              fallbackPath,
+                                              "index|timestamp|action|documentID|actor|previousHash|currentHash",
+                                              serializedRows);
+}
+
+void rebuildChainHashes(std::vector<BlockRow>& rows) {
+    std::string previousHash = "0000";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        rows[i].previousHash = previousHash;
+        rows[i].currentHash = computeSimpleHash(serializeBlockWithoutCurrentHash(rows[i]));
+        previousHash = rows[i].currentHash;
+    }
+}
+
+bool rewriteNodeFilesFromCanonical(const std::vector<NodePath>& nodePaths,
+                                   const std::vector<BlockRow>& rows,
+                                   const std::vector<std::string>* originalContents,
+                                   bool& rollbackSucceeded) {
+    rollbackSucceeded = true;
+    const std::string expectedContents =
+        "index|timestamp|action|documentID|actor|previousHash|currentHash\n" +
+        [&rows]() {
+            std::ostringstream out;
+            for (std::size_t i = 0; i < rows.size(); ++i) {
+                out << storage::joinPipeRow({
+                    rows[i].index,
+                    rows[i].timestamp,
+                    rows[i].action,
+                    rows[i].documentId,
+                    rows[i].actor,
+                    rows[i].previousHash,
+                    rows[i].currentHash
+                }) << '\n';
+            }
+            return out.str();
+        }();
+
+    std::vector<std::string> targetPaths;
+    targetPaths.reserve(nodePaths.size());
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        targetPaths.push_back(storage::resolveWritePath(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
     }
 
-    writer.flush();
+    std::size_t writtenCount = 0;
+    for (std::size_t i = 0; i < targetPaths.size(); ++i) {
+        if (!storage::writeTextFileAtomically(targetPaths[i], expectedContents)) {
+            if (originalContents != NULL) {
+                for (std::size_t rollbackIndex = 0; rollbackIndex < writtenCount; ++rollbackIndex) {
+                    if (!storage::writeTextFileAtomically(targetPaths[rollbackIndex], (*originalContents)[rollbackIndex])) {
+                        rollbackSucceeded = false;
+                    }
+                }
+            }
+            return false;
+        }
+        writtenCount++;
+    }
+
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        if (readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath) != expectedContents) {
+            if (originalContents != NULL) {
+                for (std::size_t rollbackIndex = 0; rollbackIndex < targetPaths.size(); ++rollbackIndex) {
+                    if (!storage::writeTextFileAtomically(targetPaths[rollbackIndex], (*originalContents)[rollbackIndex])) {
+                        rollbackSucceeded = false;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -463,26 +527,16 @@ void removeOrphanAdminNodeFiles(const std::vector<NodePath>& activePaths) {
 } // namespace
 
 void ensureBlockchainNodeFilesExist() {
-    // Startup integrity bootstrap for all simulated nodes.
+    // Startup bootstrap only ensures the expected files exist.
     const std::string header = "index|timestamp|action|documentID|actor|previousHash|currentHash";
     const std::vector<NodePath> nodePaths = buildNodePaths();
-
-    removeOrphanAdminNodeFiles(nodePaths);
 
     for (std::size_t i = 0; i < nodePaths.size(); ++i) {
         ensureFileWithHeader(nodePaths[i].primaryPath, nodePaths[i].fallbackPath, header);
     }
-    seedBlockchainIfAllEmpty();
-    synchronizeEmptyNodesFromReference();
-    migrateAllNodesToSha256();
 }
 
 int appendBlockchainAction(const std::string& action, const std::string& docId, const std::string& actor) {
-    // Append pipeline:
-    // 1) read latest index/hash from node 1,
-    // 2) build next block,
-    // 3) append identical block to all nodes.
-    // Complexity is O(n + k), n=rows in chain, k=node count.
     ensureBlockchainNodeFilesExist();
 
     const std::vector<NodePath> nodePaths = buildNodePaths();
@@ -490,54 +544,75 @@ int appendBlockchainAction(const std::string& action, const std::string& docId, 
         return -1;
     }
 
-    std::ifstream nodeReader;
-    if (!openInputFileWithFallback(nodeReader, nodePaths[0].primaryPath, nodePaths[0].fallbackPath)) {
+    std::vector<NodeValidationResult> nodeResults;
+    std::vector<std::string> nodeContents;
+    nodeResults.reserve(nodePaths.size());
+    nodeContents.reserve(nodePaths.size());
+
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        nodeResults.push_back(validateSingleChainDetailed(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+        nodeContents.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+        if (!nodeResults[i].integrityOk) {
+            logTamperAlert("HIGH",
+                           "BLOCKCHAIN_APPEND",
+                           docId,
+                           "Append blocked because at least one blockchain replica failed validation. Run blockchain repair first.",
+                           actor,
+                           "PUBLIC");
+            return -1;
+        }
+    }
+
+    bool sameContent = !nodeContents.empty();
+    for (std::size_t i = 1; i < nodeContents.size() && sameContent; ++i) {
+        if (nodeContents[i] != nodeContents[0]) {
+            sameContent = false;
+        }
+    }
+
+    if (!sameContent) {
+        logTamperAlert("HIGH",
+                       "BLOCKCHAIN_APPEND",
+                       docId,
+                       "Append blocked because blockchain replicas are diverged. Run blockchain repair first.",
+                       actor,
+                       "PUBLIC");
         return -1;
     }
 
-    std::string line;
-    std::getline(nodeReader, line); // Skip header.
-
+    const std::vector<BlockRow>& referenceRows = nodeResults[0].rows;
     int nextIndex = 1;
     std::string previousHash = "0000";
-
-    while (std::getline(nodeReader, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        BlockRow row;
-        if (!parseBlockLine(line, row)) {
-            continue;
-        }
-
-        nextIndex = std::atoi(row.index.c_str()) + 1;
-        previousHash = row.currentHash;
+    if (!referenceRows.empty()) {
+        nextIndex = std::atoi(referenceRows.back().index.c_str()) + 1;
+        previousHash = referenceRows.back().currentHash;
     }
 
     std::string indexText = std::to_string(nextIndex);
     std::string timestamp = getCurrentTimestamp();
-    std::string source = indexText + "|" + timestamp + "|" + action + "|" + docId + "|" + actor + "|" + previousHash;
-    std::string currentHash = computeSimpleHash(source);
+    BlockRow newRow;
+    newRow.index = indexText;
+    newRow.timestamp = timestamp;
+    newRow.action = action;
+    newRow.documentId = docId;
+    newRow.actor = actor;
+    newRow.previousHash = previousHash;
+    newRow.currentHash = computeSimpleHash(serializeBlockWithoutCurrentHash(newRow));
 
-    const std::string row = source + "|" + currentHash;
+    std::vector<BlockRow> candidateRows = referenceRows;
+    candidateRows.push_back(newRow);
 
-    std::vector<std::ofstream> nodeWriters;
-    nodeWriters.reserve(nodePaths.size());
-
-    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
-        std::ofstream nodeWriter;
-        if (!openAppendFileWithFallback(nodeWriter, nodePaths[i].primaryPath, nodePaths[i].fallbackPath)) {
-            return -1;
-        }
-
-        nodeWriters.push_back(std::move(nodeWriter));
-    }
-
-    // Write the same block to all simulated node files.
-    for (std::size_t i = 0; i < nodeWriters.size(); ++i) {
-        nodeWriters[i] << row << '\n';
-        nodeWriters[i].flush();
+    bool rollbackSucceeded = true;
+    if (!rewriteNodeFilesFromCanonical(nodePaths, candidateRows, &nodeContents, rollbackSucceeded)) {
+        logTamperAlert("HIGH",
+                       "BLOCKCHAIN_APPEND",
+                       docId,
+                       rollbackSucceeded ?
+                           "Append failed and was rolled back because replica rewrite verification failed." :
+                           "Append failed and rollback also encountered errors. Manual blockchain repair is required.",
+                       actor,
+                       "PUBLIC");
+        return -1;
     }
 
     return nextIndex;
@@ -740,6 +815,86 @@ void viewBlockchainExplorer(const std::string& actor) {
         logAuditAction("BLOCKCHAIN_EXPLORER_OK", std::to_string(nodeResults.size()) + "_nodes", actor);
     }
 
+    waitForEnter();
+}
+
+void repairBlockchainNodes(const std::string& actor) {
+    clearScreen();
+    ui::printSectionTitle("BLOCKCHAIN REPAIR (SIMULATED)");
+
+    if (!ui::confirmAction("Repair blockchain replicas using the best available canonical chain?",
+                           "Run Repair",
+                           "Cancel")) {
+        std::cout << ui::warning("[!] Blockchain repair cancelled.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    const std::vector<NodePath> nodePaths = buildNodePaths();
+    if (nodePaths.empty()) {
+        std::cout << ui::error("[!] No blockchain nodes are configured.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    removeOrphanAdminNodeFiles(nodePaths);
+    ensureBlockchainNodeFilesExist();
+
+    std::vector<NodeValidationResult> nodeResults;
+    std::vector<std::string> originalContents;
+    nodeResults.reserve(nodePaths.size());
+    originalContents.reserve(nodePaths.size());
+
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        nodeResults.push_back(validateSingleChainDetailed(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+        originalContents.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+    }
+
+    std::vector<BlockRow> canonicalRows;
+    std::size_t bestValidIndex = nodeResults.size();
+    std::size_t bestValidLength = 0;
+    for (std::size_t i = 0; i < nodeResults.size(); ++i) {
+        if (!nodeResults[i].integrityOk) {
+            continue;
+        }
+        if (bestValidIndex == nodeResults.size() || nodeResults[i].rows.size() > bestValidLength) {
+            bestValidIndex = i;
+            bestValidLength = nodeResults[i].rows.size();
+        }
+    }
+
+    if (bestValidIndex != nodeResults.size()) {
+        canonicalRows = nodeResults[bestValidIndex].rows;
+    } else {
+        for (std::size_t i = 0; i < nodeResults.size(); ++i) {
+            if (!nodeResults[i].rows.empty()) {
+                canonicalRows = nodeResults[i].rows;
+                rebuildChainHashes(canonicalRows);
+                break;
+            }
+        }
+    }
+
+    bool rollbackSucceeded = true;
+    if (!rewriteNodeFilesFromCanonical(nodePaths, canonicalRows, &originalContents, rollbackSucceeded)) {
+        logTamperAlert("HIGH",
+                       "BLOCKCHAIN_REPAIR",
+                       "MULTI",
+                       rollbackSucceeded ?
+                           "Blockchain repair failed and was rolled back." :
+                           "Blockchain repair failed and rollback also encountered errors. Manual intervention is required.",
+                       actor,
+                       "PUBLIC");
+        std::cout << ui::error("[!] Blockchain repair failed.") << "\n";
+        waitForEnter();
+        return;
+    }
+
+    tryLogAuditAction("BLOCKCHAIN_REPAIR_OK",
+                      "MULTI[" + std::to_string(canonicalRows.size()) + "_blocks]",
+                      actor);
+    std::cout << ui::success("[+] Blockchain replicas repaired successfully.") << "\n";
+    std::cout << "  Canonical blocks : " << canonicalRows.size() << "\n";
     waitForEnter();
 }
 

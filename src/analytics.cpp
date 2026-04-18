@@ -3,6 +3,7 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/blockchain.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -106,15 +107,7 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 std::string trimCopy(const std::string& value) {
@@ -167,36 +160,15 @@ void clearInputBuffer() {
 }
 
 bool isDateTextValid(const std::string& value) {
-    if (value.size() != 10) {
-        return false;
-    }
-
-    return std::isdigit(static_cast<unsigned char>(value[0])) &&
-           std::isdigit(static_cast<unsigned char>(value[1])) &&
-           std::isdigit(static_cast<unsigned char>(value[2])) &&
-           std::isdigit(static_cast<unsigned char>(value[3])) &&
-           value[4] == '-' &&
-           std::isdigit(static_cast<unsigned char>(value[5])) &&
-           std::isdigit(static_cast<unsigned char>(value[6])) &&
-           value[7] == '-' &&
-           std::isdigit(static_cast<unsigned char>(value[8])) &&
-           std::isdigit(static_cast<unsigned char>(value[9]));
+    return storage::isDateTextValidStrict(value, false);
 }
 
 bool parseDateText(const std::string& dateText, std::tm& tmValue) {
-    if (!isDateTextValid(dateText)) {
-        return false;
-    }
-
-    std::stringstream parser(dateText);
-    parser >> std::get_time(&tmValue, "%Y-%m-%d");
-    return !parser.fail();
+    return storage::parseDateTextStrict(dateText, tmValue);
 }
 
 bool parseDateTimeText(const std::string& dateTimeText, std::tm& tmValue) {
-    std::stringstream parser(dateTimeText);
-    parser >> std::get_time(&tmValue, "%Y-%m-%d %H:%M:%S");
-    return !parser.fail();
+    return storage::parseDateTimeTextStrict(dateTimeText, tmValue);
 }
 
 std::string formatDate(std::tm tmValue) {
@@ -1729,6 +1701,15 @@ void renderIntegrityStatus(const Admin& admin, const AnalyticsWindow& window) {
     ui::printBreadcrumb({"ADMIN", "ANALYTICS HUB", "INTEGRITY"});
     printWindowLabel(window);
 
+    std::vector<DocumentRow> docs;
+    std::vector<ApprovalRow> approvals;
+    std::vector<AuditRow> auditRows;
+    if (!loadDocuments(docs) || !loadApprovals(approvals) || !loadAuditRows(auditRows)) {
+        std::cout << "\n" << ui::error("[!] Integrity analytics datasets are unavailable.") << "\n";
+        waitForEnter();
+        return;
+    }
+
     std::vector<bool> nodeValid;
     std::vector<std::string> nodeData;
     const std::vector<BlockchainNodePath> nodePaths = getBlockchainNodePaths();
@@ -1755,8 +1736,6 @@ void renderIntegrityStatus(const Admin& admin, const AnalyticsWindow& window) {
     const int hashMismatches = countDocumentHashMismatches();
     const int stalePending = countStalePendingApprovals(7);
 
-    std::vector<AuditRow> auditRows;
-    loadAuditRows(auditRows);
     std::vector<std::string> riskDates;
 
     for (std::size_t i = 0; i < auditRows.size(); ++i) {
@@ -2032,10 +2011,10 @@ void renderOverviewCards(const Admin& admin) {
     std::vector<BudgetRow> budgets;
     std::vector<AuditRow> audits;
 
-    loadDocuments(docs);
-    loadApprovals(approvals);
-    loadBudgetRows(budgets);
-    loadAuditRows(audits);
+    if (!loadDocuments(docs) || !loadApprovals(approvals) || !loadBudgetRows(budgets) || !loadAuditRows(audits)) {
+        std::cout << "\n" << ui::error("[!] Overview datasets are unavailable.") << "\n";
+        return;
+    }
 
     int pendingDocs = 0;
     int approvedDocs = 0;

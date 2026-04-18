@@ -17,6 +17,11 @@ struct AuditLogMetadata {
 
 std::string getCurrentTimestamp();
 void ensureAuditTrailHashChain();
+bool tryLogAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex = -1);
+bool tryLogAuditActionDetailed(const std::string& action,
+                               const std::string& targetId,
+                               const std::string& actor,
+                               const AuditLogMetadata& metadata);
 void logAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex = -1);
 void logAuditActionDetailed(const std::string& action,
                            const std::string& targetId,

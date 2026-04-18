@@ -4,6 +4,7 @@
 #include "../include/auth.h"
 #include "../include/blockchain.h"
 #include "../include/delegation.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 
 #include <algorithm>
@@ -122,29 +123,11 @@ bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fal
         return true;
     }
 
-    std::ofstream createPrimary(primaryPath);
-    if (createPrimary.is_open()) {
-        createPrimary << headerLine << '\n';
-        return true;
-    }
-
-    std::ofstream createFallback(fallbackPath);
-    if (createFallback.is_open()) {
-        createFallback << headerLine << '\n';
-        return true;
-    }
-
-    return false;
+    return storage::writeTextFileWithFallback(primaryPath, fallbackPath, headerLine + "\n");
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 void clearInputBuffer() {
@@ -293,18 +276,17 @@ bool loadBudgetRows(std::vector<BudgetRow>& rows) {
 }
 
 bool saveBudgetRows(const std::vector<BudgetRow>& rows) {
-    std::ofstream writer(resolveDataPath(BUDGETS_FILE_PATH_PRIMARY, BUDGETS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "category|amount\n";
+    std::vector<std::string> serializedRows;
+    serializedRows.reserve(rows.size());
     for (std::size_t i = 0; i < rows.size(); ++i) {
-        writer << rows[i].category << '|' << std::fixed << std::setprecision(2) << rows[i].amount << '\n';
+        std::ostringstream amountOut;
+        amountOut << std::fixed << std::setprecision(2) << rows[i].amount;
+        serializedRows.push_back(storage::joinPipeRow({rows[i].category, amountOut.str()}));
     }
-    writer.flush();
-
-    return true;
+    return storage::writePipeFileWithFallback(BUDGETS_FILE_PATH_PRIMARY,
+                                              BUDGETS_FILE_PATH_FALLBACK,
+                                              "category|amount",
+                                              serializedRows);
 }
 
 BudgetEntry parseBudgetEntryTokens(const std::vector<std::string>& tokens) {
@@ -332,9 +314,18 @@ std::string serializeBudgetEntry(const BudgetEntry& entry) {
     std::ostringstream amountOut;
     amountOut << std::fixed << std::setprecision(2) << entry.allocatedAmount;
 
-    return entry.entryId + "|" + entry.entryType + "|" + entry.fiscalYear + "|" + entry.category + "|" +
-           amountOut.str() + "|" + entry.description + "|" + entry.createdAt + "|" + entry.createdBy + "|" +
-           entry.status + "|" + entry.publishedAt;
+    return storage::joinPipeRow({
+        entry.entryId,
+        entry.entryType,
+        entry.fiscalYear,
+        entry.category,
+        amountOut.str(),
+        entry.description,
+        entry.createdAt,
+        entry.createdBy,
+        entry.status,
+        entry.publishedAt
+    });
 }
 
 bool loadBudgetEntries(std::vector<BudgetEntry>& rows) {
@@ -369,18 +360,15 @@ bool loadBudgetEntries(std::vector<BudgetEntry>& rows) {
 }
 
 bool saveBudgetEntries(const std::vector<BudgetEntry>& rows) {
-    std::ofstream writer(resolveDataPath(BUDGET_ENTRIES_FILE_PATH_PRIMARY, BUDGET_ENTRIES_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt\n";
+    std::vector<std::string> serializedRows;
+    serializedRows.reserve(rows.size());
     for (std::size_t i = 0; i < rows.size(); ++i) {
-        writer << serializeBudgetEntry(rows[i]) << '\n';
+        serializedRows.push_back(serializeBudgetEntry(rows[i]));
     }
-
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(BUDGET_ENTRIES_FILE_PATH_PRIMARY,
+                                              BUDGET_ENTRIES_FILE_PATH_FALLBACK,
+                                              "entryID|entryType|fiscalYear|category|allocatedAmount|description|createdAt|createdBy|status|publishedAt",
+                                              serializedRows);
 }
 
 BudgetApproval parseBudgetApprovalTokens(const std::vector<std::string>& tokens) {
@@ -396,7 +384,15 @@ BudgetApproval parseBudgetApprovalTokens(const std::vector<std::string>& tokens)
 }
 
 std::string serializeBudgetApproval(const BudgetApproval& row) {
-    return row.entryId + "|" + row.approverUsername + "|" + row.role + "|" + row.status + "|" + row.createdAt + "|" + row.decidedAt + "|" + row.note;
+    return storage::joinPipeRow({
+        row.entryId,
+        row.approverUsername,
+        row.role,
+        row.status,
+        row.createdAt,
+        row.decidedAt,
+        row.note
+    });
 }
 
 bool loadBudgetApprovals(std::vector<BudgetApproval>& rows) {
@@ -431,18 +427,15 @@ bool loadBudgetApprovals(std::vector<BudgetApproval>& rows) {
 }
 
 bool saveBudgetApprovals(const std::vector<BudgetApproval>& rows) {
-    std::ofstream writer(resolveDataPath(BUDGET_APPROVALS_FILE_PATH_PRIMARY, BUDGET_APPROVALS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "entryID|approverUsername|role|status|createdAt|decidedAt|note\n";
+    std::vector<std::string> serializedRows;
+    serializedRows.reserve(rows.size());
     for (std::size_t i = 0; i < rows.size(); ++i) {
-        writer << serializeBudgetApproval(rows[i]) << '\n';
+        serializedRows.push_back(serializeBudgetApproval(rows[i]));
     }
-
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(BUDGET_APPROVALS_FILE_PATH_PRIMARY,
+                                              BUDGET_APPROVALS_FILE_PATH_FALLBACK,
+                                              "entryID|approverUsername|role|status|createdAt|decidedAt|note",
+                                              serializedRows);
 }
 
 std::string findActiveAdminUsernameByRole(const std::string& targetRole) {
@@ -1590,7 +1583,7 @@ bool writeMonthlyTransparencyTxt(const std::string& outputPath,
     }
 
     out.flush();
-    return true;
+    return out.good();
 }
 
 bool writeMonthlyTransparencyCsv(const std::string& outputPath,
@@ -1622,7 +1615,7 @@ bool writeMonthlyTransparencyCsv(const std::string& outputPath,
     }
 
     out.flush();
-    return true;
+    return out.good();
 }
 
 void generateMonthlyTransparencyReportForAdmin(const Admin& admin) {

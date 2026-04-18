@@ -2,6 +2,7 @@
 
 #include "../include/auth.h"
 #include "../include/documents.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -106,13 +107,7 @@ std::string trimCopy(const std::string& value) {
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 void clearInputBuffer() {
@@ -132,24 +127,7 @@ bool containsCaseInsensitive(const std::string& text, const std::string& token) 
 }
 
 bool isDateTextValid(const std::string& value) {
-    if (value.empty()) {
-        return true;
-    }
-
-    if (value.size() != 10) {
-        return false;
-    }
-
-    return std::isdigit(static_cast<unsigned char>(value[0])) &&
-           std::isdigit(static_cast<unsigned char>(value[1])) &&
-           std::isdigit(static_cast<unsigned char>(value[2])) &&
-           std::isdigit(static_cast<unsigned char>(value[3])) &&
-           value[4] == '-' &&
-           std::isdigit(static_cast<unsigned char>(value[5])) &&
-           std::isdigit(static_cast<unsigned char>(value[6])) &&
-           value[7] == '-' &&
-           std::isdigit(static_cast<unsigned char>(value[8])) &&
-           std::isdigit(static_cast<unsigned char>(value[9]));
+    return storage::isDateTextValidStrict(value, true);
 }
 
 bool isWithinDateRange(const std::string& timestamp, const std::string& fromDate, const std::string& toDate) {
@@ -665,28 +643,28 @@ bool loadAuditEntries(std::vector<AuditEntry>& entries) {
 }
 
 bool saveAuditEntries(const std::vector<AuditEntry>& rows) {
-    std::ofstream writer(resolveDataPath(AUDIT_FILE_PATH_PRIMARY, AUDIT_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << AUDIT_HEADER << '\n';
+    std::vector<std::string> serializedRows;
+    serializedRows.reserve(rows.size());
     for (std::size_t i = 0; i < rows.size(); ++i) {
-        writer << rows[i].timestamp << '|'
-               << rows[i].action << '|'
-               << rows[i].targetType << '|'
-               << rows[i].targetId << '|'
-               << rows[i].actorUsername << '|'
-               << rows[i].actorRole << '|'
-               << rows[i].outcome << '|'
-               << rows[i].visibility << '|'
-               << rows[i].chainIndex << '|'
-               << rows[i].previousHash << '|'
-               << rows[i].currentHash << '\n';
+        serializedRows.push_back(storage::joinPipeRow({
+            rows[i].timestamp,
+            rows[i].action,
+            rows[i].targetType,
+            rows[i].targetId,
+            rows[i].actorUsername,
+            rows[i].actorRole,
+            rows[i].outcome,
+            rows[i].visibility,
+            rows[i].chainIndex,
+            rows[i].previousHash,
+            rows[i].currentHash
+        }));
     }
 
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(AUDIT_FILE_PATH_PRIMARY,
+                                              AUDIT_FILE_PATH_FALLBACK,
+                                              AUDIT_HEADER,
+                                              serializedRows);
 }
 
 std::vector<AuditEntry> collectPublicEntries(const std::vector<AuditEntry>& entries) {
@@ -1150,16 +1128,16 @@ void ensureAuditTrailHashChain() {
     saveAuditEntries(entries);
 }
 
-void logAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex) {
+bool tryLogAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex) {
     AuditLogMetadata metadata;
     metadata.chainIndex = chainIndex;
-    logAuditActionDetailed(action, targetId, actor, metadata);
+    return tryLogAuditActionDetailed(action, targetId, actor, metadata);
 }
 
-void logAuditActionDetailed(const std::string& action,
-                           const std::string& targetId,
-                           const std::string& actor,
-                           const AuditLogMetadata& metadata) {
+bool tryLogAuditActionDetailed(const std::string& action,
+                               const std::string& targetId,
+                               const std::string& actor,
+                               const AuditLogMetadata& metadata) {
     std::vector<AuditEntry> entries;
     if (!loadAuditEntries(entries)) {
         entries.clear();
@@ -1178,7 +1156,18 @@ void logAuditActionDetailed(const std::string& action,
     row.currentHash = computeSimpleHash(buildAuditHashPayload(row));
 
     entries.push_back(row);
-    saveAuditEntries(entries);
+    return saveAuditEntries(entries);
+}
+
+void logAuditAction(const std::string& action, const std::string& targetId, const std::string& actor, int chainIndex) {
+    tryLogAuditAction(action, targetId, actor, chainIndex);
+}
+
+void logAuditActionDetailed(const std::string& action,
+                           const std::string& targetId,
+                           const std::string& actor,
+                           const AuditLogMetadata& metadata) {
+    tryLogAuditActionDetailed(action, targetId, actor, metadata);
 }
 
 void exportAuditTrailCsv(const std::string& actor) {

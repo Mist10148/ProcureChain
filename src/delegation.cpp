@@ -1,6 +1,7 @@
 #include "../include/delegation.h"
-#include "../include/ui.h"
 #include "../include/audit.h"
+#include "../include/storage_utils.h"
+#include "../include/ui.h"
 
 #include <ctime>
 #include <fstream>
@@ -33,13 +34,7 @@ std::string resolveDataPath(const std::string& primary, const std::string& fallb
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 void clearInputBuffer() {
@@ -73,7 +68,13 @@ Delegation parseDelegationTokens(const std::vector<std::string>& tokens) {
 }
 
 std::string serializeDelegation(const Delegation& d) {
-    return d.delegatorUsername + "|" + d.delegateeUsername + "|" + d.startDate + "|" + d.endDate + "|" + d.status;
+    return storage::joinPipeRow({
+        d.delegatorUsername,
+        d.delegateeUsername,
+        d.startDate,
+        d.endDate,
+        d.status
+    });
 }
 
 bool loadDelegations(std::vector<Delegation>& delegations) {
@@ -96,14 +97,15 @@ bool loadDelegations(std::vector<Delegation>& delegations) {
 }
 
 bool saveDelegations(const std::vector<Delegation>& delegations) {
-    std::ofstream writer(resolveDataPath(DELEGATIONS_FILE_PATH_PRIMARY, DELEGATIONS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) { return false; }
-    writer << "delegatorUsername|delegateeUsername|startDate|endDate|status\n";
+    std::vector<std::string> rows;
+    rows.reserve(delegations.size());
     for (size_t i = 0; i < delegations.size(); ++i) {
-        writer << serializeDelegation(delegations[i]) << "\n";
+        rows.push_back(serializeDelegation(delegations[i]));
     }
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(DELEGATIONS_FILE_PATH_PRIMARY,
+                                              DELEGATIONS_FILE_PATH_FALLBACK,
+                                              "delegatorUsername|delegateeUsername|startDate|endDate|status",
+                                              rows);
 }
 
 bool isAdminActiveWithUsername(const std::string& username);

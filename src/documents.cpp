@@ -5,6 +5,7 @@
 #include "../include/auth.h"
 #include "../include/blockchain.h"
 #include "../include/summarizer.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 #include "../include/verification.h"
 
@@ -130,14 +131,7 @@ std::string resolveDataPath(const std::string& primaryPath, const std::string& f
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    // One-pass tokenizer: O(m), m = line length.
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 std::string toLowerCopy(std::string value) {
@@ -248,23 +242,7 @@ void appendTagCounts(const std::string& csvTags, std::map<std::string, int>& cou
 }
 
 bool isDateTextValid(const std::string& value) {
-    // Validates strict YYYY-MM-DD text shape used by date filters.
-    if (value.empty()) {
-        return true;
-    }
-    if (value.size() != 10) {
-        return false;
-    }
-    return std::isdigit(static_cast<unsigned char>(value[0])) &&
-           std::isdigit(static_cast<unsigned char>(value[1])) &&
-           std::isdigit(static_cast<unsigned char>(value[2])) &&
-           std::isdigit(static_cast<unsigned char>(value[3])) &&
-           value[4] == '-' &&
-           std::isdigit(static_cast<unsigned char>(value[5])) &&
-           std::isdigit(static_cast<unsigned char>(value[6])) &&
-           value[7] == '-' &&
-           std::isdigit(static_cast<unsigned char>(value[8])) &&
-           std::isdigit(static_cast<unsigned char>(value[9]));
+    return storage::isDateTextValidStrict(value, true);
 }
 
 Document parseDocumentTokens(const std::vector<std::string>& tokens) {
@@ -368,27 +346,33 @@ std::string serializeDocument(const Document& doc) {
                                        doc.dateUploaded + "|" + doc.uploader + "|" + doc.tags;
     const std::string hashValue = !doc.hashValue.empty() ? doc.hashValue : computeSimpleHash(metadataSource);
 
-    std::ostringstream out;
-    out << doc.docId << '|'
-        << doc.title << '|'
-        << doc.category << '|'
-        << doc.description << '|'
-        << doc.department << '|'
-        << doc.dateUploaded << '|'
-        << doc.uploader << '|'
-        << doc.status << '|'
-        << hashValue << '|'
-        << doc.fileName << '|'
-        << doc.fileType << '|'
-        << doc.filePath << '|'
-        << doc.fileSizeBytes << '|'
-        << doc.budgetCategory << '|'
-        << std::fixed << std::setprecision(2) << doc.amount << '|'
-        << doc.versionNumber << '|'
-        << doc.previousDocId << '|'
-        << doc.tags;
+    std::ostringstream fileSizeOut;
+    fileSizeOut << doc.fileSizeBytes;
+    std::ostringstream amountOut;
+    amountOut << std::fixed << std::setprecision(2) << doc.amount;
+    std::ostringstream versionOut;
+    versionOut << doc.versionNumber;
 
-    return out.str();
+    return storage::joinPipeRow({
+        doc.docId,
+        doc.title,
+        doc.category,
+        doc.description,
+        doc.department,
+        doc.dateUploaded,
+        doc.uploader,
+        doc.status,
+        hashValue,
+        doc.fileName,
+        doc.fileType,
+        doc.filePath,
+        fileSizeOut.str(),
+        doc.budgetCategory,
+        amountOut.str(),
+        versionOut.str(),
+        doc.previousDocId,
+        doc.tags
+    });
 }
 
 bool loadDocuments(std::vector<Document>& docs) {
@@ -426,18 +410,15 @@ bool loadDocuments(std::vector<Document>& docs) {
 }
 
 bool saveDocuments(const std::vector<Document>& docs) {
-    // Canonical rewrite ensures hash/category/amount columns stay aligned.
-    std::ofstream writer(resolveDataPath(DOCUMENTS_FILE_PATH_PRIMARY, DOCUMENTS_FILE_PATH_FALLBACK));
-    if (!writer.is_open()) {
-        return false;
-    }
-
-    writer << "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags\n";
+    std::vector<std::string> rows;
+    rows.reserve(docs.size());
     for (size_t i = 0; i < docs.size(); ++i) {
-        writer << serializeDocument(docs[i]) << '\n';
+        rows.push_back(serializeDocument(docs[i]));
     }
-    writer.flush();
-    return true;
+    return storage::writePipeFileWithFallback(DOCUMENTS_FILE_PATH_PRIMARY,
+                                              DOCUMENTS_FILE_PATH_FALLBACK,
+                                              "docID|title|category|description|department|dateUploaded|uploader|status|hashValue|fileName|fileType|filePath|fileSizeBytes|budgetCategory|amount|versionNumber|previousDocId|tags",
+                                              rows);
 }
 
 void ensureStatusHistoryFileExists() {
@@ -446,15 +427,9 @@ void ensureStatusHistoryFileExists() {
         return;
     }
 
-    std::ofstream createPrimary(STATUS_HISTORY_FILE_PATH_PRIMARY);
-    if (!createPrimary.is_open()) {
-        createPrimary.clear();
-        createPrimary.open(STATUS_HISTORY_FILE_PATH_FALLBACK);
-    }
-
-    if (createPrimary.is_open()) {
-        createPrimary << "docID|timestamp|actorUsername|fromStatus|toStatus|note\n";
-    }
+    storage::writeTextFileWithFallback(STATUS_HISTORY_FILE_PATH_PRIMARY,
+                                       STATUS_HISTORY_FILE_PATH_FALLBACK,
+                                       "docID|timestamp|actorUsername|fromStatus|toStatus|note\n");
 }
 
 StatusHistoryRow parseStatusHistoryTokens(const std::vector<std::string>& tokens) {
@@ -469,13 +444,7 @@ StatusHistoryRow parseStatusHistoryTokens(const std::vector<std::string>& tokens
 }
 
 std::string sanitizeHistoryNote(const std::string& noteText) {
-    std::string cleaned = trimTagToken(noteText);
-    for (std::size_t i = 0; i < cleaned.size(); ++i) {
-        if (cleaned[i] == '|' || cleaned[i] == '\n' || cleaned[i] == '\r') {
-            cleaned[i] = ' ';
-        }
-    }
-    return trimTagToken(cleaned);
+    return storage::sanitizeSingleLineInput(noteText);
 }
 
 bool appendDocumentStatusHistory(const std::string& docId,
@@ -488,21 +457,109 @@ bool appendDocumentStatusHistory(const std::string& docId,
     }
 
     ensureStatusHistoryFileExists();
+    return storage::appendLineToFileWithFallback(STATUS_HISTORY_FILE_PATH_PRIMARY,
+                                                 STATUS_HISTORY_FILE_PATH_FALLBACK,
+                                                 storage::joinPipeRow({
+                                                     docId,
+                                                     getCurrentTimestamp(),
+                                                     actorUsername.empty() ? "SYSTEM" : actorUsername,
+                                                     fromStatus,
+                                                     toStatus,
+                                                     sanitizeHistoryNote(noteText)
+                                                 }));
+}
 
-    std::ofstream file;
-    if (!openAppendFileWithFallback(file, STATUS_HISTORY_FILE_PATH_PRIMARY, STATUS_HISTORY_FILE_PATH_FALLBACK)) {
+bool removeDocumentStatusHistoryForDocument(const std::string& docId) {
+    if (docId.empty()) {
         return false;
     }
 
-    file << docId << '|'
-         << getCurrentTimestamp() << '|'
-         << (actorUsername.empty() ? "SYSTEM" : actorUsername) << '|'
-         << fromStatus << '|'
-         << toStatus << '|'
-         << sanitizeHistoryNote(noteText) << '\n';
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, STATUS_HISTORY_FILE_PATH_PRIMARY, STATUS_HISTORY_FILE_PATH_FALLBACK)) {
+        std::error_code ec;
+        const bool missingPrimary = !std::filesystem::exists(STATUS_HISTORY_FILE_PATH_PRIMARY, ec);
+        ec.clear();
+        const bool missingFallback = !std::filesystem::exists(STATUS_HISTORY_FILE_PATH_FALLBACK, ec);
+        return missingPrimary && missingFallback;
+    }
 
-    file.flush();
-    return true;
+    std::vector<std::string> serializedRows;
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("docID|") == 0) {
+                continue;
+            }
+        }
+
+        const StatusHistoryRow row = parseStatusHistoryTokens(splitPipe(line));
+        if (row.docId.empty() || row.docId == docId) {
+            continue;
+        }
+
+        serializedRows.push_back(storage::joinPipeRow({
+            row.docId,
+            row.timestamp,
+            row.actorUsername,
+            row.fromStatus,
+            row.toStatus,
+            row.note
+        }));
+    }
+
+    return storage::writePipeFileWithFallback(STATUS_HISTORY_FILE_PATH_PRIMARY,
+                                              STATUS_HISTORY_FILE_PATH_FALLBACK,
+                                              "docID|timestamp|actorUsername|fromStatus|toStatus|note",
+                                              serializedRows);
+}
+
+bool removeDocumentRecordById(const std::string& docId) {
+    if (docId.empty()) {
+        return false;
+    }
+
+    std::vector<Document> docs;
+    if (!loadDocuments(docs)) {
+        return false;
+    }
+
+    std::vector<Document> filteredDocs;
+    filteredDocs.reserve(docs.size());
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (docs[i].docId != docId) {
+            filteredDocs.push_back(docs[i]);
+        }
+    }
+
+    return saveDocuments(filteredDocs);
+}
+
+bool deleteStoredDocumentFile(const std::string& filePath) {
+    if (filePath.empty()) {
+        return true;
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::exists(filePath, ec)) {
+        return !ec;
+    }
+
+    return std::filesystem::remove(filePath, ec) && !ec;
+}
+
+bool rollbackUploadedDocumentPersistence(const Document& doc) {
+    const bool removedHistory = removeDocumentStatusHistoryForDocument(doc.docId);
+    const bool removedApprovals = removeApprovalRequestsForDocument(doc.docId);
+    const bool removedDocument = removeDocumentRecordById(doc.docId);
+    const bool removedFile = deleteStoredDocumentFile(doc.filePath);
+    return removedHistory && removedApprovals && removedDocument && removedFile;
 }
 
 std::vector<StatusHistoryRow> loadDocumentStatusHistoryRows(const std::string& docId) {
@@ -1673,7 +1730,7 @@ bool writeDocumentsTxtReport(const std::string& outputPath,
     }
 
     out.flush();
-    return true;
+    return out.good();
 }
 
 void printDocumentsTable(const std::vector<Document>& docs, bool includeHashValue) {
@@ -2019,6 +2076,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     Document doc;
     std::cout << "Title      : ";
     std::getline(std::cin, doc.title);
+    doc.title = storage::sanitizeSingleLineInput(doc.title);
     if (!promptCategoryChoice(buildDocumentCategoryChoices(), doc.category)) {
         std::cout << ui::error("[!] Invalid category selection.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
@@ -2027,9 +2085,11 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     }
     std::cout << "Description: ";
     std::getline(std::cin, doc.description);
+    doc.description = storage::sanitizeSingleLineInput(doc.description);
     std::cout << "Tags (comma-separated, optional): ";
     std::string tagInput;
     std::getline(std::cin, tagInput);
+    tagInput = storage::sanitizeSingleLineInput(tagInput);
 
     if (doc.title.empty() || doc.category.empty() || doc.description.empty()) {
         std::cout << ui::error("[!] Title, category, and description are required.") << "\n";
@@ -2223,7 +2283,14 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         return;
     }
 
-    createApprovalRequestsForDocument(doc.docId, admin.username, doc.category);
+    if (!createApprovalRequestsForDocument(doc.docId, admin.username, doc.category)) {
+        docs.pop_back();
+        saveDocuments(docs);
+        std::cout << ui::error("[!] Unable to create approval routing for the uploaded document.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
 
     const std::vector<ApprovalChainRow> generatedChain = loadApprovalChainRows(doc.docId);
     if (!generatedChain.empty()) {
@@ -2239,13 +2306,23 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     }
 
     const int chainIndex = appendBlockchainAction("UPLOAD_HASH:" + doc.hashValue, doc.docId, admin.username);
-
-    logAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex);
-    appendDocumentStatusHistory(doc.docId,
-                                admin.username,
-                                "",
-                                doc.status,
-                                "Document uploaded and routed for approvals.");
+    if (chainIndex < 0 ||
+        !appendDocumentStatusHistory(doc.docId,
+                                     admin.username,
+                                     "",
+                                     doc.status,
+                                     "Document uploaded and routed for approvals.") ||
+        !tryLogAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex)) {
+        const bool rollbackOk = rollbackUploadedDocumentPersistence(doc);
+        if (!rollbackOk) {
+            std::cout << ui::error("[!] Upload persistence failed and rollback was incomplete. Please inspect document, approval, and status-history data.") << "\n";
+        } else {
+            std::cout << ui::error("[!] Upload persistence failed during audit/blockchain finalization. The upload was rolled back.") << "\n";
+        }
+        logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
+        waitForEnter();
+        return;
+    }
     if (!doc.previousDocId.empty()) {
         logAuditAction("DOC_AMENDMENT_CREATED", doc.docId + "<-" + doc.previousDocId, admin.username);
     }
@@ -2622,32 +2699,55 @@ void exportDocumentsToTxt(const Admin& admin) {
 }
 
 bool updateDocumentStatusBySystem(const std::string& targetDocId, const std::string& newStatus) {
-    return updateDocumentStatusBySystem(targetDocId, newStatus, "SYSTEM", "");
+    return updateDocumentStatusBySystem(targetDocId, newStatus, "SYSTEM", "", NULL, false);
 }
 
 bool updateDocumentStatusBySystem(const std::string& targetDocId,
                                   const std::string& newStatus,
                                   const std::string& actorUsername,
                                   const std::string& reasonNote) {
+    return updateDocumentStatusBySystem(targetDocId, newStatus, actorUsername, reasonNote, NULL, true);
+}
+
+bool updateDocumentStatusBySystem(const std::string& targetDocId,
+                                  const std::string& newStatus,
+                                  const std::string& actorUsername,
+                                  const std::string& reasonNote,
+                                  std::string* previousStatusOut,
+                                  bool allowInteractiveGuardrail) {
     // Used by approval workflows to synchronize consensus outcome to documents.
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
         return false;
     }
 
+    const std::vector<Document> originalDocs = docs;
     bool found = false;
     std::string previousStatus;
     for (size_t i = 0; i < docs.size(); ++i) {
         if (docs[i].docId == targetDocId) {
             previousStatus = docs[i].status;
+            if (previousStatusOut != NULL) {
+                *previousStatusOut = previousStatus;
+            }
 
             if (previousStatus == newStatus) {
                 return true;
             }
 
             if (toLowerCopy(newStatus) == "published") {
-                if (!confirmDocumentPublishGuardrail(docs[i], docs, actorUsername)) {
-                    return false;
+                if (allowInteractiveGuardrail) {
+                    if (!confirmDocumentPublishGuardrail(docs[i], docs, actorUsername)) {
+                        return false;
+                    }
+                } else {
+                    const BudgetGuardrailCheck check = buildDocumentPublishGuardrailCheck(docs, docs[i]);
+                    if (check.hasBudget && check.block) {
+                        return false;
+                    }
+                    if (check.hasBudget && check.warn) {
+                        return false;
+                    }
                 }
             }
 
@@ -2665,11 +2765,15 @@ bool updateDocumentStatusBySystem(const std::string& targetDocId,
         return false;
     }
 
-    appendDocumentStatusHistory(targetDocId,
-                                actorUsername,
-                                previousStatus,
-                                newStatus,
-                                reasonNote);
+    if (!appendDocumentStatusHistory(targetDocId,
+                                     actorUsername,
+                                     previousStatus,
+                                     newStatus,
+                                     reasonNote)) {
+        saveDocuments(originalDocs);
+        return false;
+    }
+
     return true;
 }
 
@@ -2682,6 +2786,7 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     std::string targetDocId;
     std::cout << "Enter Document ID: ";
     std::getline(std::cin, targetDocId);
+    targetDocId = storage::sanitizeSingleLineInput(targetDocId);
 
     if (targetDocId.empty()) {
         std::cout << ui::error("[!] Document ID is required.") << "\n";
@@ -2730,7 +2835,8 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     }
 
     const std::string noteText = "Manual status override by " + admin.role;
-    if (!updateDocumentStatusBySystem(targetDocId, newStatus, admin.username, noteText)) {
+    std::string previousStatus;
+    if (!updateDocumentStatusBySystem(targetDocId, newStatus, admin.username, noteText, &previousStatus, true)) {
         if (newStatus == "published") {
             std::cout << "\n" << ui::warning("[!] Publication was blocked by budget overrun guardrail.") << "\n";
         } else {
@@ -2754,7 +2860,20 @@ void updateDocumentStatusForAdmin(const Admin& admin) {
     } else {
         metadata.outcome = "PENDING";
     }
-    logAuditActionDetailed("UPDATE_STATUS", targetDocId, admin.username, metadata);
+
+    if (chainIndex < 0 || !tryLogAuditActionDetailed("UPDATE_STATUS", targetDocId, admin.username, metadata)) {
+        updateDocumentStatusBySystem(targetDocId,
+                                     previousStatus,
+                                     admin.username,
+                                     "Rollback after status finalization failure.",
+                                     NULL,
+                                     false);
+        std::cout << "\n" << ui::error("[!] Status change was rolled back because blockchain/audit finalization failed.") << "\n";
+        logAuditAction("UPDATE_STATUS_FAILED", targetDocId, admin.username);
+        waitForEnter();
+        return;
+    }
+
     std::cout << ui::success("[+] Document status updated successfully.") << "\n";
     waitForEnter();
 }

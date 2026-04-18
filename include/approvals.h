@@ -23,7 +23,8 @@ struct ApprovalRule {
 
 void ensureApprovalsDataFileExists();
 void ensureApprovalRulesDataFileExists();
-void createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category);
+bool createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category);
+bool removeApprovalRequestsForDocument(const std::string& docId);
 void viewPendingApprovalsForAdmin(const Admin& admin);
 void viewApprovalAnalyticsDashboard(const Admin& admin);
 void viewEscalationQueueForAdmin(const Admin& admin);

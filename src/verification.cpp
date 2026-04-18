@@ -4,6 +4,7 @@
 #include "../include/auth.h"
 #include "../include/blockchain.h"
 #include "../include/notifications.h"
+#include "../include/storage_utils.h"
 #include "../include/ui.h"
 
 #include <algorithm>
@@ -49,13 +50,7 @@ struct VerificationDocument {
 };
 
 std::vector<std::string> splitPipe(const std::string& line) {
-    std::vector<std::string> tokens;
-    std::stringstream parser(line);
-    std::string token;
-    while (std::getline(parser, token, '|')) {
-        tokens.push_back(token);
-    }
-    return tokens;
+    return storage::splitPipeRow(line);
 }
 
 bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
