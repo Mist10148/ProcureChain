@@ -479,7 +479,7 @@ std::string computeFileHashSha256(const std::string& filePath) {
     return computeSimpleHash(buffer.str());
 }
 
-bool verifyDocumentHashAgainstBlockchain(const std::string& hashValue, const std::string& docId, bool allowUploadActionFallback) {
+bool verifyDocumentHashAgainstBlockchain(const std::string& hashValue, const std::string& docId) {
     const std::vector<BlockchainNodePath> nodePaths = getBlockchainNodePaths();
     const std::string docIdLower = toLowerCopy(docId);
 
@@ -510,10 +510,6 @@ bool verifyDocumentHashAgainstBlockchain(const std::string& hashValue, const std
             }
 
             if (actionContainsHash(action, hashValue)) {
-                return true;
-            }
-
-            if (allowUploadActionFallback && toLowerCopy(action).find("upload") != std::string::npos) {
                 return true;
             }
         }
@@ -563,7 +559,7 @@ void verifyDocumentIntegrity(const std::string& actor) {
         std::cout << "  Checking official document record...\n";
         const std::string computedHash = computeVerificationHash(doc);
         std::cout << "  Generating SHA-256 hash...\n";
-        const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId, true);
+        const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId);
         std::cout << "  Validating blockchain registration...\n";
 
         const std::vector<std::string> headers = {"Field", "Value"};
@@ -704,7 +700,7 @@ void verifyPublishedDocumentAsCitizen(const std::string& actor) {
     const bool registryHashMatch = (computedHash == doc.hashValue);
     const bool registryHashDrift = (!doc.hashValue.empty() && !officialHash.empty() && doc.hashValue != officialHash);
     std::cout << "  Validating blockchain registration...\n";
-    const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId, false);
+    const bool blockchainMatch = verifyDocumentHashAgainstBlockchain(computedHash, doc.docId);
 
     const std::vector<std::string> headers = {"Field", "Value"};
     const std::vector<int> widths = {18, 60};

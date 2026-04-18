@@ -13,6 +13,7 @@
 #include "../include/verification.h"
 
 #include <iostream>
+#include <fstream>
 #include <limits>
 #include <vector>
 
@@ -20,6 +21,110 @@ const int HOME_MIN_CHOICE = 0;
 const int HOME_MAX_CHOICE = 2;
 
 namespace {
+struct StorageHealthCheck {
+    std::string label;
+    std::string primaryPath;
+    std::string fallbackPath;
+};
+
+bool g_writeOperationsBlocked = false;
+std::vector<std::string> g_storageHealthIssues;
+
+StorageHealthCheck makeHealthCheck(const std::string& label,
+                                   const std::string& primaryPath,
+                                   const std::string& fallbackPath) {
+    StorageHealthCheck check;
+    check.label = label;
+    check.primaryPath = primaryPath;
+    check.fallbackPath = fallbackPath;
+    return check;
+}
+
+bool canReadStorageFile(const StorageHealthCheck& check, std::string& resolvedPath) {
+    resolvedPath.clear();
+
+    std::ifstream primary(check.primaryPath);
+    if (primary.is_open()) {
+        resolvedPath = check.primaryPath;
+        return true;
+    }
+
+    std::ifstream fallback(check.fallbackPath);
+    if (fallback.is_open()) {
+        resolvedPath = check.fallbackPath;
+        return true;
+    }
+
+    return false;
+}
+
+void refreshStartupStorageHealth() {
+    g_storageHealthIssues.clear();
+
+    const std::vector<StorageHealthCheck> checks = {
+        makeHealthCheck("users", "data/users.txt", "../data/users.txt"),
+        makeHealthCheck("admins", "data/admins.txt", "../data/admins.txt"),
+        makeHealthCheck("documents", "data/documents.txt", "../data/documents.txt"),
+        makeHealthCheck("approvals", "data/approvals.txt", "../data/approvals.txt"),
+        makeHealthCheck("approval rules", "data/approval_rules.txt", "../data/approval_rules.txt"),
+        makeHealthCheck("budgets", "data/budgets.txt", "../data/budgets.txt"),
+        makeHealthCheck("budget entries", "data/budget_entries.txt", "../data/budget_entries.txt"),
+        makeHealthCheck("audit log", "data/audit_log.txt", "../data/audit_log.txt"),
+        makeHealthCheck("password flags", "data/password_flags.txt", "../data/password_flags.txt"),
+        makeHealthCheck("delegations", "data/delegations.txt", "../data/delegations.txt")
+    };
+
+    for (std::size_t i = 0; i < checks.size(); ++i) {
+        std::string resolvedPath;
+        if (!canReadStorageFile(checks[i], resolvedPath)) {
+            g_storageHealthIssues.push_back("Unable to open " + checks[i].label + " data.");
+            continue;
+        }
+
+        std::ifstream in(resolvedPath);
+        std::string firstLine;
+        if (!std::getline(in, firstLine)) {
+            g_storageHealthIssues.push_back("Unable to read " + checks[i].label + " data header.");
+        }
+    }
+
+    g_writeOperationsBlocked = !g_storageHealthIssues.empty();
+}
+
+void showStartupStorageHealthSummaryIfNeeded() {
+    if (!g_writeOperationsBlocked) {
+        return;
+    }
+
+    clearScreen();
+    ui::printSectionTitle("STORAGE HEALTH WARNING");
+    std::cout << ui::warning("[!] Write operations are temporarily blocked until storage issues are repaired.") << "\n\n";
+    for (std::size_t i = 0; i < g_storageHealthIssues.size() && i < 5; ++i) {
+        std::cout << "  - " << g_storageHealthIssues[i] << "\n";
+    }
+    if (g_storageHealthIssues.size() > 5) {
+        std::cout << "  - ...and " << (g_storageHealthIssues.size() - 5) << " more issue(s)\n";
+    }
+    std::cout << "\n  Read-only actions remain available.\n";
+    waitForEnter();
+}
+
+bool guardWriteOperation(const std::string& actionLabel) {
+    if (!g_writeOperationsBlocked) {
+        return true;
+    }
+
+    std::cout << "\n" << ui::error("[!] " + actionLabel + " is blocked because storage health checks failed.") << "\n";
+    for (std::size_t i = 0; i < g_storageHealthIssues.size() && i < 3; ++i) {
+        std::cout << "  - " << g_storageHealthIssues[i] << "\n";
+    }
+    if (g_storageHealthIssues.size() > 3) {
+        std::cout << "  - ...and " << (g_storageHealthIssues.size() - 3) << " more issue(s)\n";
+    }
+    waitForEnter();
+    return false;
+}
+
 // Role checks are centralized here so dashboard routing stays readable.
 bool isRole(const Admin& admin, const std::string& roleName) {
     return admin.role == roleName;
@@ -72,12 +177,6 @@ bool canVerifyDocumentIntegrity(const Admin& admin) {
 bool canManageAccounts(const Admin& admin) {
     // Account lifecycle controls are restricted to Super Admin.
     return isRole(admin, "Super Admin");
-}
-
-void denyAdminAction(const Admin& admin, const std::string& actionCode) {
-    std::cout << "\n" << ui::error("[!] Access denied for your role") << " (" << admin.role << ").\n";
-    logAuditAction("ACCESS_DENIED_" + actionCode, "N/A", admin.username);
-    waitForEnter();
 }
 } // namespace
 
@@ -210,7 +309,9 @@ void runDocumentsWorkspace(const Admin& admin) {
 
         switch (selectedAction) {
             case 1:
-                uploadDocumentAsAdmin(admin);
+                if (guardWriteOperation("Document upload")) {
+                    uploadDocumentAsAdmin(admin);
+                }
                 break;
             case 2:
                 viewAllDocumentsForAdmin(admin);
@@ -225,7 +326,9 @@ void runDocumentsWorkspace(const Admin& admin) {
                 exportDocumentsToTxt(admin);
                 break;
             case 5:
-                updateDocumentStatusForAdmin(admin);
+                if (guardWriteOperation("Manual document status update")) {
+                    updateDocumentStatusForAdmin(admin);
+                }
                 break;
             default:
                 break;
@@ -297,10 +400,14 @@ void runApprovalsWorkspace(const Admin& admin) {
                 viewPendingApprovalsForAdmin(admin);
                 break;
             case 2:
-                approveDocumentAsAdmin(admin);
+                if (guardWriteOperation("Document approval")) {
+                    approveDocumentAsAdmin(admin);
+                }
                 break;
             case 3:
-                rejectDocumentAsAdmin(admin);
+                if (guardWriteOperation("Document rejection")) {
+                    rejectDocumentAsAdmin(admin);
+                }
                 break;
             case 4:
                 viewApprovalAnalyticsDashboard(admin);
@@ -309,13 +416,19 @@ void runApprovalsWorkspace(const Admin& admin) {
                 viewEscalationQueueForAdmin(admin);
                 break;
             case 6:
-                manageApprovalRulesForAdmin(admin);
+                if (guardWriteOperation("Approval rule management")) {
+                    manageApprovalRulesForAdmin(admin);
+                }
                 break;
             case 7:
-                runDelegationManagement(admin);
+                if (guardWriteOperation("Delegation management")) {
+                    runDelegationManagement(admin);
+                }
                 break;
             case 8:
-                addApprovalCommentAsAdmin(admin);
+                if (guardWriteOperation("Approval comments")) {
+                    addApprovalCommentAsAdmin(admin);
+                }
                 break;
             default:
                 break;
@@ -364,7 +477,9 @@ void runBudgetWorkspace(const Admin& admin) {
                 viewBudgetVarianceReport(admin.username);
                 break;
             case 3:
-                manageBudgetsForAdmin(admin);
+                if (guardWriteOperation("Budget management")) {
+                    manageBudgetsForAdmin(admin);
+                }
                 break;
             default:
                 break;
@@ -500,10 +615,14 @@ void runAccountAdministrationWorkspace(const Admin& admin) {
 
         switch (choice) {
             case 0:
-                manageAccountLifecycleForAdmin(admin);
+                if (guardWriteOperation("Account lifecycle management")) {
+                    manageAccountLifecycleForAdmin(admin);
+                    refreshStartupStorageHealth();
+                }
                 break;
             case 1:
                 runBackupWorkspace(admin);
+                refreshStartupStorageHealth();
                 break;
             default:
                 break;
@@ -710,6 +829,8 @@ int main() {
     ensureApprovalsDataFileExists();
     ensureBlockchainNodeFilesExist();
     ensureDelegationFileExists();
+    refreshStartupStorageHealth();
+    showStartupStorageHealthSummaryIfNeeded();
 
     int choice = -1;
 
@@ -727,7 +848,9 @@ int main() {
                 handleLoginFlow();
                 break;
             case 2:
-                signUpAccount();
+                if (guardWriteOperation("Account sign-up")) {
+                    signUpAccount();
+                }
                 break;
             case 0:
                 std::cout << "\n" << ui::success("Thank you for using ProcureChain.") << "\n";

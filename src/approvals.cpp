@@ -72,21 +72,6 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
     return file.is_open();
 }
 
-std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
-    // Resolve the write target once so save routines stay deterministic.
-    std::ifstream primary(primaryPath);
-    if (primary.is_open()) {
-        return primaryPath;
-    }
-
-    std::ifstream fallback(fallbackPath);
-    if (fallback.is_open()) {
-        return fallbackPath;
-    }
-
-    return primaryPath;
-}
-
 std::vector<std::string> splitPipe(const std::string& line) {
     return storage::splitPipeRow(line);
 }
@@ -180,10 +165,8 @@ ApprovalRule parseApprovalRuleTokens(const std::vector<std::string>& tokens) {
     }
 
     if (tokens.size() > 2) {
-        std::stringstream in(tokens[2]);
         int parsedDays = 0;
-        in >> parsedDays;
-        if (!in.fail() && parsedDays > 0) {
+        if (storage::tryParseIntStrict(tokens[2], parsedDays) && parsedDays > 0) {
             rule.maxDecisionDays = parsedDays;
         }
     }
@@ -1109,19 +1092,24 @@ void ensureApprovalRulesDataFileExists() {
     }
 }
 
-bool createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category) {
+storage::OperationResult createApprovalRequestsForDocument(const std::string& docId,
+                                                          const std::string& uploader,
+                                                          const std::string& category) {
     // Creates pending requests from category-specific rules with a safe DEFAULT fallback.
     // Complexity: O(a + n), where a=admin rows and n=existing approval rows.
     std::ifstream adminFile;
     if (!openInputFileWithFallback(adminFile, ADMINS_FILE_PATH_PRIMARY, ADMINS_FILE_PATH_FALLBACK)) {
-        return false;
+        return storage::makeFailure("Unable to open admins data while creating approval routing.");
     }
 
     std::string line;
     std::getline(adminFile, line); // Skip header.
 
     std::vector<Approval> existing;
-    loadApprovals(existing);
+    if (!loadApprovals(existing)) {
+        return storage::makeFailure("Unable to load existing approval routing before creating new requests.");
+    }
+    const std::vector<Approval> originalExisting = existing;
 
     const std::string now = getCurrentTimestamp();
     ApprovalRule chosenRule = resolveRuleForCategory(category);
@@ -1217,7 +1205,7 @@ bool createApprovalRequestsForDocument(const std::string& docId, const std::stri
     }
 
     if (requests.empty()) {
-        return true;
+        return storage::makeSuccess("No approval requests were created because no eligible approvers matched the rule.");
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
@@ -1225,10 +1213,17 @@ bool createApprovalRequestsForDocument(const std::string& docId, const std::stri
     }
 
     if (!saveApprovals(existing)) {
-        return false;
+        return storage::makeFailure("Unable to persist generated approval requests.");
     }
 
-    return tryLogAuditAction("APPROVAL_REQUESTS_CREATED", docId, uploader);
+    if (tryLogAuditAction("APPROVAL_REQUESTS_CREATED", docId, uploader)) {
+        return storage::makeSuccess("Approval requests created successfully.");
+    }
+
+    const bool rollbackOk = saveApprovals(originalExisting);
+    return storage::makeFailure("Approval requests were saved, but audit logging failed.",
+                                true,
+                                rollbackOk);
 }
 
 bool getPendingDocumentApprovalIdsForApprover(const std::string& approverUsername,

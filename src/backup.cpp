@@ -2,6 +2,7 @@
 #include "../include/blockchain.h"
 #include "../include/ui.h"
 #include "../include/audit.h"
+#include "../include/storage_utils.h"
 
 #include <algorithm>
 #include <ctime>
@@ -46,15 +47,77 @@ std::string generateBackupTimestamp() {
 bool copyFile(const std::string& source, const std::string& dest) {
     std::ifstream in(source, std::ios::binary);
     if (!in.is_open()) { return false; }
+    std::filesystem::create_directories(std::filesystem::path(dest).parent_path());
     std::ofstream out(dest, std::ios::binary);
     if (!out.is_open()) { return false; }
     out << in.rdbuf();
     out.flush();
-    return true;
+    return out.good();
 }
 
 void clearInputBuffer() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
+
+std::vector<std::string> buildRestoreFileList(const std::vector<std::string>& blockchainFiles) {
+    std::vector<std::string> required = DATA_FILES;
+    for (size_t i = 0; i < blockchainFiles.size(); ++i) {
+        required.push_back(blockchainFiles[i]);
+    }
+    return required;
+}
+
+storage::OperationResult preflightBackupSnapshot(const std::string& selectedBackup,
+                                                 const std::vector<std::string>& requiredFiles,
+                                                 std::vector<std::string>& missingFiles) {
+    missingFiles.clear();
+    for (size_t i = 0; i < requiredFiles.size(); ++i) {
+        if (!std::filesystem::exists(selectedBackup + "/" + requiredFiles[i])) {
+            missingFiles.push_back(requiredFiles[i]);
+        }
+    }
+
+    if (!missingFiles.empty()) {
+        return storage::makeFailure("Selected backup is incomplete and cannot be restored safely.");
+    }
+
+    return storage::makeSuccess("Backup snapshot passed preflight.");
+}
+
+storage::OperationResult copyRelativeFiles(const std::string& sourceBase,
+                                           const std::string& destBase,
+                                           const std::vector<std::string>& relativeFiles,
+                                           int& copiedCount,
+                                           std::vector<std::string>& failedFiles) {
+    copiedCount = 0;
+    failedFiles.clear();
+
+    for (size_t i = 0; i < relativeFiles.size(); ++i) {
+        const std::string src = sourceBase + "/" + relativeFiles[i];
+        const std::string dst = destBase + "/" + relativeFiles[i];
+        if (!std::filesystem::exists(src)) {
+            failedFiles.push_back(relativeFiles[i]);
+            continue;
+        }
+
+        if (!copyFile(src, dst)) {
+            failedFiles.push_back(relativeFiles[i]);
+            continue;
+        }
+
+        if (!std::filesystem::exists(dst)) {
+            failedFiles.push_back(relativeFiles[i]);
+            continue;
+        }
+
+        copiedCount++;
+    }
+
+    if (!failedFiles.empty()) {
+        return storage::makeFailure("One or more backup files could not be copied safely.");
+    }
+
+    return storage::makeSuccess("All files copied successfully.");
 }
 
 } // namespace
@@ -92,23 +155,36 @@ void runBackupWorkspace(const Admin& admin) {
             const std::string backupTs = generateBackupTimestamp();
             const std::string backupPath = dataDir + "/" + BACKUP_DIR_NAME + "/" + backupTs;
             const std::vector<std::string> blockchainFiles = getBlockchainNodeRelativeFiles();
+            std::filesystem::create_directories(backupPath);
 
-            std::filesystem::create_directories(backupPath + "/blockchain");
-
-            int copied = 0;
+            std::vector<std::string> filesToCopy;
             for (size_t i = 0; i < DATA_FILES.size(); ++i) {
-                const std::string src = dataDir + "/" + DATA_FILES[i];
-                const std::string dst = backupPath + "/" + DATA_FILES[i];
-                if (std::filesystem::exists(src)) {
-                    if (copyFile(src, dst)) { copied++; }
+                if (std::filesystem::exists(dataDir + "/" + DATA_FILES[i])) {
+                    filesToCopy.push_back(DATA_FILES[i]);
                 }
             }
             for (size_t i = 0; i < blockchainFiles.size(); ++i) {
-                const std::string src = dataDir + "/" + blockchainFiles[i];
-                const std::string dst = backupPath + "/" + blockchainFiles[i];
-                if (std::filesystem::exists(src)) {
-                    if (copyFile(src, dst)) { copied++; }
+                if (std::filesystem::exists(dataDir + "/" + blockchainFiles[i])) {
+                    filesToCopy.push_back(blockchainFiles[i]);
                 }
+            }
+
+            int copied = 0;
+            std::vector<std::string> failedFiles;
+            const storage::OperationResult backupResult = copyRelativeFiles(dataDir,
+                                                                            backupPath,
+                                                                            filesToCopy,
+                                                                            copied,
+                                                                            failedFiles);
+
+            if (!backupResult.ok) {
+                std::cout << "\n" << ui::error("[!] Backup failed. Some files could not be copied safely.") << "\n";
+                if (!failedFiles.empty()) {
+                    std::cout << "  First failed file: " << failedFiles[0] << "\n";
+                }
+                logAuditAction("DATA_BACKUP_FAILED", backupPath, admin.username);
+                waitForEnter();
+                continue;
             }
 
             std::cout << "\n" << ui::success("[+] Backup created successfully.") << "\n";
@@ -164,6 +240,7 @@ void runBackupWorkspace(const Admin& admin) {
 
             const std::string selectedBackup = backupsBase + "/" + backupDirs[static_cast<size_t>(restoreChoice - 1)];
             const std::vector<std::string> blockchainFiles = getBlockchainNodeRelativeFiles();
+            const std::vector<std::string> requiredFiles = buildRestoreFileList(blockchainFiles);
 
             clearInputBuffer();
             std::cout << "\n" << ui::warning("[!] WARNING: This will overwrite all current data files.") << "\n";
@@ -177,21 +254,57 @@ void runBackupWorkspace(const Admin& admin) {
                 continue;
             }
 
-            int restored = 0;
-            for (size_t i = 0; i < DATA_FILES.size(); ++i) {
-                const std::string src = selectedBackup + "/" + DATA_FILES[i];
-                const std::string dst = dataDir + "/" + DATA_FILES[i];
-                if (std::filesystem::exists(src)) {
-                    if (copyFile(src, dst)) { restored++; }
+            std::vector<std::string> missingFiles;
+            const storage::OperationResult preflightResult = preflightBackupSnapshot(selectedBackup, requiredFiles, missingFiles);
+            if (!preflightResult.ok) {
+                std::cout << "\n" << ui::error("[!] Restore blocked. The selected backup is missing required files.") << "\n";
+                if (!missingFiles.empty()) {
+                    std::cout << "  First missing file: " << missingFiles[0] << "\n";
                 }
+                logAuditAction("DATA_RESTORE_FAILED", selectedBackup, admin.username);
+                waitForEnter();
+                continue;
             }
-            for (size_t i = 0; i < blockchainFiles.size(); ++i) {
-                const std::string src = selectedBackup + "/" + blockchainFiles[i];
-                const std::string dst = dataDir + "/" + blockchainFiles[i];
-                if (std::filesystem::exists(src)) {
-                    std::filesystem::create_directories(std::filesystem::path(dst).parent_path());
-                    if (copyFile(src, dst)) { restored++; }
+
+            const std::string restoreStage = backupsBase + "/.restore_stage_" + generateBackupTimestamp();
+            std::filesystem::remove_all(restoreStage);
+            std::filesystem::create_directories(restoreStage);
+
+            int staged = 0;
+            std::vector<std::string> failedStageFiles;
+            const storage::OperationResult stageResult = copyRelativeFiles(selectedBackup,
+                                                                           restoreStage,
+                                                                           requiredFiles,
+                                                                           staged,
+                                                                           failedStageFiles);
+            if (!stageResult.ok || staged != static_cast<int>(requiredFiles.size())) {
+                std::filesystem::remove_all(restoreStage);
+                std::cout << "\n" << ui::error("[!] Restore blocked. Backup staging failed verification.") << "\n";
+                if (!failedStageFiles.empty()) {
+                    std::cout << "  First failed file: " << failedStageFiles[0] << "\n";
                 }
+                logAuditAction("DATA_RESTORE_FAILED", selectedBackup, admin.username);
+                waitForEnter();
+                continue;
+            }
+
+            int restored = 0;
+            std::vector<std::string> failedRestoreFiles;
+            const storage::OperationResult restoreResult = copyRelativeFiles(restoreStage,
+                                                                             dataDir,
+                                                                             requiredFiles,
+                                                                             restored,
+                                                                             failedRestoreFiles);
+            std::filesystem::remove_all(restoreStage);
+
+            if (!restoreResult.ok || restored != static_cast<int>(requiredFiles.size())) {
+                std::cout << "\n" << ui::error("[!] Restore did not complete safely. Current data may be partially updated.") << "\n";
+                if (!failedRestoreFiles.empty()) {
+                    std::cout << "  First failed file: " << failedRestoreFiles[0] << "\n";
+                }
+                logAuditAction("DATA_RESTORE_FAILED", selectedBackup, admin.username);
+                waitForEnter();
+                continue;
             }
 
             std::cout << "\n" << ui::success("[+] Restore completed successfully.") << "\n";

@@ -11,6 +11,32 @@
 #include <vector>
 
 namespace storage {
+struct OperationResult {
+    bool ok;
+    std::string message;
+    bool rollbackAttempted;
+    bool rollbackSucceeded;
+
+    OperationResult(bool okValue = true,
+                    const std::string& messageValue = "",
+                    bool rollbackAttemptedValue = false,
+                    bool rollbackSucceededValue = true)
+        : ok(okValue),
+          message(messageValue),
+          rollbackAttempted(rollbackAttemptedValue),
+          rollbackSucceeded(rollbackSucceededValue) {}
+};
+
+inline OperationResult makeSuccess(const std::string& message = "") {
+    return OperationResult(true, message, false, true);
+}
+
+inline OperationResult makeFailure(const std::string& message,
+                                   bool rollbackAttempted = false,
+                                   bool rollbackSucceeded = true) {
+    return OperationResult(false, message, rollbackAttempted, rollbackSucceeded);
+}
+
 namespace detail {
 inline std::string trimCopy(const std::string& value) {
     const std::string whitespace = " \t\r\n";
@@ -254,6 +280,57 @@ inline bool parseDateTimeTextStrict(const std::string& value, std::tm& outTm) {
     parsed.tm_min = minute;
     parsed.tm_sec = second;
     outTm = parsed;
+    return true;
+}
+
+inline bool tryParseIntStrict(const std::string& raw, int& out) {
+    const std::string value = detail::trimCopy(raw);
+    if (value.empty()) {
+        return false;
+    }
+
+    std::stringstream in(value);
+    int parsed = 0;
+    char trailing = '\0';
+    if (!(in >> parsed) || (in >> trailing)) {
+        return false;
+    }
+
+    out = parsed;
+    return true;
+}
+
+inline bool tryParseLongLongStrict(const std::string& raw, long long& out) {
+    const std::string value = detail::trimCopy(raw);
+    if (value.empty()) {
+        return false;
+    }
+
+    std::stringstream in(value);
+    long long parsed = 0;
+    char trailing = '\0';
+    if (!(in >> parsed) || (in >> trailing)) {
+        return false;
+    }
+
+    out = parsed;
+    return true;
+}
+
+inline bool tryParseDoubleStrict(const std::string& raw, double& out) {
+    const std::string value = detail::trimCopy(raw);
+    if (value.empty()) {
+        return false;
+    }
+
+    std::stringstream in(value);
+    double parsed = 0.0;
+    char trailing = '\0';
+    if (!(in >> parsed) || (in >> trailing)) {
+        return false;
+    }
+
+    out = parsed;
     return true;
 }
 

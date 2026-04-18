@@ -17,6 +17,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <random>
 #include <sstream>
 #include <vector>
 
@@ -64,33 +65,6 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
     file.clear();
     file.open(fallbackPath);
     return file.is_open();
-}
-
-bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
-    // Appending avoids rewriting full files for single-row insert events.
-    file.open(primaryPath, std::ios::app);
-    if (file.is_open()) {
-        return true;
-    }
-
-    file.clear();
-    file.open(fallbackPath, std::ios::app);
-    return file.is_open();
-}
-
-std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
-    // Chooses existing path when possible so writes target current dataset.
-    std::ifstream primary(primaryPath);
-    if (primary.is_open()) {
-        return primaryPath;
-    }
-
-    std::ifstream fallback(fallbackPath);
-    if (fallback.is_open()) {
-        return fallbackPath;
-    }
-
-    return primaryPath;
 }
 
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
@@ -406,20 +380,16 @@ std::string getAdminRoleByChoice(int choice) {
 }
 
 std::string generateTemporaryPassword() {
-    // Generates a simple random temporary password for reset workflows.
-    // This is not cryptographic; it is suitable for classroom simulation.
-    static bool seeded = false;
-    if (!seeded) {
-        std::srand(static_cast<unsigned int>(std::time(NULL)));
-        seeded = true;
-    }
-
+    // Generates a temporary password with a non-deterministic RNG.
+    static std::random_device rd;
+    static std::mt19937 generator(rd());
     const std::string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    std::uniform_int_distribution<int> pickIndex(0, static_cast<int>(alphabet.size()) - 1);
     std::string out;
     const int desiredLength = 10;
 
     for (int i = 0; i < desiredLength; ++i) {
-        const int idx = std::rand() % static_cast<int>(alphabet.size());
+        const int idx = pickIndex(generator);
         out.push_back(alphabet[static_cast<size_t>(idx)]);
     }
 
@@ -591,7 +561,7 @@ bool hasMustChangePasswordFlag(const std::string& username) {
     return false;
 }
 
-void setMustChangePasswordFlag(const std::string& username) {
+storage::OperationResult setMustChangePasswordFlag(const std::string& username) {
     // Load all flags, set/add for username, rewrite file.
     std::vector<std::pair<std::string, std::string>> flags;
     std::ifstream file;
@@ -615,13 +585,17 @@ void setMustChangePasswordFlag(const std::string& username) {
     for (size_t i = 0; i < flags.size(); ++i) {
         rows.push_back(storage::joinPipeRow({flags[i].first, flags[i].second}));
     }
-    storage::writePipeFileWithFallback(PASSWORD_FLAGS_FILE_PATH_PRIMARY,
-                                       PASSWORD_FLAGS_FILE_PATH_FALLBACK,
-                                       "username|mustChangePassword",
-                                       rows);
+    if (!storage::writePipeFileWithFallback(PASSWORD_FLAGS_FILE_PATH_PRIMARY,
+                                            PASSWORD_FLAGS_FILE_PATH_FALLBACK,
+                                            "username|mustChangePassword",
+                                            rows)) {
+        return storage::makeFailure("Unable to persist must-change-password flags.");
+    }
+
+    return storage::makeSuccess("Must-change-password flag saved.");
 }
 
-void clearMustChangePasswordFlag(const std::string& username) {
+storage::OperationResult clearMustChangePasswordFlag(const std::string& username) {
     std::vector<std::pair<std::string, std::string>> flags;
     std::ifstream file;
     if (openInputFileWithFallback(file, PASSWORD_FLAGS_FILE_PATH_PRIMARY, PASSWORD_FLAGS_FILE_PATH_FALLBACK)) {
@@ -643,10 +617,14 @@ void clearMustChangePasswordFlag(const std::string& username) {
     for (size_t i = 0; i < flags.size(); ++i) {
         rows.push_back(storage::joinPipeRow({flags[i].first, flags[i].second}));
     }
-    storage::writePipeFileWithFallback(PASSWORD_FLAGS_FILE_PATH_PRIMARY,
-                                       PASSWORD_FLAGS_FILE_PATH_FALLBACK,
-                                       "username|mustChangePassword",
-                                       rows);
+    if (!storage::writePipeFileWithFallback(PASSWORD_FLAGS_FILE_PATH_PRIMARY,
+                                            PASSWORD_FLAGS_FILE_PATH_FALLBACK,
+                                            "username|mustChangePassword",
+                                            rows)) {
+        return storage::makeFailure("Unable to clear must-change-password flag.");
+    }
+
+    return storage::makeSuccess("Must-change-password flag cleared.");
 }
 
 bool forcePasswordChange(const std::string& username, bool isAdmin) {
@@ -675,6 +653,7 @@ bool forcePasswordChange(const std::string& username, bool isAdmin) {
     if (isAdmin) {
         std::vector<Admin> admins;
         if (!loadAdmins(admins)) { return false; }
+        const std::vector<Admin> originalAdmins = admins;
         for (size_t i = 0; i < admins.size(); ++i) {
             if (admins[i].username == username) {
                 admins[i].password = hashed;
@@ -683,9 +662,19 @@ bool forcePasswordChange(const std::string& username, bool isAdmin) {
             }
         }
         if (!saveAdmins(admins)) { return false; }
+        const storage::OperationResult flagResult = clearMustChangePasswordFlag(username);
+        if (!flagResult.ok) {
+            const bool rollbackOk = saveAdmins(originalAdmins);
+            std::cout << ui::error("[!] ") << flagResult.message << "\n";
+            if (!rollbackOk) {
+                std::cout << ui::error("[!] Password rollback also failed. Manual account repair is required.") << "\n";
+            }
+            return false;
+        }
     } else {
         std::vector<User> users;
         if (!loadUsers(users)) { return false; }
+        const std::vector<User> originalUsers = users;
         for (size_t i = 0; i < users.size(); ++i) {
             if (users[i].username == username) {
                 users[i].password = hashed;
@@ -694,9 +683,16 @@ bool forcePasswordChange(const std::string& username, bool isAdmin) {
             }
         }
         if (!saveUsers(users)) { return false; }
+        const storage::OperationResult flagResult = clearMustChangePasswordFlag(username);
+        if (!flagResult.ok) {
+            const bool rollbackOk = saveUsers(originalUsers);
+            std::cout << ui::error("[!] ") << flagResult.message << "\n";
+            if (!rollbackOk) {
+                std::cout << ui::error("[!] Password rollback also failed. Manual account repair is required.") << "\n";
+            }
+            return false;
+        }
     }
-
-    clearMustChangePasswordFlag(username);
     logAuditAction("FORCED_PASSWORD_CHANGE", username, username);
     std::cout << ui::success("[+] Password changed successfully.") << "\n";
     waitForEnter();
@@ -709,6 +705,7 @@ bool resetCitizenPassword(const std::string& username, std::string& tempPassword
     if (!loadUsers(users)) {
         return false;
     }
+    const std::vector<User> originalUsers = users;
 
     bool updated = false;
     for (size_t i = 0; i < users.size(); ++i) {
@@ -726,8 +723,17 @@ bool resetCitizenPassword(const std::string& username, std::string& tempPassword
     }
 
     if (!saveUsers(users)) { return false; }
-    setMustChangePasswordFlag(username);
-    return true;
+    const storage::OperationResult flagResult = setMustChangePasswordFlag(username);
+    if (flagResult.ok) {
+        return true;
+    }
+
+    const bool rollbackOk = saveUsers(originalUsers);
+    if (!rollbackOk) {
+        logAuditAction("PASSWORD_FLAG_ROLLBACK_FAILED", username, "SYSTEM");
+    }
+    tempPassword.clear();
+    return false;
 }
 
 bool resetAdminPassword(const std::string& username, std::string& tempPassword) {
@@ -736,6 +742,7 @@ bool resetAdminPassword(const std::string& username, std::string& tempPassword) 
     if (!loadAdmins(admins)) {
         return false;
     }
+    const std::vector<Admin> originalAdmins = admins;
 
     bool updated = false;
     for (size_t i = 0; i < admins.size(); ++i) {
@@ -753,8 +760,17 @@ bool resetAdminPassword(const std::string& username, std::string& tempPassword) 
     }
 
     if (!saveAdmins(admins)) { return false; }
-    setMustChangePasswordFlag(username);
-    return true;
+    const storage::OperationResult flagResult = setMustChangePasswordFlag(username);
+    if (flagResult.ok) {
+        return true;
+    }
+
+    const bool rollbackOk = saveAdmins(originalAdmins);
+    if (!rollbackOk) {
+        logAuditAction("PASSWORD_FLAG_ROLLBACK_FAILED", username, "SYSTEM");
+    }
+    tempPassword.clear();
+    return false;
 }
 } // namespace
 

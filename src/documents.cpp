@@ -4,6 +4,7 @@
 #include "../include/audit.h"
 #include "../include/auth.h"
 #include "../include/blockchain.h"
+#include "../include/notifications.h"
 #include "../include/summarizer.h"
 #include "../include/storage_utils.h"
 #include "../include/ui.h"
@@ -101,33 +102,6 @@ bool openInputFileWithFallback(std::ifstream& file, const std::string& primaryPa
     file.clear();
     file.open(fallbackPath);
     return file.is_open();
-}
-
-bool openAppendFileWithFallback(std::ofstream& file, const std::string& primaryPath, const std::string& fallbackPath) {
-    // Append mode is used for document creation without rewriting full file.
-    file.open(primaryPath, std::ios::app);
-    if (file.is_open()) {
-        return true;
-    }
-
-    file.clear();
-    file.open(fallbackPath, std::ios::app);
-    return file.is_open();
-}
-
-std::string resolveDataPath(const std::string& primaryPath, const std::string& fallbackPath) {
-    // Selects the currently valid location for rewrite operations.
-    std::ifstream primary(primaryPath);
-    if (primary.is_open()) {
-        return primaryPath;
-    }
-
-    std::ifstream fallback(fallbackPath);
-    if (fallback.is_open()) {
-        return fallbackPath;
-    }
-
-    return primaryPath;
 }
 
 std::vector<std::string> splitPipe(const std::string& line) {
@@ -277,19 +251,17 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
         doc.fileName = tokens[9];
         doc.fileType = tokens[10];
         doc.filePath = tokens[11];
-
-        std::stringstream sizeIn(tokens[12]);
-        sizeIn >> doc.fileSizeBytes;
+        if (!storage::tryParseLongLongStrict(tokens[12], doc.fileSizeBytes)) {
+            doc.fileSizeBytes = 0;
+        }
 
         doc.budgetCategory = tokens[13];
-
-        std::stringstream amountIn(tokens[14]);
-        amountIn >> doc.amount;
+        if (!storage::tryParseDoubleStrict(tokens[14], doc.amount)) {
+            doc.amount = 0.0;
+        }
 
         if (tokens.size() > 15) {
-            std::stringstream versionIn(tokens[15]);
-            versionIn >> doc.versionNumber;
-            if (versionIn.fail() || doc.versionNumber <= 0) {
+            if (!storage::tryParseIntStrict(tokens[15], doc.versionNumber) || doc.versionNumber <= 0) {
                 doc.versionNumber = 1;
             }
         }
@@ -308,9 +280,8 @@ Document parseDocumentTokens(const std::vector<std::string>& tokens) {
         doc.fileType = "legacy";
         doc.filePath = "";
 
-        if (tokens.size() > 9) {
-            std::stringstream amountIn(tokens[9]);
-            amountIn >> doc.amount;
+        if (tokens.size() > 9 && !storage::tryParseDoubleStrict(tokens[9], doc.amount)) {
+            doc.amount = 0.0;
         }
 
         doc.versionNumber = 1;
@@ -554,12 +525,18 @@ bool deleteStoredDocumentFile(const std::string& filePath) {
     return std::filesystem::remove(filePath, ec) && !ec;
 }
 
-bool rollbackUploadedDocumentPersistence(const Document& doc) {
+storage::OperationResult rollbackUploadedDocumentPersistenceDetailed(const Document& doc) {
     const bool removedHistory = removeDocumentStatusHistoryForDocument(doc.docId);
     const bool removedApprovals = removeApprovalRequestsForDocument(doc.docId);
     const bool removedDocument = removeDocumentRecordById(doc.docId);
     const bool removedFile = deleteStoredDocumentFile(doc.filePath);
-    return removedHistory && removedApprovals && removedDocument && removedFile;
+    const bool rollbackOk = removedHistory && removedApprovals && removedDocument && removedFile;
+    return storage::OperationResult(rollbackOk,
+                                    rollbackOk ?
+                                        "Upload rollback completed successfully." :
+                                        "Upload rollback was incomplete; manual data repair is required.",
+                                    true,
+                                    rollbackOk);
 }
 
 std::vector<StatusHistoryRow> loadDocumentStatusHistoryRows(const std::string& docId) {
@@ -1844,11 +1821,12 @@ bool matchesFilter(const Document& doc, const DocumentFilter& filter) {
 }
 } // namespace
 
-std::string generateNextDocumentId() {
+storage::OperationResult generateNextDocumentId(std::string& nextId) {
     // Scans existing IDs and increments max numeric suffix: O(n).
+    nextId.clear();
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
-        return "D001";
+        return storage::makeFailure("Unable to load documents data while generating the next document ID.");
     }
 
     int maxIdNumber = 0;
@@ -1866,7 +1844,11 @@ std::string generateNextDocumentId() {
             continue;
         }
 
-        const int parsedNumber = std::atoi(docs[i].docId.substr(numericStart).c_str());
+        const std::string suffix = docs[i].docId.substr(numericStart);
+        int parsedNumber = 0;
+        if (!storage::tryParseIntStrict(suffix, parsedNumber)) {
+            return storage::makeFailure("Malformed document ID encountered while generating the next document ID: " + docs[i].docId);
+        }
         if (parsedNumber > maxIdNumber) {
             maxIdNumber = parsedNumber;
         }
@@ -1874,7 +1856,8 @@ std::string generateNextDocumentId() {
 
     std::ostringstream idBuilder;
     idBuilder << 'D' << std::setw(3) << std::setfill('0') << (maxIdNumber + 1);
-    return idBuilder.str();
+    nextId = idBuilder.str();
+    return storage::makeSuccess("Next document ID generated successfully.");
 }
 
 void ensureSampleDocumentsPresent() {
@@ -2102,7 +2085,10 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 
     std::vector<Document> docs;
     if (!loadDocuments(docs)) {
-        docs.clear();
+        std::cout << ui::error("[!] Unable to load document records. Upload is blocked until storage is healthy.") << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
     }
 
     std::cout << "Amend rejected Document ID (optional): ";
@@ -2137,7 +2123,13 @@ void uploadDocumentAsAdmin(const Admin& admin) {
     doc.budgetCategory = "N/A";
     doc.amount = 0.0;
 
-    doc.docId = generateNextDocumentId();
+    storage::OperationResult nextIdResult = generateNextDocumentId(doc.docId);
+    if (!nextIdResult.ok) {
+        std::cout << ui::error("[!] ") << nextIdResult.message << "\n";
+        logAuditAction("UPLOAD_DOC_FAILED", "N/A", admin.username);
+        waitForEnter();
+        return;
+    }
     doc.dateUploaded = getCurrentTimestamp().substr(0, 10);
     doc.uploader = admin.username;
     doc.status = "pending_approval";
@@ -2231,6 +2223,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 
         doc.hashValue = computeFileHashSha256(doc.filePath);
         if (doc.hashValue.empty()) {
+            deleteStoredDocumentFile(doc.filePath);
             std::cout << ui::error("[!] Unable to compute SHA-256 hash for the imported file.") << "\n";
             logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
             waitForEnter();
@@ -2252,6 +2245,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         const DuplicateHashAction action = promptDuplicateHashAction(duplicateMatches, linkedDocId);
 
         if (action == DUPLICATE_HASH_CANCEL) {
+            deleteStoredDocumentFile(doc.filePath);
             std::cout << ui::warning("[!] Upload cancelled due to duplicate hash.") << "\n";
             logAuditAction("UPLOAD_DOC_DUPLICATE_CANCELLED", doc.docId, admin.username);
             waitForEnter();
@@ -2261,6 +2255,7 @@ void uploadDocumentAsAdmin(const Admin& admin) {
         if (action == DUPLICATE_HASH_LINK) {
             Document linkedBase;
             if (!findDocumentByIdCaseInsensitive(duplicateMatches, linkedDocId, linkedBase)) {
+                deleteStoredDocumentFile(doc.filePath);
                 std::cout << ui::error("[!] Linked base Document ID is not part of duplicate matches.") << "\n";
                 logAuditAction("UPLOAD_DOC_DUPLICATE_LINK_FAILED", doc.docId, admin.username);
                 waitForEnter();
@@ -2277,16 +2272,32 @@ void uploadDocumentAsAdmin(const Admin& admin) {
 
     docs.push_back(doc);
     if (!saveDocuments(docs)) {
+        deleteStoredDocumentFile(doc.filePath);
         std::cout << ui::error("[!] Unable to save document record.") << "\n";
         logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
         waitForEnter();
         return;
     }
 
-    if (!createApprovalRequestsForDocument(doc.docId, admin.username, doc.category)) {
-        docs.pop_back();
-        saveDocuments(docs);
+    const storage::OperationResult approvalResult = createApprovalRequestsForDocument(doc.docId, admin.username, doc.category);
+    if (!approvalResult.ok) {
+        const storage::OperationResult rollbackResult = rollbackUploadedDocumentPersistenceDetailed(doc);
+        if (!approvalResult.rollbackSucceeded || !rollbackResult.rollbackSucceeded) {
+            logTamperAlert("HIGH",
+                           "UPLOAD_DOC_ROLLBACK",
+                           doc.docId,
+                           "Document upload failed during approval routing and at least one rollback step was incomplete. Manual repair is required.",
+                           admin.username,
+                           "PUBLIC");
+        }
+
         std::cout << ui::error("[!] Unable to create approval routing for the uploaded document.") << "\n";
+        if (!approvalResult.message.empty()) {
+            std::cout << "  Reason: " << approvalResult.message << "\n";
+        }
+        if (!rollbackResult.rollbackSucceeded) {
+            std::cout << "  " << ui::error("Rollback was incomplete. Inspect documents, approvals, history, and stored files manually.") << "\n";
+        }
         logAuditAction("UPLOAD_DOC_FAILED", doc.docId, admin.username);
         waitForEnter();
         return;
@@ -2313,8 +2324,14 @@ void uploadDocumentAsAdmin(const Admin& admin) {
                                      doc.status,
                                      "Document uploaded and routed for approvals.") ||
         !tryLogAuditAction("UPLOAD_DOC", doc.docId, admin.username, chainIndex)) {
-        const bool rollbackOk = rollbackUploadedDocumentPersistence(doc);
-        if (!rollbackOk) {
+        const storage::OperationResult rollbackResult = rollbackUploadedDocumentPersistenceDetailed(doc);
+        if (!rollbackResult.rollbackSucceeded) {
+            logTamperAlert("HIGH",
+                           "UPLOAD_DOC_ROLLBACK",
+                           doc.docId,
+                           "Upload finalization failed and rollback was incomplete. Manual data repair is required.",
+                           admin.username,
+                           "PUBLIC");
             std::cout << ui::error("[!] Upload persistence failed and rollback was incomplete. Please inspect document, approval, and status-history data.") << "\n";
         } else {
             std::cout << ui::error("[!] Upload persistence failed during audit/blockchain finalization. The upload was rolled back.") << "\n";

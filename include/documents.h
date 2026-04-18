@@ -3,6 +3,7 @@
 
 #include <string>
 #include "auth.h"
+#include "storage_utils.h"
 
 struct Document {
     std::string docId;
@@ -25,7 +26,7 @@ struct Document {
     std::string previousDocId;
 };
 
-std::string generateNextDocumentId();
+storage::OperationResult generateNextDocumentId(std::string& nextId);
 void ensureSampleDocumentsPresent();
 void showPublishedDocuments(const std::string& actor);
 void searchPublishedDocumentForCitizen(const std::string& actor);

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "auth.h"
+#include "storage_utils.h"
 
 struct Approval {
     std::string docId;
@@ -23,7 +24,9 @@ struct ApprovalRule {
 
 void ensureApprovalsDataFileExists();
 void ensureApprovalRulesDataFileExists();
-bool createApprovalRequestsForDocument(const std::string& docId, const std::string& uploader, const std::string& category);
+storage::OperationResult createApprovalRequestsForDocument(const std::string& docId,
+                                                          const std::string& uploader,
+                                                          const std::string& category);
 bool removeApprovalRequestsForDocument(const std::string& docId);
 void viewPendingApprovalsForAdmin(const Admin& admin);
 void viewApprovalAnalyticsDashboard(const Admin& admin);
