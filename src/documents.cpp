@@ -89,6 +89,13 @@ struct DocumentFilter {
     std::string uploader;
 };
 
+struct DocumentComparisonRow {
+    std::string fieldName;
+    std::string leftValue;
+    std::string rightValue;
+    bool changed;
+};
+
 void clearInputBuffer();
 void printDocumentDetailPanel(const Document& doc, bool includeApprovalChain, const std::vector<Document>* allDocs);
 
@@ -1144,7 +1151,19 @@ std::string findRootDocumentId(const std::vector<Document>& docs, const Document
     return currentId;
 }
 
-void printDocumentLineagePanel(const Document& doc, const std::vector<Document>& docs) {
+bool compareDocumentLineageOrder(const Document& left, const Document& right) {
+    if (left.versionNumber != right.versionNumber) {
+        return left.versionNumber < right.versionNumber;
+    }
+
+    if (left.dateUploaded != right.dateUploaded) {
+        return left.dateUploaded < right.dateUploaded;
+    }
+
+    return left.docId < right.docId;
+}
+
+std::vector<Document> collectDocumentLineage(const Document& doc, const std::vector<Document>& docs) {
     const std::string rootId = findRootDocumentId(docs, doc);
     std::vector<Document> lineage;
 
@@ -1154,38 +1173,260 @@ void printDocumentLineagePanel(const Document& doc, const std::vector<Document>&
         }
     }
 
-    if (lineage.size() <= 1) {
-        return;
+    std::sort(lineage.begin(), lineage.end(), compareDocumentLineageOrder);
+    return lineage;
+}
+
+std::string buildDocumentComparisonTarget(const Document& left, const Document& right) {
+    return left.docId + "<->" + right.docId;
+}
+
+std::string formatDocumentComparisonPrevious(const Document& doc) {
+    return doc.previousDocId.empty() ? "(root)" : doc.previousDocId;
+}
+
+std::string formatDocumentComparisonFileSize(long long fileSizeBytes) {
+    std::ostringstream out;
+    out << fileSizeBytes;
+    return out.str();
+}
+
+void appendDocumentComparisonRow(std::vector<DocumentComparisonRow>& rows,
+                                 const std::string& fieldName,
+                                 const std::string& leftValue,
+                                 const std::string& rightValue) {
+    DocumentComparisonRow row;
+    row.fieldName = fieldName;
+    row.leftValue = leftValue.empty() ? "(none)" : leftValue;
+    row.rightValue = rightValue.empty() ? "(none)" : rightValue;
+    row.changed = (row.leftValue != row.rightValue);
+    rows.push_back(row);
+}
+
+std::vector<DocumentComparisonRow> buildDocumentComparisonRows(const Document& left, const Document& right) {
+    std::vector<DocumentComparisonRow> rows;
+    appendDocumentComparisonRow(rows, "Document ID", left.docId, right.docId);
+    appendDocumentComparisonRow(rows, "Version", std::to_string(left.versionNumber), std::to_string(right.versionNumber));
+    appendDocumentComparisonRow(rows, "Previous Version", formatDocumentComparisonPrevious(left), formatDocumentComparisonPrevious(right));
+    appendDocumentComparisonRow(rows, "Title", left.title, right.title);
+    appendDocumentComparisonRow(rows, "Category", left.category, right.category);
+    appendDocumentComparisonRow(rows, "Tags", left.tags, right.tags);
+    appendDocumentComparisonRow(rows, "Description", left.description, right.description);
+    appendDocumentComparisonRow(rows, "Department", left.department, right.department);
+    appendDocumentComparisonRow(rows, "Date Uploaded", left.dateUploaded, right.dateUploaded);
+    appendDocumentComparisonRow(rows, "Uploader", left.uploader, right.uploader);
+    appendDocumentComparisonRow(rows, "Status", left.status, right.status);
+    appendDocumentComparisonRow(rows, "Stored Hash", left.hashValue, right.hashValue);
+    appendDocumentComparisonRow(rows, "File Name", left.fileName, right.fileName);
+    appendDocumentComparisonRow(rows, "File Type", left.fileType, right.fileType);
+    appendDocumentComparisonRow(rows, "File Size (bytes)",
+                                formatDocumentComparisonFileSize(left.fileSizeBytes),
+                                formatDocumentComparisonFileSize(right.fileSizeBytes));
+    return rows;
+}
+
+bool findDocumentInLineageById(const std::vector<Document>& lineage,
+                               const std::string& targetDocId,
+                               Document& foundDoc,
+                               std::size_t* indexOut) {
+    const std::string normalizedTarget = toLowerCopy(storage::sanitizeSingleLineInput(targetDocId));
+
+    for (std::size_t i = 0; i < lineage.size(); ++i) {
+        if (toLowerCopy(lineage[i].docId) == normalizedTarget) {
+            foundDoc = lineage[i];
+            if (indexOut != NULL) {
+                *indexOut = i;
+            }
+            return true;
+        }
     }
 
-    std::sort(lineage.begin(), lineage.end(), [](const Document& left, const Document& right) {
-        if (left.versionNumber != right.versionNumber) {
-            return left.versionNumber < right.versionNumber;
+    return false;
+}
+
+std::string buildLineageOrderText(const std::vector<Document>& lineage) {
+    std::ostringstream out;
+
+    for (std::size_t i = 0; i < lineage.size(); ++i) {
+        if (i > 0) {
+            out << " -> ";
         }
 
-        if (left.dateUploaded != right.dateUploaded) {
-            return left.dateUploaded < right.dateUploaded;
-        }
+        out << lineage[i].docId << " (v" << lineage[i].versionNumber << ")";
+    }
 
-        return left.docId < right.docId;
-    });
+    return out.str();
+}
 
-    std::cout << "\n" << ui::bold("Version Lineage") << "\n";
+void printLineageSelectionTable(const std::vector<Document>& lineage) {
     const std::vector<std::string> headers = {"Doc ID", "Version", "Status", "Previous", "Date"};
     const std::vector<int> widths = {10, 9, 16, 10, 10};
     ui::printTableHeader(headers, widths);
 
     for (std::size_t i = 0; i < lineage.size(); ++i) {
-        std::string previous = lineage[i].previousDocId.empty() ? "(root)" : lineage[i].previousDocId;
         ui::printTableRow({lineage[i].docId,
                            std::to_string(lineage[i].versionNumber),
                            lineage[i].status,
-                           previous,
+                           formatDocumentComparisonPrevious(lineage[i]),
                            lineage[i].dateUploaded},
                           widths);
     }
 
     ui::printTableFooter(widths);
+}
+
+void renderDocumentComparisonView(const Document& left,
+                                  const Document& right,
+                                  const std::vector<Document>& lineage,
+                                  bool advancedMode) {
+    std::size_t leftIndex = 0;
+    std::size_t rightIndex = 0;
+    Document ignored;
+    findDocumentInLineageById(lineage, left.docId, ignored, &leftIndex);
+    findDocumentInLineageById(lineage, right.docId, ignored, &rightIndex);
+
+    const bool adjacent = (leftIndex > rightIndex ? leftIndex - rightIndex : rightIndex - leftIndex) == 1;
+    const std::vector<DocumentComparisonRow> rows = buildDocumentComparisonRows(left, right);
+
+    clearScreen();
+    ui::printSectionTitle("DOCUMENT VERSION COMPARISON");
+    std::cout << "  Mode        : " << (advancedMode ? "Advanced compare" : "Quick compare") << "\n";
+    std::cout << "  Left Version : " << left.docId << " (v" << left.versionNumber << ")\n";
+    std::cout << "  Right Version: " << right.docId << " (v" << right.versionNumber << ")\n";
+    std::cout << "  Relationship : " << (adjacent ? "Adjacent versions" : "Non-adjacent versions") << "\n";
+
+    const std::vector<std::string> headers = {"Field", "Left", "Right", "Status"};
+    const std::vector<int> widths = {20, 24, 24, 10};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        ui::printTableRow({rows[i].fieldName,
+                           rows[i].leftValue,
+                           rows[i].rightValue,
+                           rows[i].changed ? "CHANGED" : "SAME"},
+                          widths);
+    }
+
+    ui::printTableFooter(widths);
+
+    std::cout << "\n" << ui::bold("Provenance") << "\n";
+    std::cout << "  Lineage Order: " << buildLineageOrderText(lineage) << "\n";
+    std::cout << "  Compared IDs : " << left.docId << " vs " << right.docId << "\n";
+}
+
+void runDocumentComparisonPanel(const Document& doc,
+                                const std::vector<Document>* allDocs,
+                                const std::string& actor) {
+    if (allDocs == NULL) {
+        return;
+    }
+
+    const std::vector<Document> lineage = collectDocumentLineage(doc, *allDocs);
+    if (lineage.size() <= 1) {
+        return;
+    }
+
+    int choice = -1;
+    do {
+        std::cout << "\n" << ui::bold("Document Comparison Actions") << "\n";
+        std::cout << "  " << ui::info("[1]") << " Quick compare with previous version\n";
+        std::cout << "  " << ui::info("[2]") << " Compare any two versions in lineage\n";
+        std::cout << "  " << ui::info("[0]") << " Continue\n";
+        std::cout << ui::muted("--------------------------------------------------------------") << "\n";
+        std::cout << "  Enter your choice: ";
+
+        std::cin >> choice;
+        if (std::cin.fail()) {
+            std::cin.clear();
+            clearInputBuffer();
+            std::cout << ui::warning("[!] Invalid choice.") << "\n";
+            continue;
+        }
+
+        if (choice == 1) {
+            if (doc.previousDocId.empty()) {
+                std::cout << ui::warning("[!] Quick compare is unavailable for the root version.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            Document previousVersion;
+            if (!findDocumentInLineageById(lineage, doc.previousDocId, previousVersion, NULL)) {
+                std::cout << ui::warning("[!] Previous version is not available in this visible lineage.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            renderDocumentComparisonView(previousVersion, doc, lineage, false);
+            logAuditAction("DOC_COMPARE_QUICK_VIEW", buildDocumentComparisonTarget(previousVersion, doc), actor);
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 2) {
+            clearInputBuffer();
+            clearScreen();
+            ui::printSectionTitle("COMPARE ANY TWO VERSIONS");
+            printLineageSelectionTable(lineage);
+
+            std::string leftDocId;
+            std::string rightDocId;
+            std::cout << "\nLeft Document ID : ";
+            std::getline(std::cin, leftDocId);
+            std::cout << "Right Document ID: ";
+            std::getline(std::cin, rightDocId);
+
+            leftDocId = storage::sanitizeSingleLineInput(leftDocId);
+            rightDocId = storage::sanitizeSingleLineInput(rightDocId);
+
+            if (leftDocId.empty() || rightDocId.empty()) {
+                std::cout << ui::warning("[!] Both Document IDs are required.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (toLowerCopy(leftDocId) == toLowerCopy(rightDocId)) {
+                std::cout << ui::warning("[!] Choose two different versions to compare.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            Document leftVersion;
+            Document rightVersion;
+            if (!findDocumentInLineageById(lineage, leftDocId, leftVersion, NULL) ||
+                !findDocumentInLineageById(lineage, rightDocId, rightVersion, NULL)) {
+                std::cout << ui::warning("[!] One or both Document IDs are not part of the visible lineage.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (compareDocumentLineageOrder(rightVersion, leftVersion)) {
+                const Document temp = leftVersion;
+                leftVersion = rightVersion;
+                rightVersion = temp;
+            }
+
+            renderDocumentComparisonView(leftVersion, rightVersion, lineage, true);
+            logAuditAction("DOC_COMPARE_ADVANCED_VIEW", buildDocumentComparisonTarget(leftVersion, rightVersion), actor);
+            waitForEnter();
+            continue;
+        }
+
+        if (choice != 0) {
+            std::cout << ui::warning("[!] Invalid choice.") << "\n";
+        }
+    } while (choice != 0);
+}
+
+void printDocumentLineagePanel(const Document& doc, const std::vector<Document>& docs) {
+    const std::vector<Document> lineage = collectDocumentLineage(doc, docs);
+
+    if (lineage.size() <= 1) {
+        return;
+    }
+
+    std::cout << "\n" << ui::bold("Version Lineage") << "\n";
+    printLineageSelectionTable(lineage);
 }
 
 void printConsensusLegend() {
@@ -1520,6 +1761,7 @@ void showDocumentDetailWithSummary(const Document& doc,
                                    const std::vector<Document>* allDocs,
                                    const std::string& actor) {
     printDocumentDetailPanel(doc, includeApprovalChain, allDocs);
+    runDocumentComparisonPanel(doc, allDocs, actor);
     runDocumentSummaryPanel(doc, actor);
 }
 
@@ -2033,7 +2275,19 @@ void viewPublishedDocumentDetailForCitizenById(const std::string& docId, const s
 
     clearScreen();
     ui::printSectionTitle("DOCUMENT DETAIL (AUDIT DRILL-DOWN)");
-    showDocumentDetailWithSummary(found, true, &docs, actor);
+    std::vector<Document> publishedDocs;
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+        if (toLowerCopy(docs[i].status) == "published") {
+            publishedDocs.push_back(docs[i]);
+        }
+    }
+
+    const std::vector<Document>* visibleDocs = NULL;
+    if (toLowerCopy(found.status) == "published") {
+        visibleDocs = &publishedDocs;
+    }
+
+    showDocumentDetailWithSummary(found, true, visibleDocs, actor);
     logAuditAction("AUDIT_DOC_DRILLDOWN_VIEW", found.docId, actor);
     waitForEnter();
 }
