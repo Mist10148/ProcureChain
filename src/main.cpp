@@ -535,6 +535,8 @@ void runAuditIntegrityWorkspace(const Admin& admin) {
     actionLabels.push_back("Integrity Snapshot (Visual)");
     actionCodes.push_back(5);
     actionLabels.push_back("Blockchain Explorer (Dynamic Nodes)");
+    actionCodes.push_back(7);
+    actionLabels.push_back("Blockchain Incident Reports");
     if (canValidateBlockchain(admin)) {
         actionCodes.push_back(6);
         actionLabels.push_back("Repair Blockchain Replicas");
@@ -578,6 +580,9 @@ void runAuditIntegrityWorkspace(const Admin& admin) {
                 break;
             case 6:
                 repairBlockchainNodes(admin.username);
+                break;
+            case 7:
+                viewBlockchainIncidentReports(admin.username);
                 break;
             default:
                 break;

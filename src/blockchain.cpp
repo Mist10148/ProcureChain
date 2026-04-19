@@ -14,6 +14,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <set>
 #include <sstream>
@@ -44,8 +45,38 @@ struct NodeValidationResult {
     std::vector<BlockRow> rows;
 };
 
+struct BlockchainIncident {
+    std::string incidentId;
+    std::string detectedAt;
+    std::string source;
+    std::string targetId;
+    std::string severity;
+    std::string status;
+    std::string affectedSummary;
+    std::string latestDetail;
+    std::string resolvedAt;
+    std::string resolvedBy;
+    std::string resolutionNote;
+};
+
+struct BlockchainLiveStatus {
+    bool sameContent;
+    bool allValid;
+    int affectedNodes;
+    int totalNodes;
+    std::string affectedSummary;
+    std::vector<std::string> nodeSummaries;
+};
+
 const std::string ADMINS_FILE_PATH_PRIMARY = "data/admins.txt";
 const std::string ADMINS_FILE_PATH_FALLBACK = "../data/admins.txt";
+const std::string BLOCKCHAIN_INCIDENTS_FILE_PATH_PRIMARY = "data/blockchain_incidents.txt";
+const std::string BLOCKCHAIN_INCIDENTS_FILE_PATH_FALLBACK = "../data/blockchain_incidents.txt";
+
+void clearInputBuffer();
+std::string serializeBlockWithoutCurrentHash(const BlockRow& row);
+NodeValidationResult validateSingleChainDetailed(const std::string& path, const std::string& fallback);
+std::string readFullFileWithFallback(const std::string& primaryPath, const std::string& fallbackPath);
 
 std::string sanitizeAdminToken(std::string value) {
     for (std::size_t i = 0; i < value.size(); ++i) {
@@ -62,6 +93,96 @@ std::string sanitizeAdminToken(std::string value) {
     }
 
     return value;
+}
+
+std::string toLowerCopy(std::string value) {
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        if (value[i] >= 'A' && value[i] <= 'Z') {
+            value[i] = static_cast<char>(value[i] + ('a' - 'A'));
+        }
+    }
+
+    return value;
+}
+
+std::string trimCopy(const std::string& value) {
+    const std::string whitespace = " \t\r\n";
+    const std::size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    const std::size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+std::string shortenText(const std::string& value, std::size_t maxLength) {
+    if (value.size() <= maxLength) {
+        return value;
+    }
+
+    if (maxLength <= 3) {
+        return value.substr(0, maxLength);
+    }
+
+    return value.substr(0, maxLength - 3) + "...";
+}
+
+std::string sanitizeFileToken(std::string token) {
+    for (std::size_t i = 0; i < token.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(token[i]);
+        const bool safe = std::isalnum(c) != 0 || token[i] == '_' || token[i] == '-' || token[i] == '.';
+        if (!safe) {
+            token[i] = '_';
+        }
+    }
+    return token;
+}
+
+std::string buildTimestampToken(const std::string& timestamp) {
+    std::string token = timestamp;
+    for (std::size_t i = 0; i < token.size(); ++i) {
+        if (token[i] == ' ' || token[i] == ':') {
+            token[i] = '_';
+        }
+    }
+    return sanitizeFileToken(token);
+}
+
+bool isSafeExportFileName(const std::string& fileName) {
+    if (fileName.empty() || fileName.size() > 80) {
+        return false;
+    }
+
+    if (fileName.find("..") != std::string::npos) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < fileName.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(fileName[i]);
+        const bool safe = std::isalnum(c) != 0 || fileName[i] == '_' || fileName[i] == '-' || fileName[i] == '.';
+        if (!safe) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::string chooseExportPath(const std::string& fileName) {
+    std::ofstream primary("data/" + fileName);
+    if (primary.is_open()) {
+        primary.close();
+        return "data/" + fileName;
+    }
+
+    std::ofstream fallback("../data/" + fileName);
+    if (fallback.is_open()) {
+        fallback.close();
+        return "../data/" + fileName;
+    }
+
+    return "";
 }
 
 bool ensureFileWithHeader(const std::string& primaryPath, const std::string& fallbackPath, const std::string& headerLine) {
@@ -207,6 +328,16 @@ bool openWriteFileWithFallback(std::ofstream& file, const std::string& primaryPa
     return file.is_open();
 }
 
+void clearInputBuffer() {
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
+
+bool ensureBlockchainIncidentDataFileExists() {
+    return ensureFileWithHeader(BLOCKCHAIN_INCIDENTS_FILE_PATH_PRIMARY,
+                                BLOCKCHAIN_INCIDENTS_FILE_PATH_FALLBACK,
+                                "incidentID|detectedAt|source|targetID|severity|status|affectedSummary|latestDetail|resolvedAt|resolvedBy|resolutionNote");
+}
+
 bool parseBlockLine(const std::string& line, BlockRow& row) {
     // Parses one block row according to fixed schema order.
     std::stringstream parser(line);
@@ -220,6 +351,473 @@ bool parseBlockLine(const std::string& line, BlockRow& row) {
 
     return !row.index.empty() && !row.timestamp.empty() && !row.action.empty() &&
            !row.documentId.empty() && !row.actor.empty() && !row.previousHash.empty() && !row.currentHash.empty();
+}
+
+BlockchainIncident parseBlockchainIncidentTokens(const std::vector<std::string>& tokens) {
+    BlockchainIncident incident;
+    incident.incidentId = tokens.size() > 0 ? tokens[0] : "";
+    incident.detectedAt = tokens.size() > 1 ? tokens[1] : "";
+    incident.source = tokens.size() > 2 ? tokens[2] : "";
+    incident.targetId = tokens.size() > 3 ? tokens[3] : "";
+    incident.severity = tokens.size() > 4 ? tokens[4] : "HIGH";
+    incident.status = tokens.size() > 5 ? tokens[5] : "OPEN";
+    incident.affectedSummary = tokens.size() > 6 ? tokens[6] : "";
+    incident.latestDetail = tokens.size() > 7 ? tokens[7] : "";
+    incident.resolvedAt = tokens.size() > 8 ? tokens[8] : "";
+    incident.resolvedBy = tokens.size() > 9 ? tokens[9] : "";
+    incident.resolutionNote = tokens.size() > 10 ? tokens[10] : "";
+    return incident;
+}
+
+std::string serializeBlockchainIncident(const BlockchainIncident& incident) {
+    return storage::joinPipeRow({
+        incident.incidentId,
+        incident.detectedAt,
+        incident.source,
+        incident.targetId,
+        incident.severity,
+        incident.status,
+        incident.affectedSummary,
+        incident.latestDetail,
+        incident.resolvedAt,
+        incident.resolvedBy,
+        incident.resolutionNote
+    });
+}
+
+bool loadBlockchainIncidents(std::vector<BlockchainIncident>& incidents) {
+    if (!ensureBlockchainIncidentDataFileExists()) {
+        return false;
+    }
+
+    std::ifstream file;
+    if (!openInputFileWithFallback(file, BLOCKCHAIN_INCIDENTS_FILE_PATH_PRIMARY, BLOCKCHAIN_INCIDENTS_FILE_PATH_FALLBACK)) {
+        return false;
+    }
+
+    incidents.clear();
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        if (firstLine) {
+            firstLine = false;
+            if (line.find("incidentID|") == 0) {
+                continue;
+            }
+        }
+
+        const BlockchainIncident incident = parseBlockchainIncidentTokens(storage::splitPipeRow(line));
+        if (!incident.incidentId.empty()) {
+            incidents.push_back(incident);
+        }
+    }
+
+    return true;
+}
+
+bool saveBlockchainIncidents(const std::vector<BlockchainIncident>& incidents) {
+    std::vector<std::string> rows;
+    rows.reserve(incidents.size());
+
+    for (std::size_t i = 0; i < incidents.size(); ++i) {
+        rows.push_back(serializeBlockchainIncident(incidents[i]));
+    }
+
+    return storage::writePipeFileWithFallback(BLOCKCHAIN_INCIDENTS_FILE_PATH_PRIMARY,
+                                              BLOCKCHAIN_INCIDENTS_FILE_PATH_FALLBACK,
+                                              "incidentID|detectedAt|source|targetID|severity|status|affectedSummary|latestDetail|resolvedAt|resolvedBy|resolutionNote",
+                                              rows);
+}
+
+std::string generateNextIncidentId(const std::vector<BlockchainIncident>& incidents) {
+    int maxId = 0;
+
+    for (std::size_t i = 0; i < incidents.size(); ++i) {
+        const std::string id = incidents[i].incidentId;
+        if (id.size() <= 3 || id.substr(0, 3) != "BCI") {
+            continue;
+        }
+
+        const int parsed = std::atoi(id.substr(3).c_str());
+        if (parsed > maxId) {
+            maxId = parsed;
+        }
+    }
+
+    std::ostringstream out;
+    out << "BCI" << std::setw(3) << std::setfill('0') << (maxId + 1);
+    return out.str();
+}
+
+bool computeNodeConsensusMismatch(const std::vector<BlockRow>& referenceRows,
+                                  const std::vector<BlockRow>& candidateRows,
+                                  std::string& outMismatch) {
+    outMismatch = "";
+    const std::size_t shared = std::min(referenceRows.size(), candidateRows.size());
+
+    for (std::size_t idx = 0; idx < shared; ++idx) {
+        const std::string left = serializeBlockWithoutCurrentHash(referenceRows[idx]) + "|" + referenceRows[idx].currentHash;
+        const std::string right = serializeBlockWithoutCurrentHash(candidateRows[idx]) + "|" + candidateRows[idx].currentHash;
+        if (left != right) {
+            outMismatch = referenceRows[idx].index;
+            return true;
+        }
+    }
+
+    if (referenceRows.size() != candidateRows.size()) {
+        outMismatch = std::to_string(shared + 1);
+        return true;
+    }
+
+    return false;
+}
+
+BlockchainLiveStatus buildBlockchainLiveStatus(const std::vector<NodeValidationResult>& nodeResults,
+                                               const std::vector<std::string>& nodeData) {
+    BlockchainLiveStatus status;
+    status.sameContent = !nodeData.empty() && !nodeData[0].empty();
+    status.allValid = status.sameContent;
+    status.affectedNodes = 0;
+    status.totalNodes = static_cast<int>(nodeResults.size());
+
+    for (std::size_t i = 1; i < nodeData.size() && status.sameContent; ++i) {
+        if (nodeData[i] != nodeData[0]) {
+            status.sameContent = false;
+        }
+    }
+
+    const std::vector<BlockRow> emptyReference;
+    const std::vector<BlockRow>& referenceRows = nodeResults.empty() ? emptyReference : nodeResults[0].rows;
+
+    std::ostringstream summary;
+    for (std::size_t i = 0; i < nodeResults.size(); ++i) {
+        std::ostringstream nodeSummary;
+        nodeSummary << "Node " << (i + 1) << ": ";
+
+        bool affected = false;
+        if (!nodeResults[i].integrityOk) {
+            affected = true;
+            nodeSummary << nodeResults[i].reason;
+            if (!nodeResults[i].failedIndex.empty()) {
+                nodeSummary << " @index " << nodeResults[i].failedIndex;
+            }
+        } else {
+            std::string mismatchIndex;
+            if (computeNodeConsensusMismatch(referenceRows, nodeResults[i].rows, mismatchIndex)) {
+                affected = true;
+                nodeSummary << "CONSENSUS_MISMATCH";
+                if (!mismatchIndex.empty()) {
+                    nodeSummary << " @index " << mismatchIndex;
+                }
+            } else {
+                nodeSummary << "OK";
+            }
+        }
+
+        if (affected) {
+            status.affectedNodes++;
+        }
+
+        status.allValid = status.allValid && nodeResults[i].integrityOk;
+        status.nodeSummaries.push_back(nodeSummary.str());
+    }
+
+    summary << status.affectedNodes << "/" << status.totalNodes << " nodes affected";
+    if (!status.sameContent) {
+        summary << "; divergence detected";
+    }
+
+    bool wroteAnyNode = false;
+    for (std::size_t i = 0; i < status.nodeSummaries.size(); ++i) {
+        if (status.nodeSummaries[i].find(": OK") != std::string::npos) {
+            continue;
+        }
+        summary << (wroteAnyNode ? " | " : "; ");
+        summary << status.nodeSummaries[i];
+        wroteAnyNode = true;
+    }
+
+    if (!wroteAnyNode && status.sameContent && status.affectedNodes == 0) {
+        summary << "; all synchronized";
+    }
+
+    status.affectedSummary = summary.str();
+    status.allValid = status.allValid && status.sameContent;
+    return status;
+}
+
+BlockchainLiveStatus inspectBlockchainState() {
+    ensureBlockchainNodeFilesExist();
+
+    const std::vector<NodePath> nodePaths = buildNodePaths();
+    std::vector<NodeValidationResult> nodeResults;
+    std::vector<std::string> nodeData;
+    nodeResults.reserve(nodePaths.size());
+    nodeData.reserve(nodePaths.size());
+
+    for (std::size_t i = 0; i < nodePaths.size(); ++i) {
+        nodeResults.push_back(validateSingleChainDetailed(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+        nodeData.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+    }
+
+    return buildBlockchainLiveStatus(nodeResults, nodeData);
+}
+
+std::string promptIncidentNote(const std::string& label) {
+    std::string note;
+    std::cout << label;
+    std::getline(std::cin, note);
+    note = storage::sanitizeSingleLineInput(note);
+    if (note.size() > 220) {
+        note = note.substr(0, 220);
+    }
+    return note;
+}
+
+bool findIncidentById(const std::vector<BlockchainIncident>& incidents,
+                      const std::string& incidentId,
+                      BlockchainIncident& outIncident,
+                      std::size_t* indexOut) {
+    const std::string target = toLowerCopy(trimCopy(incidentId));
+    for (std::size_t i = 0; i < incidents.size(); ++i) {
+        if (toLowerCopy(incidents[i].incidentId) == target) {
+            outIncident = incidents[i];
+            if (indexOut != NULL) {
+                *indexOut = i;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool upsertBlockchainIncident(const std::string& source,
+                              const std::string& targetId,
+                              const std::string& severity,
+                              const std::string& affectedSummary,
+                              const std::string& detail,
+                              const std::string& actor) {
+    std::vector<BlockchainIncident> incidents;
+    if (!loadBlockchainIncidents(incidents)) {
+        return false;
+    }
+
+    std::size_t matchIndex = incidents.size();
+    for (std::size_t i = 0; i < incidents.size(); ++i) {
+        if (toLowerCopy(incidents[i].status) == "open" &&
+            incidents[i].source == source &&
+            incidents[i].targetId == targetId) {
+            matchIndex = i;
+        }
+    }
+
+    bool created = false;
+    if (matchIndex == incidents.size()) {
+        BlockchainIncident incident;
+        incident.incidentId = generateNextIncidentId(incidents);
+        incident.detectedAt = getCurrentTimestamp();
+        incident.source = source;
+        incident.targetId = targetId;
+        incident.severity = severity;
+        incident.status = "OPEN";
+        incident.affectedSummary = storage::sanitizeSingleLineInput(affectedSummary);
+        incident.latestDetail = storage::sanitizeSingleLineInput(detail);
+        incidents.push_back(incident);
+        created = true;
+    } else {
+        incidents[matchIndex].severity = severity;
+        incidents[matchIndex].affectedSummary = storage::sanitizeSingleLineInput(affectedSummary);
+        incidents[matchIndex].latestDetail = storage::sanitizeSingleLineInput(detail);
+        incidents[matchIndex].status = "OPEN";
+        incidents[matchIndex].resolvedAt.clear();
+        incidents[matchIndex].resolvedBy.clear();
+        incidents[matchIndex].resolutionNote.clear();
+    }
+
+    if (!saveBlockchainIncidents(incidents)) {
+        return false;
+    }
+
+    if (created) {
+        logAuditAction("BLOCKCHAIN_INCIDENT_CREATED", incidents.back().incidentId + "|" + source, actor);
+    } else {
+        logAuditAction("BLOCKCHAIN_INCIDENT_UPDATED", incidents[matchIndex].incidentId + "|" + source, actor);
+    }
+
+    return true;
+}
+
+int resolveOpenBlockchainIncidents(const std::string& actor,
+                                   const std::string& note,
+                                   const std::string* specificIncidentId) {
+    std::vector<BlockchainIncident> incidents;
+    if (!loadBlockchainIncidents(incidents)) {
+        return -1;
+    }
+
+    int resolvedCount = 0;
+    const std::string trimmedNote = storage::sanitizeSingleLineInput(note);
+
+    for (std::size_t i = 0; i < incidents.size(); ++i) {
+        if (toLowerCopy(incidents[i].status) != "open") {
+            continue;
+        }
+
+        if (specificIncidentId != NULL &&
+            toLowerCopy(incidents[i].incidentId) != toLowerCopy(*specificIncidentId)) {
+            continue;
+        }
+
+        incidents[i].status = "RESOLVED";
+        incidents[i].resolvedAt = getCurrentTimestamp();
+        incidents[i].resolvedBy = actor;
+        incidents[i].resolutionNote = trimmedNote;
+        resolvedCount++;
+    }
+
+    if (resolvedCount <= 0) {
+        return 0;
+    }
+
+    if (!saveBlockchainIncidents(incidents)) {
+        return -1;
+    }
+
+    return resolvedCount;
+}
+
+std::string buildIncidentExportBaseName(const BlockchainIncident& incident) {
+    return "blockchain_incident_" + sanitizeFileToken(incident.incidentId) + "_" + buildTimestampToken(getCurrentTimestamp());
+}
+
+std::string buildIncidentTxtReport(const BlockchainIncident& incident,
+                                   const BlockchainLiveStatus& liveStatus,
+                                   const std::string& actor,
+                                   const std::string& exportNote) {
+    std::ostringstream out;
+    out << "PROCURECHAIN BLOCKCHAIN INCIDENT REPORT\n";
+    out << "Exported At    : " << getCurrentTimestamp() << "\n";
+    out << "Exported By    : " << actor << "\n";
+    out << "Export Note    : " << (exportNote.empty() ? "(none)" : exportNote) << "\n";
+    out << "\n";
+    out << "Incident ID    : " << incident.incidentId << "\n";
+    out << "Detected At    : " << incident.detectedAt << "\n";
+    out << "Source         : " << incident.source << "\n";
+    out << "Target ID      : " << incident.targetId << "\n";
+    out << "Severity       : " << incident.severity << "\n";
+    out << "Status         : " << incident.status << "\n";
+    out << "Affected Nodes : " << incident.affectedSummary << "\n";
+    out << "Latest Detail  : " << incident.latestDetail << "\n";
+    out << "Resolved At    : " << (incident.resolvedAt.empty() ? "(not resolved)" : incident.resolvedAt) << "\n";
+    out << "Resolved By    : " << (incident.resolvedBy.empty() ? "(not resolved)" : incident.resolvedBy) << "\n";
+    out << "Resolution Note: " << (incident.resolutionNote.empty() ? "(none)" : incident.resolutionNote) << "\n";
+    out << "\n";
+    out << "Live Status\n";
+    out << "Reproducible   : " << (liveStatus.allValid ? "NO" : "YES") << "\n";
+    out << "Current Summary: " << liveStatus.affectedSummary << "\n";
+    for (std::size_t i = 0; i < liveStatus.nodeSummaries.size(); ++i) {
+        out << "  - " << liveStatus.nodeSummaries[i] << "\n";
+    }
+    return out.str();
+}
+
+std::string buildIncidentCsvReport(const BlockchainIncident& incident,
+                                   const BlockchainLiveStatus& liveStatus,
+                                   const std::string& actor,
+                                   const std::string& exportNote) {
+    const std::vector<std::string> headers = {
+        "incidentID", "detectedAt", "source", "targetID", "severity", "status",
+        "affectedSummary", "latestDetail", "resolvedAt", "resolvedBy", "resolutionNote",
+        "exportedAt", "exportedBy", "exportNote", "liveReproducible", "liveSummary"
+    };
+    const std::vector<std::string> values = {
+        incident.incidentId,
+        incident.detectedAt,
+        incident.source,
+        incident.targetId,
+        incident.severity,
+        incident.status,
+        incident.affectedSummary,
+        incident.latestDetail,
+        incident.resolvedAt,
+        incident.resolvedBy,
+        incident.resolutionNote,
+        getCurrentTimestamp(),
+        actor,
+        exportNote,
+        liveStatus.allValid ? "NO" : "YES",
+        liveStatus.affectedSummary
+    };
+
+    std::ostringstream out;
+    for (std::size_t i = 0; i < headers.size(); ++i) {
+        if (i > 0) {
+            out << ",";
+        }
+        out << headers[i];
+    }
+    out << "\n";
+
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            out << ",";
+        }
+        out << "\"" << values[i] << "\"";
+    }
+    out << "\n";
+    return out.str();
+}
+
+void printIncidentListTable(const std::vector<BlockchainIncident>& incidents) {
+    const std::vector<std::string> headers = {"ID", "Status", "Severity", "Detected", "Source", "Affected", "Summary"};
+    const std::vector<int> widths = {8, 10, 10, 19, 20, 16, 28};
+    ui::printTableHeader(headers, widths);
+
+    for (std::size_t i = 0; i < incidents.size(); ++i) {
+        ui::printTableRow({incidents[i].incidentId,
+                           incidents[i].status,
+                           incidents[i].severity,
+                           incidents[i].detectedAt,
+                           incidents[i].source,
+                           shortenText(incidents[i].affectedSummary, 16),
+                           shortenText(incidents[i].latestDetail, 28)},
+                          widths);
+    }
+
+    ui::printTableFooter(widths);
+}
+
+void printIncidentDetailView(const BlockchainIncident& incident, const BlockchainLiveStatus& liveStatus) {
+    clearScreen();
+    ui::printSectionTitle("BLOCKCHAIN INCIDENT DETAIL");
+
+    const std::vector<std::string> headers = {"Field", "Value"};
+    const std::vector<int> widths = {20, 72};
+    ui::printTableHeader(headers, widths);
+    ui::printTableRow({"Incident ID", incident.incidentId}, widths);
+    ui::printTableRow({"Detected At", incident.detectedAt}, widths);
+    ui::printTableRow({"Source", incident.source}, widths);
+    ui::printTableRow({"Target ID", incident.targetId}, widths);
+    ui::printTableRow({"Severity", incident.severity}, widths);
+    ui::printTableRow({"Status", incident.status}, widths);
+    ui::printTableRow({"Affected Nodes", incident.affectedSummary}, widths);
+    ui::printTableRow({"Latest Detail", incident.latestDetail}, widths);
+    ui::printTableRow({"Resolved At", incident.resolvedAt.empty() ? "(not resolved)" : incident.resolvedAt}, widths);
+    ui::printTableRow({"Resolved By", incident.resolvedBy.empty() ? "(not resolved)" : incident.resolvedBy}, widths);
+    ui::printTableRow({"Resolution Note", incident.resolutionNote.empty() ? "(none)" : incident.resolutionNote}, widths);
+    ui::printTableFooter(widths);
+
+    std::cout << "\n" << ui::bold("Live Blockchain Status") << "\n";
+    std::cout << "  Reproducible : " << (liveStatus.allValid ? "NO" : "YES") << "\n";
+    std::cout << "  Summary      : " << liveStatus.affectedSummary << "\n";
+    for (std::size_t i = 0; i < liveStatus.nodeSummaries.size(); ++i) {
+        std::cout << "  - " << liveStatus.nodeSummaries[i] << "\n";
+    }
 }
 
 bool loadChainRows(const std::string& path, const std::string& fallback, std::vector<BlockRow>& rows) {
@@ -639,17 +1237,9 @@ void validateBlockchainNodes(const std::string& actor) {
         nodeData.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
     }
 
-    bool sameContent = !nodeData.empty() && !nodeData[0].empty();
-    for (std::size_t i = 1; i < nodeData.size() && sameContent; ++i) {
-        if (nodeData[i] != nodeData[0]) {
-            sameContent = false;
-        }
-    }
-
-    bool allValid = sameContent;
-    for (std::size_t i = 0; i < nodeResults.size(); ++i) {
-        allValid = allValid && nodeResults[i].integrityOk;
-    }
+    const BlockchainLiveStatus liveStatus = buildBlockchainLiveStatus(nodeResults, nodeData);
+    const bool sameContent = liveStatus.sameContent;
+    const bool allValid = liveStatus.allValid;
 
     const std::vector<std::string> headers = {"Validation Check", "Result", "Detail"};
     const std::vector<int> widths = {28, 10, 26};
@@ -677,6 +1267,12 @@ void validateBlockchainNodes(const std::string& actor) {
                        "Validation failed due to chain inconsistency or tamper indicators.",
                        actor,
                        "PUBLIC");
+        upsertBlockchainIncident("BLOCKCHAIN_VALIDATE",
+                                 "MULTI",
+                                 "HIGH",
+                                 liveStatus.affectedSummary,
+                                 "Validation failed due to chain inconsistency or tamper indicators.",
+                                 actor);
         logAuditAction("BLOCKCHAIN_VALIDATE_FAIL", "MULTI", actor);
     }
 
@@ -693,10 +1289,15 @@ void viewBlockchainExplorer(const std::string& actor) {
 
     std::vector<NodeValidationResult> nodeResults;
     nodeResults.reserve(nodePaths.size());
+    std::vector<std::string> nodeData;
+    nodeData.reserve(nodePaths.size());
 
     for (std::size_t i = 0; i < nodePaths.size(); ++i) {
         nodeResults.push_back(validateSingleChainDetailed(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
+        nodeData.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
     }
+
+    const BlockchainLiveStatus liveStatus = buildBlockchainLiveStatus(nodeResults, nodeData);
 
     std::vector<BlockRow> emptyReference;
     const std::vector<BlockRow>& reference = nodeResults.empty() ? emptyReference : nodeResults[0].rows;
@@ -808,6 +1409,12 @@ void viewBlockchainExplorer(const std::string& actor) {
                        "Explorer detected diverging blockchain node replicas.",
                        actor,
                        "PUBLIC");
+        upsertBlockchainIncident("BLOCKCHAIN_EXPLORER",
+                                 "MULTI",
+                                 "HIGH",
+                                 liveStatus.affectedSummary,
+                                 "Explorer detected diverging blockchain node replicas.",
+                                 actor);
         logAuditAction("BLOCKCHAIN_EXPLORER_TAMPER_ALERT", std::to_string(tamperedNodes), actor);
     } else {
         std::cout << "\n" << ui::success("[+] Explorer confirms all ") << nodeResults.size()
@@ -850,6 +1457,8 @@ void repairBlockchainNodes(const std::string& actor) {
         originalContents.push_back(readFullFileWithFallback(nodePaths[i].primaryPath, nodePaths[i].fallbackPath));
     }
 
+    const BlockchainLiveStatus originalStatus = buildBlockchainLiveStatus(nodeResults, originalContents);
+
     std::vector<BlockRow> canonicalRows;
     std::size_t bestValidIndex = nodeResults.size();
     std::size_t bestValidLength = 0;
@@ -885,17 +1494,230 @@ void repairBlockchainNodes(const std::string& actor) {
                            "Blockchain repair failed and rollback also encountered errors. Manual intervention is required.",
                        actor,
                        "PUBLIC");
+        upsertBlockchainIncident("BLOCKCHAIN_REPAIR",
+                                 "MULTI",
+                                 "HIGH",
+                                 originalStatus.affectedSummary,
+                                 rollbackSucceeded ?
+                                     "Blockchain repair failed and was rolled back." :
+                                     "Blockchain repair failed and rollback also encountered errors. Manual intervention is required.",
+                                 actor);
         std::cout << ui::error("[!] Blockchain repair failed.") << "\n";
         waitForEnter();
         return;
     }
+
+    clearInputBuffer();
+    const std::string resolutionNote = promptIncidentNote("Resolution note (optional): ");
+    const int resolvedCount = resolveOpenBlockchainIncidents(actor, resolutionNote, NULL);
 
     tryLogAuditAction("BLOCKCHAIN_REPAIR_OK",
                       "MULTI[" + std::to_string(canonicalRows.size()) + "_blocks]",
                       actor);
     std::cout << ui::success("[+] Blockchain replicas repaired successfully.") << "\n";
     std::cout << "  Canonical blocks : " << canonicalRows.size() << "\n";
+    if (resolvedCount > 0) {
+        logAuditAction("BLOCKCHAIN_INCIDENT_RESOLVED", std::to_string(resolvedCount) + "_incidents", actor);
+        std::cout << "  Resolved incidents: " << resolvedCount << "\n";
+    }
     waitForEnter();
+}
+
+void viewBlockchainIncidentReports(const std::string& actor) {
+    int filterMode = 0; // 0=open, 1=resolved, 2=all
+    int choice = -1;
+
+    do {
+        std::vector<BlockchainIncident> incidents;
+        if (!loadBlockchainIncidents(incidents)) {
+            clearScreen();
+            ui::printSectionTitle("BLOCKCHAIN INCIDENT REPORTS");
+            std::cout << ui::error("[!] Unable to load blockchain incident records.") << "\n";
+            waitForEnter();
+            return;
+        }
+
+        std::sort(incidents.begin(), incidents.end(), [](const BlockchainIncident& left, const BlockchainIncident& right) {
+            if (left.detectedAt != right.detectedAt) {
+                return left.detectedAt > right.detectedAt;
+            }
+            return left.incidentId > right.incidentId;
+        });
+
+        std::vector<BlockchainIncident> filtered;
+        int openCount = 0;
+        int resolvedCount = 0;
+        for (std::size_t i = 0; i < incidents.size(); ++i) {
+            const bool isOpen = toLowerCopy(incidents[i].status) == "open";
+            if (isOpen) {
+                openCount++;
+            } else {
+                resolvedCount++;
+            }
+
+            if (filterMode == 0 && !isOpen) {
+                continue;
+            }
+            if (filterMode == 1 && isOpen) {
+                continue;
+            }
+
+            filtered.push_back(incidents[i]);
+        }
+
+        clearScreen();
+        ui::printSectionTitle("BLOCKCHAIN INCIDENT REPORTS");
+        std::cout << "  Open incidents    : " << openCount << "\n";
+        std::cout << "  Resolved incidents: " << resolvedCount << "\n";
+        std::cout << "  Active filter     : "
+                  << (filterMode == 0 ? "OPEN" : (filterMode == 1 ? "RESOLVED" : "ALL")) << "\n\n";
+
+        if (filtered.empty()) {
+            std::cout << ui::warning("[!] No incidents match the current filter.") << "\n";
+        } else {
+            printIncidentListTable(filtered);
+        }
+
+        std::cout << "\n";
+        std::cout << "  [1] Show Open Incidents\n";
+        std::cout << "  [2] Show Resolved Incidents\n";
+        std::cout << "  [3] Show All Incidents\n";
+        std::cout << "  [4] View Incident Detail\n";
+        std::cout << "  [5] Resolve Incident\n";
+        std::cout << "  [6] Export Incident Report (TXT + CSV)\n";
+        std::cout << "  [0] Back\n";
+        std::cout << "  Enter your choice: ";
+
+        std::cin >> choice;
+        if (std::cin.fail()) {
+            std::cin.clear();
+            clearInputBuffer();
+            std::cout << ui::warning("[!] Invalid choice.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 1) {
+            filterMode = 0;
+            continue;
+        }
+
+        if (choice == 2) {
+            filterMode = 1;
+            continue;
+        }
+
+        if (choice == 3) {
+            filterMode = 2;
+            continue;
+        }
+
+        if (choice == 4) {
+            clearInputBuffer();
+            std::string incidentId;
+            std::cout << "Incident ID: ";
+            std::getline(std::cin, incidentId);
+
+            BlockchainIncident incident;
+            if (!findIncidentById(incidents, incidentId, incident, NULL)) {
+                std::cout << ui::warning("[!] Incident ID not found.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            const BlockchainLiveStatus liveStatus = inspectBlockchainState();
+            printIncidentDetailView(incident, liveStatus);
+            logAuditAction("BLOCKCHAIN_INCIDENT_VIEW", incident.incidentId, actor);
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 5) {
+            clearInputBuffer();
+            std::string incidentId;
+            std::cout << "Incident ID to resolve: ";
+            std::getline(std::cin, incidentId);
+
+            BlockchainIncident incident;
+            if (!findIncidentById(incidents, incidentId, incident, NULL)) {
+                std::cout << ui::warning("[!] Incident ID not found.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (toLowerCopy(incident.status) != "open") {
+                std::cout << ui::warning("[!] Incident is already resolved.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            const std::string note = promptIncidentNote("Resolution note (optional): ");
+            const int resolveResult = resolveOpenBlockchainIncidents(actor, note, &incident.incidentId);
+            if (resolveResult <= 0) {
+                std::cout << ui::error("[!] Incident resolution failed.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            logAuditAction("BLOCKCHAIN_INCIDENT_RESOLVED", incident.incidentId, actor);
+            std::cout << ui::success("[+] Incident marked resolved.") << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        if (choice == 6) {
+            clearInputBuffer();
+            std::string incidentId;
+            std::cout << "Incident ID to export: ";
+            std::getline(std::cin, incidentId);
+
+            BlockchainIncident incident;
+            if (!findIncidentById(incidents, incidentId, incident, NULL)) {
+                std::cout << ui::warning("[!] Incident ID not found.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            const std::string exportNote = promptIncidentNote("Export note (optional): ");
+            const BlockchainLiveStatus liveStatus = inspectBlockchainState();
+            const std::string baseName = buildIncidentExportBaseName(incident);
+            const std::string txtName = baseName + ".txt";
+            const std::string csvName = baseName + ".csv";
+
+            if (!isSafeExportFileName(txtName) || !isSafeExportFileName(csvName)) {
+                std::cout << ui::error("[!] Unable to build safe export filenames.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            const std::string txtPath = chooseExportPath(txtName);
+            const std::string csvPath = chooseExportPath(csvName);
+            if (txtPath.empty() || csvPath.empty()) {
+                std::cout << ui::error("[!] Unable to resolve incident export paths.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            if (!storage::writeTextFileAtomically(txtPath, buildIncidentTxtReport(incident, liveStatus, actor, exportNote)) ||
+                !storage::writeTextFileAtomically(csvPath, buildIncidentCsvReport(incident, liveStatus, actor, exportNote))) {
+                std::cout << ui::error("[!] Unable to write incident export files.") << "\n";
+                waitForEnter();
+                continue;
+            }
+
+            logAuditAction("BLOCKCHAIN_INCIDENT_EXPORTED", incident.incidentId, actor);
+            std::cout << ui::success("[+] Incident reports exported.") << "\n";
+            std::cout << "  TXT: " << txtPath << "\n";
+            std::cout << "  CSV: " << csvPath << "\n";
+            waitForEnter();
+            continue;
+        }
+
+        if (choice != 0) {
+            std::cout << ui::warning("[!] Invalid choice.") << "\n";
+            waitForEnter();
+        }
+    } while (choice != 0);
 }
 
 std::vector<BlockchainNodePath> getBlockchainNodePaths() {
